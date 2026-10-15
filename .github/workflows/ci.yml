@@ -157,8 +157,11 @@ jobs:
             base="origin/$DEFAULT"
           elif [ -n "$BEFORE" ] && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
             base="$BEFORE"
-          else
+          elif git rev-parse -q --verify "HEAD^" >/dev/null; then
             base="HEAD^"
+          else
+            echo "Premier commit du dépôt : rien à comparer."
+            exit 0
           fi
           echo "Base de comparaison : $base"
           python3 .github/scripts/foundry_version.py "$base"
