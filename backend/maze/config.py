@@ -10,6 +10,12 @@ from pathlib import Path
 
 log = logging.getLogger("maze")
 
+# Licence de Maze (identifiant SPDX) et adresse de son code source par défaut. AGPL, section 13 : chaque utilisateur
+# d'une instance doit pouvoir obtenir le code de la version qu'il utilise ; un fork modifié règle MAZE_SOURCE_URL sur
+# ses propres sources. L'interface affiche le lien (écran de connexion, menu du compte), via /api/auth/status.
+LICENSE = "AGPL-3.0-or-later"
+DEFAULT_SOURCE_URL = "https://github.com/ranglier/Maze"
+
 
 def _env_secret(name: str) -> str | None:
     """Lit NAME, ou le contenu du fichier désigné par NAME_FILE (secrets Docker)."""
@@ -45,6 +51,17 @@ def _env_int(name: str, default: int) -> int:
     return value
 
 
+def _env_source_url() -> str:
+    """MAZE_SOURCE_URL : adresse http(s) du code source ; absente ou invalide : dépôt de Maze (avec un avertissement)."""
+    raw = os.environ.get("MAZE_SOURCE_URL", "").strip()
+    if not raw:
+        return DEFAULT_SOURCE_URL
+    if not raw.lower().startswith(("https://", "http://")) or any(c.isspace() for c in raw):
+        log.warning("MAZE_SOURCE_URL=%r invalide (adresse http ou https attendue) : %s", raw, DEFAULT_SOURCE_URL)
+        return DEFAULT_SOURCE_URL
+    return raw
+
+
 @dataclass(frozen=True)
 class Settings:
     data_dir: Path
@@ -65,6 +82,8 @@ class Settings:
     # Connexions temps réel admises (audit PERF-9) : par compte (toutes fiches) et pour toute l'instance.
     live_max_per_user: int = 12
     live_max_total: int = 100
+    # Code source de cette version, proposé à tous les utilisateurs (AGPL, section 13).
+    source_url: str = DEFAULT_SOURCE_URL
 
     @property
     def db_path(self) -> Path:
@@ -111,4 +130,5 @@ def load_settings() -> Settings:
         public_url=(os.environ.get("MAZE_PUBLIC_URL") or "").strip().rstrip("/") or None,
         live_max_per_user=_env_int("MAZE_LIVE_MAX_PER_USER", 12),
         live_max_total=_env_int("MAZE_LIVE_MAX_TOTAL", 100),
+        source_url=_env_source_url(),
     )

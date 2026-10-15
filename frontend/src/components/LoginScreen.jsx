@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { api } from '../api.js';
+import { SourceLink } from './ui.jsx';
 
-export default function LoginScreen({ onLoggedIn }) {
+export default function LoginScreen({ onLoggedIn, sourceUrl }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState(null);
@@ -37,13 +38,20 @@ export default function LoginScreen({ onLoggedIn }) {
         <button type="submit" className="btn btn--primary btn--block" disabled={busy || !password || !username}>
           {busy ? 'Vérification…' : 'Se connecter'}
         </button>
+        <SplashFooter sourceUrl={sourceUrl} />
       </form>
     </main>
   );
 }
 
+/** Pied de l'écran de connexion : code source de l'instance, visible avant toute connexion (AGPL, section 13). */
+function SplashFooter({ sourceUrl }) {
+  if (!sourceUrl) return null;
+  return <p className="splash__footer"><SourceLink url={sourceUrl} /></p>;
+}
+
 /** Premier lancement sans aucun compte : création de l'administrateur. */
-export function SetupScreen({ onDone }) {
+export function SetupScreen({ onDone, sourceUrl }) {
   const [form, setForm] = useState({ username: '', display_name: '', password: '', confirm: '' });
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -87,6 +95,7 @@ export function SetupScreen({ onDone }) {
           disabled={busy || mismatch || form.password.length < 8 || !form.username}>
           Créer le compte et entrer
         </button>
+        <SplashFooter sourceUrl={sourceUrl} />
       </form>
     </main>
   );

@@ -6,6 +6,7 @@ import { renderDocInto } from '../editor/schema.js';
 // --- Icônes (traits 1.75, 20 px) --------------------------------------------
 const PATHS = {
   plus: 'M10 4v12M4 10h12',
+  code: 'M7 6l-4 4 4 4M13 6l4 4-4 4M11 4.5l-2 11',
   link: 'M8.5 11.5l3-3M7 13.5l-1.2 1.2a2.5 2.5 0 01-3.5-3.5L5.5 8a2.5 2.5 0 013.5 0M13 6.5l1.2-1.2a2.5 2.5 0 013.5 3.5L14.5 12a2.5 2.5 0 01-3.5 0',
   layout: 'M5 5h3v3H5zM12 4h3v3h-3zM12 13h3v3h-3zM5 12h3v3H5zM8 6.5h4M13.5 7v6M8 13.5h4',
   fit: 'M3 7V3h4M13 3h4v4M17 13v4h-4M7 17H3v-4',
@@ -91,6 +92,17 @@ const PATHS = {
   shield: 'M10 3l6 2.5V10c0 3.5-2.5 6-6 7.5C6.5 16 4 13.5 4 10V5.5z',
   flame: 'M10 17.5c3 0 5-2 5-5 0-3.5-3-5-3.5-9-2 1.5-3.5 3.5-3.5 6-1-.8-1.5-1.8-1.5-3C4.5 8.5 5 11 5 12.5c0 3 2 5 5 5z',
 };
+
+/** Lien vers le code source de la version en service (AGPL, section 13 : offert à tout utilisateur de l'instance),
+ * adresse donnée par /api/auth/status (MAZE_SOURCE_URL côté serveur). Ouvert dans un nouvel onglet. */
+export function SourceLink({ url, className, role, onClick, children }) {
+  if (!url) return null;
+  return (
+    <a href={url} target="_blank" rel="noopener noreferrer" className={className} role={role} onClick={onClick}>
+      {children}Code source (AGPL-3.0)
+    </a>
+  );
+}
 
 export function Icon({ name, size = 18, title }) {
   return (
