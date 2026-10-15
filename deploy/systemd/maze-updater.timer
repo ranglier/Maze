@@ -1,0 +1,12 @@
+[Unit]
+Description=Maze - vérification quotidienne des mises à jour disponibles
+
+[Timer]
+OnBootSec=5min
+OnCalendar=*-*-* 04:30
+RandomizedDelaySec=15min
+Persistent=true
+Unit=maze-updater.service
+
+[Install]
+WantedBy=timers.target

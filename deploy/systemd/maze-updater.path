@@ -1,0 +1,9 @@
+[Unit]
+Description=Maze - surveillance des demandes de mise à jour (interface d'administration)
+
+[Path]
+PathExists=/opt/maze/control/request
+Unit=maze-updater.service
+
+[Install]
+WantedBy=multi-user.target

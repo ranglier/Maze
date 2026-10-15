@@ -1,0 +1,13 @@
+[Unit]
+Description=Maze - sauvegarde quotidienne
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+User=ops
+Group=ops
+WorkingDirectory=/opt/maze
+# Sortie (nom de l'archive) et erreurs dans le journal : journalctl -u maze-backup
+ExecStart=/usr/bin/docker compose exec -T maze python -m maze.backup
+Nice=10

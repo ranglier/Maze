@@ -1,0 +1,51 @@
+services:
+  maze:
+    build:
+      context: .
+      args:
+        # Renseignée par deploy/update.sh (commit courant), affichée dans l'administration.
+        MAZE_VERSION: ${MAZE_VERSION:-dev}
+    image: maze:latest
+    container_name: maze
+    restart: unless-stopped
+    # Arrêt (mise à jour, docker compose stop) : 30 s pour finir un import ou une restauration en cours avant le
+    # SIGKILL (10 s par défaut), qui laisserait des fichiers temporaires dans le volume (audit PERF-15).
+    stop_grace_period: 30s
+    # Adresse d'écoute définie dans .env (MAZE_BIND) :
+    # 127.0.0.1 si Caddy est sur la même machine, sinon l'IP privée de cette machine.
+    # Ne jamais mettre 0.0.0.0 : les ports publiés par Docker contournent ufw.
+    ports:
+      - "${MAZE_BIND:-127.0.0.1}:8000:8000"
+    environment:
+      TZ: Europe/Paris
+      # Mot de passe lu depuis un secret Docker (voir README).
+      MAZE_PASSWORD_FILE: /run/secrets/maze_password
+      # Cookie de session réservé à HTTPS (Maze est servi via Caddy).
+      MAZE_COOKIE_SECURE: "true"
+      MAZE_MAX_UPLOAD_MB: "20"
+      # Mise à jour depuis l'interface (service maze-updater de l'hôte) : le conteneur dépose sa demande dans
+      # /control et lit l'état publié par l'hôte dans /status, en lecture seule.
+      MAZE_CONTROL_DIR: /control
+      MAZE_STATUS_DIR: /status
+      # Adresse(s) du reverse proxy dont Maze croit les en-têtes X-Forwarded-For et X-Forwarded-Proto (lue par
+      # uvicorn). Par défaut, les réseaux privés et locaux (même valeur que dans le Dockerfile) : Caddy y est
+      # toujours, qu'il soit sur une autre machine (son IP, conservée par la redirection de port de Docker) ou sur
+      # celle-ci (passerelle du réseau Docker). Recommandé dans .env : l'IP exacte de Caddy (README, Configuration).
+      FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,::1,fc00::/7}
+      # Adresse publique (connecteur Claude : adresses OAuth et URL du serveur MCP), dans .env.
+      MAZE_PUBLIC_URL: ${MAZE_PUBLIC_URL:-}
+      # Archives de sauvegarde conservées par nature (vide : valeurs par défaut), dans .env.
+      MAZE_BACKUP_KEEP: ${MAZE_BACKUP_KEEP:-}
+    secrets:
+      - maze_password
+    volumes:
+      - maze-data:/data
+      - ./control:/control
+      - ./status:/status:ro
+
+secrets:
+  maze_password:
+    file: ./secrets/maze_password.txt
+
+volumes:
+  maze-data:

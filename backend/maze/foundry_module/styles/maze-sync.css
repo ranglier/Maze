@@ -1,0 +1,65 @@
+/* Maze - import des fiches */
+
+/* Encadré « Accroche » de Maze (texte à lire aux joueurs) dans les journaux. */
+blockquote.maze-read {
+  margin: 0.5em 0 1em;
+  padding: 0.4em 0.9em;
+  border-left: 3px solid #c9a45c;
+  background: rgba(201, 164, 92, 0.1);
+  font-style: italic;
+}
+
+.maze-sync .maze-sync__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.maze-sync fieldset {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.maze-sync .hint {
+  margin: 0;
+  font-size: var(--font-size-12, 12px);
+  opacity: 0.75;
+}
+
+.maze-sync__checks {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.maze-sync__checks label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.maze-sync__error {
+  color: var(--color-level-error, #c0392b);
+  font-weight: bold;
+}
+
+.maze-sync__log {
+  max-height: 12rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  font-size: var(--font-size-12, 12px);
+}
+
+.maze-sync__report details {
+  margin-top: 0.3rem;
+}
+
+.maze-sync-open {
+  flex: 0 0 auto;
+}
+
+/* Fiches voisines : sans objet tant qu'aucun scénario n'est choisi. */
+.maze-sync__checks label.disabled {
+  opacity: 0.5;
+}

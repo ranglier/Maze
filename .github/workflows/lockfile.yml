@@ -1,0 +1,62 @@
+# Verrou des dépendances de l'interface et empreintes des images de base (audit M21 = OPS-5 = FRONT-9).
+# Produit, sans rien écrire dans le dépôt, un artefact « verrou-et-images » :
+#   package-lock.json   npm install --package-lock-only, lancé dans l'image node du Dockerfile (même npm que la
+#                       construction de l'image Docker)
+#   images.txt          pour chaque image de base du Dockerfile : « tag@sha256:… » (empreinte de l'index
+#                       multi-architecture, à recopier dans les lignes FROM)
+#   versions.txt        versions de node et npm utilisées
+# À relancer à la main (Actions > Verrou npm et images > Run workflow) pour une mise à jour des dépendances ou des
+# images ; puis recopier les fichiers dans frontend/package-lock.json et le Dockerfile.
+name: Verrou npm et images
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["audit-lot4-*"]
+
+permissions:
+  contents: read
+
+jobs:
+  verrou:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - name: Images de base du Dockerfile (tag sans empreinte)
+        id: images
+        run: |
+          images=$(awk 'toupper($1) == "FROM" {print $2}' Dockerfile | sed 's/@sha256:.*//' | sort -u | tr '\n' ' ')
+          node_image=$(printf '%s\n' $images | grep '^node:' | head -n1)
+          echo "Images : $images ; node : $node_image"
+          echo "list=$images" >> "$GITHUB_OUTPUT"
+          echo "node=$node_image" >> "$GITHUB_OUTPUT"
+      - name: Empreintes des images
+        env:
+          IMAGES: ${{ steps.images.outputs.list }}
+        run: |
+          mkdir -p out
+          for image in $IMAGES; do
+            digest=$(docker buildx imagetools inspect "$image" | awk '$1 == "Digest:" {print $2; exit}')
+            case "$digest" in sha256:*) ;; *) echo "Empreinte introuvable pour $image" >&2; exit 1 ;; esac
+            echo "$image@$digest" | tee -a out/images.txt
+          done
+      - name: package-lock.json avec le npm de l'image node
+        env:
+          NODE_IMAGE: ${{ steps.images.outputs.node }}
+        run: |
+          ref=$(grep "^$NODE_IMAGE@" out/images.txt | head -n1)
+          docker run --rm -v "$PWD/frontend:/w" -w /w "$ref" sh -c \
+            'npm install --package-lock-only --no-audit --no-fund --loglevel=error && echo "node $(node --version), npm $(npm --version)" > versions.txt'
+          sudo chown "$(id -u):$(id -g)" frontend/package-lock.json frontend/versions.txt
+          echo "image $ref" >> frontend/versions.txt
+          cat frontend/versions.txt
+          mv frontend/package-lock.json frontend/versions.txt out/
+      - name: Le verrou reprend exactement les versions de package.json
+        run: python3 .github/scripts/check_lockfile.py frontend/package.json out/package-lock.json
+      - uses: actions/upload-artifact@v5
+        with:
+          name: verrou-et-images
+          path: out/
+          if-no-files-found: error
+          retention-days: 30

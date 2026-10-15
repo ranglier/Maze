@@ -1,0 +1,164 @@
+# Intégration continue (audit QUAL-5, QUAL-8, QUAL-2, QUAL-4) : tests du serveur, lint, tests et construction de
+# l'interface, parcours navigateur, version du module Foundry et numérotation des migrations.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.13"
+  NODE_VERSION: "22"
+  RUFF_VERSION: "0.16.8"
+  # Playwright n'est pas une dépendance de l'application : installé dans le job seulement.
+  PLAYWRIGHT_VERSION: "1.56.0"
+  PYTHONDONTWRITEBYTECODE: "1"
+
+jobs:
+  serveur:
+    name: Serveur (tests, ruff, migrations)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Dépendances
+        run: pip install -r backend/requirements.txt "ruff==${RUFF_VERSION}"
+      - name: anyio épinglé (version installée par starlette seul)
+        run: |
+          python -m venv "$RUNNER_TEMP/starlette-seul"
+          "$RUNNER_TEMP/starlette-seul/bin/pip" install -q "$(grep '^starlette==' backend/requirements.txt)"
+          alone=$("$RUNNER_TEMP/starlette-seul/bin/python" -c "import importlib.metadata as m; print(m.version('anyio'))")
+          pinned=$(sed -n 's/^anyio==//p' backend/requirements.txt)
+          installed=$(python -c "import importlib.metadata as m; print(m.version('anyio'))")
+          echo "::notice title=anyio::starlette seul installe anyio $alone ; requirements.txt : $pinned ; installé : $installed"
+          [ "$installed" = "$pinned" ] || { echo "::error title=anyio::installé $installed au lieu de $pinned"; exit 1; }
+          [ "$alone" = "$pinned" ] || echo "::warning title=anyio::starlette installerait aujourd'hui anyio $alone (épinglé : $pinned)"
+          python -c "import anyio; assert issubclass(anyio.NoEventLoopError, RuntimeError)"
+      - name: Migrations (numéros uniques et contigus)
+        working-directory: backend
+        run: python -m unittest -v tests.test_migrations
+      - name: Tests du serveur (unittest discover, websockets compris)
+        working-directory: backend
+        run: |
+          set +e
+          python -m unittest discover -s tests 2>&1 | tee "$RUNNER_TEMP/unittest.log"
+          code=${PIPESTATUS[0]}
+          [ "$code" = 0 ] || python ../.github/scripts/annotate_unittest.py "$RUNNER_TEMP/unittest.log"
+          exit "$code"
+      - name: Ruff
+        working-directory: backend
+        run: ruff check --isolated --select F,E9,B --line-length 120 maze tests
+      - name: Sortie des tests en échec
+        if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: unittest
+          path: ${{ runner.temp }}/unittest.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+  interface:
+    name: Interface (construction, parcours navigateur)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Cache npm
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: npm-${{ runner.os }}-${{ hashFiles('frontend/package.json', 'frontend/package-lock.json') }}
+          restore-keys: npm-${{ runner.os }}-
+      - name: Dépendances du serveur
+        run: pip install -r backend/requirements.txt
+      - name: Dépendances de l'interface
+        working-directory: frontend
+        run: |
+          if [ -f package-lock.json ]; then
+            python3 ../.github/scripts/check_lockfile.py package.json package-lock.json
+            npm ci --no-audit --no-fund
+          else
+            echo "::warning::frontend/package-lock.json absent : npm install (versions transitives non figées, audit M21)"
+            npm install --no-audit --no-fund
+          fi
+      - name: Construction de l'interface
+        working-directory: frontend
+        run: npm run build
+      - name: Cache des navigateurs Playwright
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ env.PLAYWRIGHT_VERSION }}
+      - name: Playwright (hors dépendances de l'application)
+        run: |
+          npm install -g --no-audit --no-fund "playwright@${PLAYWRIGHT_VERSION}"
+          playwright install --with-deps chromium
+      - name: Tests de l'interface (node --test, logique pure et conversions dans Chromium, audit QUAL-4)
+        working-directory: frontend
+        env:
+          MAZE_TEST_BROWSER: "1"   # Playwright absent : erreur, pas tests sautés
+        run: NODE_PATH="$(npm root -g)" npm test
+      - name: Parcours navigateur (frontend/e2e/run-all.sh)
+        env:
+          TMPDIR: ${{ runner.temp }}/e2e
+        run: |
+          mkdir -p "$TMPDIR"
+          NODE_PATH="$(npm root -g)" frontend/e2e/run-all.sh
+      - name: Captures et journaux des parcours en échec
+        if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: e2e-echecs
+          path: ${{ runner.temp }}/e2e
+          if-no-files-found: ignore
+          retention-days: 7
+
+  foundry:
+    name: Version du module Foundry
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      # Base de comparaison : la branche visée par la demande de fusion ; pour un envoi sur une autre branche que
+      # la branche par défaut, cette dernière ; pour un envoi sur la branche par défaut, le commit d'avant l'envoi.
+      - name: Module modifié = version augmentée (QUAL-8)
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          DEFAULT: ${{ github.event.repository.default_branch }}
+          REF_NAME: ${{ github.ref_name }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          if [ "$EVENT" = pull_request ]; then
+            base="origin/$BASE_REF"
+          elif [ "$REF_NAME" != "$DEFAULT" ]; then
+            base="origin/$DEFAULT"
+          elif [ -n "$BEFORE" ] && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            base="$BEFORE"
+          else
+            base="HEAD^"
+          fi
+          echo "Base de comparaison : $base"
+          python3 .github/scripts/foundry_version.py "$base"

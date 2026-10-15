@@ -1,0 +1,40 @@
+# Bloc à ajouter au Caddyfile du reverse proxy.
+# Prérequis : enregistrement DNS A maze.example.org -> IP publique du reverse proxy.
+# Remplacer maze.example.org par le nom réel, et 10.0.0.10 par l'adresse de la machine Maze (MAZE_BIND).
+# Caddy obtient et renouvelle le certificat Let's Encrypt automatiquement.
+
+# Le Caddyfile existant désactive les redirections automatiques (auto_https disable_redirects) :
+# la redirection HTTP vers HTTPS est donc déclarée explicitement, comme pour les autres sites.
+http://maze.example.org {
+	redir https://maze.example.org{uri} permanent
+}
+
+maze.example.org {
+	encode zstd gzip
+
+	# Taille des corps de requête. Maze applique ses propres limites, plus fines (docs/fr/guide.md, « Limites des
+	# requêtes ») ; Caddy ne doit pas refuser avant lui :
+	# - imports d'archives (sauvegarde, campagne) : MAZE_MAX_IMPORT_MB, 4096 Mo par défaut ;
+	# - ailleurs : le plus gros envoi admis par Maze, 20 images de MAZE_MAX_UPLOAD_MB (20 Mo) vers la
+	#   bibliothèque, soit 401 Mo. Augmenter ces valeurs avec MAZE_MAX_IMPORT_MB ou MAZE_MAX_UPLOAD_MB.
+	@import path /api/admin/backups/import /api/campaigns/import
+	request_body @import {
+		max_size 4GiB
+	}
+	@other not path /api/admin/backups/import /api/campaigns/import
+	request_body @other {
+		max_size 410MiB
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		-Server
+	}
+
+	# Maze sur une autre machine : IP privée = MAZE_BIND du .env (127.0.0.1 si même hôte).
+	reverse_proxy 10.0.0.10:8000
+
+	# Caddy dans un conteneur : remplacer la ligne précédente par
+	#   reverse_proxy maze:8000
+	# et brancher Maze sur le réseau Docker de Caddy (voir docs/fr/guide.md, section 5. Caddy).
+}

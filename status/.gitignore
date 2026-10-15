@@ -1,0 +1,4 @@
+# État du service maze-updater (deploy/maze-updater.sh) : écrit par ops seul, monté en lecture seule
+# dans le conteneur (docker-compose.yml). Dossier suivi par git pour être créé par ops, et non par Docker.
+*
+!.gitignore

@@ -1,0 +1,14 @@
+[Unit]
+Description=Maze - traitement des demandes de mise à jour
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ops
+Group=ops
+WorkingDirectory=/opt/maze
+ExecStart=/opt/maze/deploy/maze-updater.sh
+# Une reconstruction complète de l'image peut prendre plusieurs minutes.
+TimeoutStartSec=30min
+Nice=10

@@ -1,0 +1,10 @@
+starlette==1.6.0
+# Dépendance de starlette, épinglée : collab.in_loop attrape anyio.NoEventLoopError (version installée avec
+# starlette 1.6.0, vérifiée par la CI).
+anyio==4.15.1
+pydantic==2.13.5
+uvicorn==0.53.0
+python-multipart==0.0.32
+itsdangerous==2.2.0
+pillow==12.3.0
+websockets==16.1.1

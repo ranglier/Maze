@@ -1,0 +1,12 @@
+[Unit]
+Description=Maze - sauvegarde quotidienne à 3 h 15
+
+[Timer]
+OnCalendar=*-*-* 03:15
+RandomizedDelaySec=5min
+# Rattrape une sauvegarde manquée (machine éteinte à l'heure prévue).
+Persistent=true
+Unit=maze-backup.service
+
+[Install]
+WantedBy=timers.target

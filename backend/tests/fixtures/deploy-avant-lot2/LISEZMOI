@@ -1,0 +1,5 @@
+deploy/maze-updater.sh et deploy/update.sh tels qu'en production avant le lot 2 de l'audit (branche main,
+commit 9aa4c4e et suivants jusqu'au lot 1 exclu ; le lot 1 ne change rien d'utile ici : groupe de control/ et
+suffixe de la sauvegarde). Utilisés par tests/test_deploy.py pour rejouer la transition vers le nouveau
+dossier status/ (audit H2) : ancien service et ancien update.sh en cours d'exécution pendant le git merge.
+Ne pas modifier.

@@ -1,0 +1,202 @@
+[
+  {
+    "name": "paragraphes et retours à la ligne",
+    "text": "Première ligne\nseconde ligne\n\nNouveau paragraphe.",
+    "html": "<p>Première ligne<br>seconde ligne</p>\n<p>Nouveau paragraphe.</p>\n"
+  },
+  {
+    "name": "emphases",
+    "text": "**gras**, *italique*, _souligné en italique_, ***les deux***, ~~barré~~ et `code`.",
+    "html": "<p><strong>gras</strong>, <em>italique</em>, <em>souligné en italique</em>, <em><strong>les deux</strong></em>, <del>barré</del> et <code>code</code>.</p>\n"
+  },
+  {
+    "name": "titres 1 à 6",
+    "text": "# Titre 1\n## Titre 2\n### Titre 3\n#### Titre 4\n##### Titre 5\n###### Titre 6",
+    "html": "<h1>Titre 1</h1>\n<h2>Titre 2</h2>\n<h3>Titre 3</h3>\n<h4>Titre 4</h4>\n<h5>Titre 5</h5>\n<h6>Titre 6</h6>\n"
+  },
+  {
+    "name": "titres soulignés",
+    "text": "Grand titre\n===========\n\nPetit titre\n-----------",
+    "html": "<h1>Grand titre</h1>\n<h2>Petit titre</h2>\n"
+  },
+  {
+    "name": "listes imbriquées",
+    "text": "- Acte I\n  - Scène 1\n  - Scène 2\n- Acte II\n\n1. un\n2. deux\n   1. deux et demi",
+    "html": "<ul>\n<li>Acte I<ul>\n<li>Scène 1</li>\n<li>Scène 2</li>\n</ul>\n</li>\n<li>Acte II</li>\n</ul>\n<ol>\n<li>un</li>\n<li>deux<ol>\n<li>deux et demi</li>\n</ol>\n</li>\n</ol>\n"
+  },
+  {
+    "name": "liste numérotée qui commence à 3",
+    "text": "3. troisième\n4. quatrième",
+    "html": "<ol start=\"3\">\n<li>troisième</li>\n<li>quatrième</li>\n</ol>\n"
+  },
+  {
+    "name": "liste de tâches GFM",
+    "text": "- [ ] à faire\n- [x] fait",
+    "html": "<ul>\n<li> à faire</li>\n<li> fait</li>\n</ul>\n"
+  },
+  {
+    "name": "citation",
+    "text": "> Le vent se lève.\n> Il faut tenter de vivre.\n>\n> > imbriquée",
+    "html": "<blockquote>\n<p>Le vent se lève.<br>Il faut tenter de vivre.</p>\n<blockquote>\n<p>imbriquée</p>\n</blockquote>\n</blockquote>\n"
+  },
+  {
+    "name": "bloc de code avec langage",
+    "text": "```js\nconst x = 1 < 2 && \"a\";\n```\n\n    code indenté",
+    "html": "<pre><code class=\"language-js\">const x = 1 &lt; 2 &amp;&amp; \"a\";\n</code></pre>\n<pre><code>code indenté\n</code></pre>\n"
+  },
+  {
+    "name": "ligne horizontale",
+    "text": "avant\n\n---\n\naprès\n\n***",
+    "html": "<p>avant</p>\n<hr>\n<p>après</p>\n<hr>\n"
+  },
+  {
+    "name": "tableau aligné",
+    "text": "| Arme | Dégâts | Portée |\n|:---|:---:|---:|\n| Arbalète | 1d10+5 | 90 m |\n| Épée | 1d10 | — |",
+    "html": "<table>\n<thead>\n<tr>\n<th align=\"left\">Arme</th>\n<th align=\"center\">Dégâts</th>\n<th align=\"right\">Portée</th>\n</tr>\n</thead>\n<tbody><tr>\n<td align=\"left\">Arbalète</td>\n<td align=\"center\">1d10+5</td>\n<td align=\"right\">90 m</td>\n</tr>\n<tr>\n<td align=\"left\">Épée</td>\n<td align=\"center\">1d10</td>\n<td align=\"right\">—</td>\n</tr>\n</tbody></table>\n"
+  },
+  {
+    "name": "liens",
+    "text": "[site](https://exemple.org) [titre](https://exemple.org/a \"Info\") [courriel](mailto:mj@exemple.org) [ancre](#scene-2) [relatif](/c/1/lieux) <https://auto.exemple.org> www.exemple.org mj@exemple.org",
+    "html": "<p><a href=\"https://exemple.org\" target=\"_blank\" rel=\"noopener noreferrer\">site</a> <a href=\"https://exemple.org/a\" title=\"Info\" target=\"_blank\" rel=\"noopener noreferrer\">titre</a> <a href=\"mailto:mj@exemple.org\">courriel</a> <a href=\"#scene-2\">ancre</a> <a href=\"/c/1/lieux\">relatif</a> <a href=\"https://auto.exemple.org\" target=\"_blank\" rel=\"noopener noreferrer\">https://auto.exemple.org</a> <a href=\"http://www.exemple.org\" target=\"_blank\" rel=\"noopener noreferrer\">www.exemple.org</a> <a href=\"mailto:mj@exemple.org\">mj@exemple.org</a></p>\n"
+  },
+  {
+    "name": "lien http",
+    "text": "[ancien](http://exemple.org/page?x=1&y=2)",
+    "html": "<p><a href=\"http://exemple.org/page?x=1&amp;y=2\" target=\"_blank\" rel=\"noopener noreferrer\">ancien</a></p>\n"
+  },
+  {
+    "name": "image de fiche",
+    "text": "![carte du port](/media/12/abc-def_1.webp \"Le port\")\n\n![sans titre](/media/3/x.webp)",
+    "html": "<p><img src=\"/media/12/abc-def_1.webp\" alt=\"carte du port\" title=\"Le port\"></p>\n<p><img src=\"/media/3/x.webp\" alt=\"sans titre\"></p>\n"
+  },
+  {
+    "name": "image externe retirée",
+    "text": "![pixel](https://exemple.org/a.webp) ![png](/media/1/a.png)",
+    "html": "<p> </p>\n"
+  },
+  {
+    "name": "références trouvées et introuvables",
+    "text": "Vex sert [[La Main Grise]] au [[Port]], pas [[Personne]] ni [[ vex ]].",
+    "html": "<p>Vex sert <a href=\"#\" class=\"wikilink\" data-node=\"faction-7\">La Main Grise</a> au <a href=\"#\" class=\"wikilink\" data-node=\"place-2\">Port</a>, pas <span class=\"wikilink missing\" title=\"Aucune fiche à ce nom\">Personne</span> ni <a href=\"#\" class=\"wikilink\" data-node=\"npc-3\">vex</a>.</p>\n"
+  },
+  {
+    "name": "caractères spéciaux",
+    "text": "Prix : 5 < 6 & 7 > 3 ; \"guillemets\" 'apostrophes' « français » — tiret, ½, émoji 🐉.",
+    "html": "<p>Prix : 5 &lt; 6 &amp; 7 &gt; 3 ; \"guillemets\" 'apostrophes' « français » — tiret, ½, émoji 🐉.</p>\n"
+  },
+  {
+    "name": "échappements Markdown",
+    "text": "\\*pas en italique\\* et \\[\\[pas un lien\\]\\] 2 \\* 3",
+    "html": "<p>*pas en italique* et [[pas un lien]] 2 * 3</p>\n"
+  },
+  {
+    "name": "HTML de l'éditeur après du texte",
+    "text": "Notes : <strong>gras</strong> <em>it</em> <u>souligné</u> <s>barré</s> <sub>2</sub> <sup>e</sup>",
+    "html": "<p>Notes : <strong>gras</strong> <em>it</em> <u>souligné</u> <s>barré</s> <sub>2</sub> <sup>e</sup></p>\n"
+  },
+  {
+    "name": "mention de l'éditeur",
+    "text": "Allié : <a class=\"mention\" href=\"#mention\" data-mention=\"npc:3\">Vex</a> et <a class=\"mention\" data-mention=\"doc:12\">Acte I</a>",
+    "html": "<p>Allié : <a class=\"mention\" href=\"#mention\" data-mention=\"npc:3\">Vex</a> et <a class=\"mention\" data-mention=\"doc:12\">Acte I</a></p>\n"
+  },
+  {
+    "name": "commentaire de l'éditeur",
+    "text": "Texte <span class=\"comment-anchor\" data-comment=\"4\">commenté</span> ici.",
+    "html": "<p>Texte <span class=\"comment-anchor\" data-comment=\"4\">commenté</span> ici.</p>\n"
+  },
+  {
+    "name": "encadrés de l'éditeur",
+    "text": "Intro\n\n<div class=\"callout\" data-callout=\"read\"><p>À lire aux joueurs.</p></div>\n\n<div class=\"callout\" data-callout=\"secret\"><p>Le coupable est <strong>Vex</strong>.</p></div>",
+    "html": "<p>Intro</p>\n<div class=\"callout\" data-callout=\"read\"><p>À lire aux joueurs.</p></div><div class=\"callout\" data-callout=\"secret\"><p>Le coupable est <strong>Vex</strong>.</p></div>"
+  },
+  {
+    "name": "alignements de l'éditeur",
+    "text": "Intro\n\n<p data-align=\"center\">Centré</p><h2 data-align=\"right\">À droite</h2><p data-align=\"justify\">Justifié</p>",
+    "html": "<p>Intro</p>\n<p data-align=\"center\">Centré</p><h2 data-align=\"right\">À droite</h2><p data-align=\"justify\">Justifié</p>"
+  },
+  {
+    "name": "image de l'éditeur",
+    "text": "Plan :\n\n<p><img src=\"/media/4/abc-1.webp\" alt=\"plan\" data-doc-image=\"9\"></p>",
+    "html": "<p>Plan :</p>\n<p><img src=\"/media/4/abc-1.webp\" alt=\"plan\" data-doc-image=\"9\"></p>"
+  },
+  {
+    "name": "tableau de l'éditeur",
+    "text": "Butin\n\n<table><tbody><tr><th colspan=\"2\" data-colwidth=\"120,80\"><p>Objet</p></th></tr><tr><td><p>Épée</p></td><td rowspan=\"1\"><p>3 po</p></td></tr></tbody></table>",
+    "html": "<p>Butin</p>\n<table><tbody><tr><th colspan=\"2\" data-colwidth=\"120,80\"><p>Objet</p></th></tr><tr><td><p>Épée</p></td><td rowspan=\"1\"><p>3 po</p></td></tr></tbody></table>"
+  },
+  {
+    "name": "lien de l'éditeur",
+    "text": "Voir <a href=\"https://exemple.org\" target=\"_blank\" rel=\"noopener noreferrer\">le site</a> et <a href=\"#ancre\">l'ancre</a>.",
+    "html": "<p>Voir <a href=\"https://exemple.org\" rel=\"noopener noreferrer\" target=\"_blank\">le site</a> et <a href=\"#ancre\">l'ancre</a>.</p>\n"
+  },
+  {
+    "name": "retour à la ligne HTML",
+    "text": "Ligne<br>suivante<br/>fin",
+    "html": "<p>Ligne<br>suivante<br>fin</p>\n"
+  },
+  {
+    "name": "balises b et i",
+    "text": "Du <b>gras</b> et de l'<i>italique</i>",
+    "html": "<p>Du <b>gras</b> et de l'<i>italique</i></p>\n"
+  },
+  {
+    "name": "liste HTML",
+    "text": "Liste\n\n<ul><li><p>un</p></li><li><p>deux</p></li></ul><ol start=\"2\"><li><p>b</p></li></ol>",
+    "html": "<p>Liste</p>\n<ul><li><p>un</p></li><li><p>deux</p></li></ul><ol start=\"2\"><li><p>b</p></li></ol>"
+  },
+  {
+    "name": "citation HTML",
+    "text": "Texte\n\n<blockquote><p>cité</p></blockquote><hr>",
+    "html": "<p>Texte</p>\n<blockquote><p>cité</p></blockquote><hr>"
+  },
+  {
+    "name": "texte long sur plusieurs lignes",
+    "text": "Grand, maigre, une cicatrice sur la joue gauche.\nParle peu.\n\n**Motivation** : venger sa sœur.\n\n- aime le thé\n- déteste les nobles",
+    "html": "<p>Grand, maigre, une cicatrice sur la joue gauche.<br>Parle peu.</p>\n<p><strong>Motivation</strong> : venger sa sœur.</p>\n<ul>\n<li>aime le thé</li>\n<li>déteste les nobles</li>\n</ul>\n"
+  },
+  {
+    "name": "code en ligne avec HTML",
+    "text": "Commande `<script>alert(1)</script>` en texte.",
+    "html": "<p>Commande <code>&lt;script&gt;alert(1)&lt;/script&gt;</code> en texte.</p>\n"
+  },
+  {
+    "name": "entités HTML",
+    "text": "A&amp;B &lt;balise&gt; &eacute; &#233; &nbsp;fin",
+    "html": "<p>A&amp;B &lt;balise&gt; é é &nbsp;fin</p>\n"
+  },
+  {
+    "name": "vide après espaces",
+    "text": "   ",
+    "html": ""
+  },
+  {
+    "name": "seulement une référence",
+    "text": "[[Vex]]",
+    "html": "<p><a href=\"#\" class=\"wikilink\" data-node=\"npc-3\">Vex</a></p>\n"
+  },
+  {
+    "name": "balises sémantiques en ligne (mark, kbd, small, abbr, ins, q, cite)",
+    "text": "Appuyer sur <kbd>Ctrl</kbd>+<kbd>K</kbd> : <mark>important</mark>, <small>note</small>, <abbr title=\"Points de vie\">PV</abbr>, <ins>ajout</ins>, <q>citation</q> de <cite>l’Archiviste</cite>.",
+    "html": "<p>Appuyer sur <kbd>Ctrl</kbd>+<kbd>K</kbd> : <mark>important</mark>, <small>note</small>, <abbr title=\"Points de vie\">PV</abbr>, <ins>ajout</ins>, <q>citation</q> de <cite>l’Archiviste</cite>.</p>\n"
+  },
+  {
+    "name": "liste de définitions (dl, dt, dd)",
+    "text": "Armes :\n\n<dl><dt>Arbalète</dt><dd>Arme standard</dd><dt>Lance-flammes</dt><dd>Courte <em>portée</em></dd></dl>",
+    "html": "<p>Armes :</p>\n<dl><dt>Arbalète</dt><dd>Arme standard</dd><dt>Lance-flammes</dt><dd>Courte <em>portée</em></dd></dl>"
+  },
+  {
+    "name": "tableau HTML avec légende et pied (caption, tfoot)",
+    "text": "<table><caption>Butin</caption><thead><tr><th>Objet</th><th>Prix</th></tr></thead><tbody><tr><td>Épée</td><td>10</td></tr></tbody><tfoot><tr><td>Total</td><td>10</td></tr></tfoot></table>",
+    "html": "<table><caption>Butin</caption><thead><tr><th>Objet</th><th>Prix</th></tr></thead><tbody><tr><td>Épée</td><td>10</td></tr></tbody><tfoot><tr><td>Total</td><td>10</td></tr></tfoot></table>"
+  },
+  {
+    "name": "figure avec légende et image dimensionnée",
+    "text": "<figure><img src=\"/media/1/abc.webp\" alt=\"Carte\" width=\"320\" height=\"200\"><figcaption>La cité</figcaption></figure>",
+    "html": "<figure><img src=\"/media/1/abc.webp\" alt=\"Carte\" width=\"320\" height=\"200\"><figcaption>La cité</figcaption></figure>"
+  },
+  {
+    "name": "image de Maze en HTML avec largeur",
+    "text": "Plan :\n\n<img src=\"/media/2/plan.webp\" alt=\"Plan\" width=\"640\">\n\n![Plan réduit](/media/2/plan_p.webp)",
+    "html": "<p>Plan :</p>\n<img src=\"/media/2/plan.webp\" alt=\"Plan\" width=\"640\"><p><img src=\"/media/2/plan_p.webp\" alt=\"Plan réduit\"></p>\n"
+  }
+]
