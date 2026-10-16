@@ -23,7 +23,8 @@ A key missing from a catalog falls back to the French text, so the interface nev
 | `frontend/test/i18n.test.mjs`, `i18n-pending.test.mjs`, `i18n-core.test.mjs` | Checks run in CI (see [Checking](#checking)) |
 | `frontend/test/i18n-scan.mjs` | Static analysis shared by the tests, and a command line tool |
 | `frontend/test/i18n-pending.json` | Files not translated yet (the ratchet list) |
-| `frontend/e2e/langue.mjs` | Browser journey: language choice, English screens, server messages |
+| `frontend/e2e/langue.mjs` | Browser journey: language choice (account, login screen, browser), server messages |
+| `frontend/e2e/interface-anglaise.mjs` | Browser journey in English: every tab, the editor's read-aloud box, account language back and forth; fails if known French text shows up |
 | `backend/maze/i18n/` | Server side: same principle, see [Server messages](#server-messages) |
 
 ## API
@@ -86,26 +87,31 @@ The same applies to `useMemo`, `useState` initialisers and non-React objects (Cy
 
 ### Glossary
 
-Keep the terms consistent (British spelling, as in the README):
+Keep the terms consistent (British spelling, as in the README; sentence case: capital letter at the start of a label only):
 
 | French | English |
 |---|---|
-| PNJ | NPC |
 | MJ | GM |
-| fiche (PNJ, faction, lieu) | sheet |
-| fiche rédigée, page, scénario | page, scenario |
+| PNJ | NPC (plural: NPCs) |
+| fiche (PNJ, faction, lieu) | sheet (entry when "sheet" does not fit) |
+| fiche rédigée | page |
+| scénario, sous-page | scenario, sub-page |
 | fiche de campagne | campaign page |
 | lieu, sous-lieu | place, sub-place |
 | type de lieu | place type |
-| carte (onglet des relations) | graph (`pt('nav', 'Carte')`) |
+| faction, appartenance | faction, membership |
+| relation | relationship |
+| nature de lien | relation type |
+| carte des relations (onglet) | relationship graph, tab "Graph" (`pt('nav', 'Carte')`) |
 | carte interactive | interactive map |
 | épingle | pin |
-| nature de lien | relation type |
-| appartenance | membership |
-| encadré « À lire » / « Secret » | "Read aloud" box / "Secret" box |
+| encadré « Accroche » | "Read-aloud" box (toolbar label: "Aloud", to keep the toolbar on one line) |
+| encadré « Secret », champ secret | "GM secret" box / field |
 | version, historique | version, history |
 | sauvegarde | backup |
 | connecteur Claude | Claude connector |
+
+Same French text, different meanings: use `pt()` rather than a compromise. Contexts in use: `nav` and `graph` (relationship graph), `maps` (interactive map), `toast` (confirmation message: "Version saved" vs the label "Saved version"), `page` (a page opened from a notice or the scenario banner: "Open page" vs "Open sheet"), `sheet` (history and comments of NPC, faction and place sheets, which share their confirmation texts with pages), `doc` and `entry`, `filtre` ("NPCs" in filters and search groups vs "NPC" on buttons), `outil`, `modele`, `access`, `direction`, `leader`, `image`, `mention`, `initiale`.
 
 ## Zones
 
@@ -133,14 +139,30 @@ Order: account setting (account menu > Language: Automatic / Français / English
 
 ## Server messages
 
-`backend/maze/i18n/` (Python): catalogs `backend/maze/i18n/<lang>/<zone>.json` (zones `server`: API error messages; `seeds`: data created with each campaign; any other `.json` file in the folder is read too), same format. Messages are translated **when the response is sent**, in the language of the signed-in account, else the `Accept-Language` header, else `MAZE_DEFAULT_LOCALE`:
+`backend/maze/i18n/` (Python): catalogs `backend/maze/i18n/<lang>/<domain>.json`, same format as the interface, merged when read (a key found in two files must have the same translation):
+
+| Catalog | Content |
+|---|---|
+| `server.json` | API error messages and responses, real-time refusals, names of automatic versions, messages of the host update service |
+| `seeds.json` | Data created with each campaign: relation types, place types, default titles, "(copy)" suffix… |
+| `foundry.json` | Pages composed by Maze for the Foundry VTT module (headings, facts, statuses) |
+| `oauth.json` | Authorisation page of the Claude connector |
+| `demo.json` | Demo campaign (`python -m maze.demo --lang en`) |
+
+Language of a request (`i18n.request_locale`): the signed-in account, else the `Accept-Language` header (the interface always sends its own language, `api.js`), else `MAZE_DEFAULT_LOCALE`. Real-time connections cannot send that header: `editor/live.js` passes the interface language as the `lang` query parameter, read after the account and before `Accept-Language`. The Foundry export uses the language of the Foundry world (`?lang=`, `i18n.chosen_locale`), never `Accept-Language`. Messages are translated **when the response is sent**:
 
 - the error handlers of `app.py` translate `detail` of every `HTTPException` and the heading of 422 errors (`Données invalides`); field details of 422 errors are composed by `api.js`;
 - `I18nMiddleware` translates `detail` of JSON error responses written directly (middlewares, `JSONResponse({"detail": ...})`), by exact key or by recognising a template of the catalog;
 - plain messages need nothing: `raise HTTPException(404, "Fichier introuvable")` is translated by exact key;
-- messages built with values use `msg()` instead of an f-string: `raise HTTPException(404, msg("{what} introuvable", what=msg("Campagne")))`. A `msg` is a `str` (the French text, for logs, tests and the Claude connector) that keeps its template and parameters; a parameter that is itself a `msg` is translated too, a plain string (user data) never. `msgn(singular, plural, n, **params)` for plurals. `i18n.translate(text, locale)` and `i18n.request_locale(scope)` for anything else (a JSON field other than `detail`).
+- messages built with values use `msg()` instead of an f-string: `raise HTTPException(404, msg("{what} introuvable", what=msg("Campagne")))`. A `msg` is a `str` (the French text, for logs, tests and the Claude connector) that keeps its template and parameters; a parameter that is itself a `msg` is translated too, a plain string (user data) never. `msgn(singular, plural, n, **params)` for plurals;
+- exceptions that carry a message (`ImageError`, `ArchiveError`, `TransferError`…) are given a `msg`; read it back with `i18n.message(exc)`, never `str(exc)`, which loses the template;
+- text composed directly in a given language (created data, Foundry pages, the OAuth page): `i18n.tr(template, locale, **params)`; anything else (a JSON field other than `detail`): `i18n.translate(text, locale)` with `i18n.request_locale(scope)`.
 
-`backend/tests/test_i18n.py` checks the server catalogs (valid JSON, same placeholders, plural forms, every key present in the server code) and the mechanism.
+Data created by Maze (relation types, place types, default titles) is created in the language of the person who creates it and never translated afterwards; the keys (`allie`, `batiment`, `lieu`…) are the same in every language.
+
+Stay in French on purpose: server logs, the tools of the Claude connector (`mcp*.py`: names, descriptions and messages read by Claude) and its log, the detailed guide `docs/fr/guide.md`, internal values (keys, `status` values such as `vivant`, archive origins such as `quotidienne`).
+
+`backend/tests/test_i18n.py` checks the server catalogs (valid JSON, same placeholders, plural forms, every key present in the server code, every message of the code translated into English) and the mechanism.
 
 ## Checking
 
@@ -152,16 +174,21 @@ node test/i18n-scan.mjs --missing scenarios    # entries to add to en/scenarios.
 node test/i18n-scan.mjs --report components/PlacesView.jsx   # hard-coded French left in a file
 node test/i18n-scan.mjs --format               # sort catalogs and the pending list
 cd backend && python -m unittest tests.test_i18n
-NODE_PATH="$(npm root -g)" frontend/e2e/run-all.sh langue   # browser journey (after npm run build)
+NODE_PATH="$(npm root -g)" frontend/e2e/run-all.sh langue interface-anglaise   # browser journeys (after npm run build)
 ```
 
 The tests check that every literal `t('...')`, `tn(...)`, `pt(...)` and `N_('...')` of `frontend/src` has an English translation (files still listed in `i18n-pending.json` excepted), that no catalog entry is unused, that placeholders are identical on both sides, that plural entries have every form of the language, that calls are well formed (no concatenation or template literal as the key, parameters given), and, for every file not in the pending list, that no French text is left hard-coded (heuristic: accented letters or common French words in JSX text, in `title`, `placeholder`, `aria-label`, `label`… and in arguments of `toast` or `confirm`).
 
-To see the interface in English: set the browser language to English, or choose English in the account menu or on the login screen. Browser journeys (`frontend/e2e/`) open `fr-FR` browsers and expect French; `run-all.sh` starts each instance with `MAZE_DEFAULT_LOCALE=fr`.
+To see the interface in English: set the browser language to English, or choose English in the account menu or on the login screen. Browser journeys (`frontend/e2e/`) open `fr-FR` browsers and expect French, except `langue.mjs` and `interface-anglaise.mjs`, which also open an `en-US` browser; `run-all.sh` starts each instance with `MAZE_DEFAULT_LOCALE=fr`.
 
 ## Adding a language
 
-1. Copy `frontend/src/i18n/en/` to `frontend/src/i18n/<code>/` (two or three lowercase letters, e.g. `de`) and translate the values; plural entries need the categories of that language (`new Intl.PluralRules('<code>').resolvedOptions().pluralCategories`).
-2. Optionally, the same for the server: `backend/maze/i18n/<code>/`.
+Example for German (`de`; a code is two or three lowercase letters). Only English has to be complete: another language may be partial, missing entries fall back to French.
 
-Nothing else: the language appears in the selectors under its own name, `MAZE_DEFAULT_LOCALE=<code>` accepts it, and the tests check its catalogs. Only English is required to be complete; other languages may be partial (missing entries fall back to French).
+1. **Interface.** Copy `frontend/src/i18n/en/` to `frontend/src/i18n/de/` and translate the values (start from the English, or from the French keys). Plural entries need every category of the language: `node -e "console.log(new Intl.PluralRules('de').resolvedOptions().pluralCategories)"`. `node test/i18n-scan.mjs --format` sorts the files.
+2. **Server.** Copy `backend/maze/i18n/en/` to `backend/maze/i18n/de/` and translate the values (`server.json`, `seeds.json`, `foundry.json`, `oauth.json`, `demo.json`). If the language has plural rules other than "one / other", add them to `plural_category()` in `backend/maze/i18n/__init__.py`.
+3. **Foundry module.** Copy `backend/maze/foundry_module/lang/en.json` to `lang/de.json` and translate it, add `{ "lang": "de", "name": "Deutsch", "path": "lang/de.json" }` to `languages` in `module.json`, and bump the module `version` (Foundry only offers updates for a new version; CI checks it). Update the lists of files and languages expected by `frontend/test/foundry-module.test.mjs` and `backend/tests/test_foundry.py`.
+4. **Languages offered.** Nothing to declare: the interface lists every catalog folder (`LOCALES` in `core.js`, names from `Intl.DisplayNames`: "Deutsch"), the account menu and the login screen offer it. The account setting (`PUT /api/auth/locale`) and `MAZE_DEFAULT_LOCALE` accept any two- or three-letter code; the server picks the language from `Accept-Language` and translates its messages as soon as `backend/maze/i18n/de/` exists (`available_locales()`), and `python -m maze.demo --lang de` then creates a demo campaign in it.
+5. **Tests.** Run the interface tests (`node --test "test/*.test.mjs"`, which check placeholders and plural forms of every catalog), `python -m unittest tests.test_i18n tests.test_foundry` and the browser journeys. Then look at the main screens with a browser set to that language: words are longer or shorter than in French, and buttons must not wrap.
+
+Mention in the pull request which parts are translated and who can review them.
