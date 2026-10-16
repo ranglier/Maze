@@ -62,7 +62,7 @@ Requirements: a Linux server with Docker and the Compose plugin, at least 10 GB 
 **1. Get the code**
 
     sudo mkdir -p /opt/maze && sudo chown "$USER": /opt/maze
-    git clone https://github.com/ranglier/maze.git /opt/maze
+    git clone https://github.com/ranglier/Maze.git /opt/maze
     cd /opt/maze
     cp .env.example .env
     install -d -m 2775 control

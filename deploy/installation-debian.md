@@ -6,7 +6,7 @@ Cas traité : Maze tourne sur une machine Debian dédiée, Caddy reste sur le re
 - IP_MAZE : IP privée de la nouvelle machine (ip -br a ; par exemple 10.0.0.10)
 - IP_CADDY : IP privée du reverse proxy, vue depuis la machine Maze (par exemple 10.0.0.20)
 - NOM_MAZE : nom public de Maze (maze.example.org dans les exemples)
-- l'adresse du dépôt à cloner : git@github-maze:ranglier/Maze.git ci-dessous (dépôt https://github.com/ranglier/maze), ou celle d'un fork
+- l'adresse du dépôt à cloner : git@github-maze:ranglier/Maze.git ci-dessous (dépôt https://github.com/ranglier/Maze), ou celle d'un fork
 
 ## 1. Système de base (en root)
 
