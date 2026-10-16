@@ -910,6 +910,79 @@ class ConnectorTest(unittest.TestCase):
         self.assertEqual(self.rpc(self.connect()["access_token"], "ping")[0], 200)
 
 
+    def test_timeline(self):
+        """Chronologie (migration 032) : list_events, create_event, update_event ; get_campaign indique l'activation et
+        le nombre d'événements ; écriture refusée tant que la chronologie est désactivée ou la campagne en lecture."""
+        token = self.connect()["access_token"]
+        _, camp = self.s.call("POST", "/api/campaigns", {"name": "Chronologie Claude"})
+        w = camp["id"]
+        self.s.call("PUT", "/api/admin/claude", {"grant": {"campaign_id": w, "mode": "write"}})
+        self.addCleanup(self.s.call, "PUT", "/api/admin/claude", {"grant": {"campaign_id": w, "mode": "none"}})
+        _, npc = self.s.call("POST", f"/api/campaigns/{w}/npcs", {"name": "Inquisitrice Vael"})
+
+        ok, overview = self.tool(token, "get_campaign", campaign_id=w)
+        self.assertEqual(overview["timeline"], {"enabled": False, "events": 0})
+        ok, err = self.tool(token, "create_event", campaign_id=w, title="Fondation")
+        self.assertFalse(ok)
+        self.assertIn("n'est pas activée", err)
+        self.assertEqual(self.s.call("PATCH", f"/api/campaigns/{w}", {"timeline_enabled": True})[0], 200)
+
+        ok, first = self.tool(token, "create_event", campaign_id=w, title="Fondation", date_label="vers 850.M39",
+                              description="La cité naît sous **[[Inquisitrice Vael]]**.", tags=["origine"])
+        self.assertTrue(ok, first)
+        self.assertEqual((first["position"], first["date_label"], first["tags"]), (0, "vers 850.M39", ["origine"]))
+        self.assertEqual(first["mentions"], [{"kind": "npc", "id": npc["id"], "name": "Inquisitrice Vael"}])
+        ok, last = self.tool(token, "create_event", campaign_id=w, title="Le siège")
+        ok, middle = self.tool(token, "create_event", campaign_id=w, title="Le schisme", before_id=last["id"],
+                               description='<p>Rupture</p><div data-callout="secret"><p>Trahison</p></div>')
+        self.assertEqual(middle["position"], 1)
+
+        ok, listing = self.tool(token, "list_events", campaign_id=w)
+        self.assertTrue(ok, listing)
+        self.assertEqual([e["title"] for e in listing["events"]], ["Fondation", "Le schisme", "Le siège"])
+        self.assertEqual((listing["enabled"], listing["total"]), (True, 3))
+        self.assertIn("Inquisitrice Vael", listing["events"][0]["excerpt"])
+        ok, page = self.tool(token, "list_events", campaign_id=w, limit=2)
+        self.assertEqual((len(page["events"]), page["next_offset"]), (2, 2))
+        ok, one = self.tool(token, "list_events", campaign_id=w, event_id=middle["id"])
+        self.assertIn('data-callout="secret"', one["event"]["description"])
+
+        # Modification avec révision, déplacement, conflit.
+        ok, changed = self.tool(token, "update_event", event_id=first["id"], base_revision=first["revision"],
+                                title="Fondation d'Ys", to_end=True)
+        self.assertTrue(ok, changed)
+        self.assertEqual((changed["title"], changed["position"]), ("Fondation d'Ys", 2))
+        self.assertGreater(changed["revision"], first["revision"])
+        ok, err = self.tool(token, "update_event", event_id=first["id"], base_revision=first["revision"], title="X")
+        self.assertFalse(ok)
+        ok, moved = self.tool(token, "update_event", event_id=first["id"], before_id=middle["id"])
+        self.assertEqual(moved["position"], 0)
+        self.assertEqual(moved["revision"], changed["revision"])   # déplacer ne change pas la révision
+        ok, err = self.tool(token, "update_event", event_id=first["id"])
+        self.assertIn("Rien à modifier", err)
+
+        ok, overview = self.tool(token, "get_campaign", campaign_id=w)
+        self.assertEqual(overview["timeline"], {"enabled": True, "events": 3})
+        ok, found = self.tool(token, "search", query="schisme", campaign_id=w)
+        self.assertIn(("event", middle["id"]), [(r["kind"], r["id"]) for r in found["results"]])
+
+        # Droits : lecture seule, campagne fermée ; désactivée : lecture permise (note), écriture refusée.
+        self.s.call("PUT", "/api/admin/claude", {"grant": {"campaign_id": w, "mode": "read"}})
+        ok, err = self.tool(token, "update_event", event_id=first["id"], title="Y")
+        self.assertIn("lecture seule", err)
+        self.s.call("PUT", "/api/admin/claude", {"grant": {"campaign_id": w, "mode": "write"}})
+        ok, err = self.tool(token, "list_events", campaign_id=self.closed_camp["id"])
+        self.assertIn("introuvable", err)
+        self.s.call("PATCH", f"/api/campaigns/{w}", {"timeline_enabled": False})
+        ok, listing = self.tool(token, "list_events", campaign_id=w)
+        self.assertEqual((listing["enabled"], listing["total"]), (False, 3))
+        self.assertIn("n'est pas activée", listing["note"])
+        ok, err = self.tool(token, "update_event", event_id=first["id"], title="Z")
+        self.assertIn("n'est pas activée", err)
+        names = {t["name"] for t in self.rpc(token, "tools/list")[2]["result"]["tools"]}
+        self.assertTrue({"list_events", "create_event", "update_event"} <= names)
+        self.assertNotIn("delete_event", names)
+
     def test_maps(self):
         from PIL import Image
         token = self.connect()["access_token"]

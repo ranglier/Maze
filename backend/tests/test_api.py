@@ -1638,6 +1638,109 @@ class CampaignTransferTest(unittest.TestCase):
             s.stop()
 
 
+class TimelineTransferTest(unittest.TestCase):
+    """Chronologie (migration 032) : événements exportés dans leur ordre, réimportés avec de nouveaux identifiants,
+    mentions de la description réécrites et timeline_mentions reconstruite ; activation conservée."""
+
+    def test_round_trip(self):
+        s = Server()
+        try:
+            _, camp = s.call("POST", "/api/campaigns", {"name": "Frise"})
+            cid = camp["id"]
+            _, mae = s.call("POST", f"/api/campaigns/{cid}/npcs", {"name": "Maëlis"})
+            _, guild = s.call("POST", f"/api/campaigns/{cid}/factions", {"name": "Guilde"})
+            _, other = s.call("POST", "/api/campaigns", {"name": "Ailleurs"})
+            _, stranger = s.call("POST", f"/api/campaigns/{other['id']}/npcs", {"name": "Étranger"})
+            desc = (f'<p>Avec <a class="mention" data-mention="npc:{mae["id"]}">Maëlis</a> contre '
+                    f'<a class="mention" data-mention="faction:{guild["id"]}">Guilde</a> et '
+                    f'<a class="mention" data-mention="npc:{stranger["id"]}">Étranger</a></p>'
+                    '<div data-callout="secret"><p>Trahison</p></div>')
+            from maze import db as mdb
+            conn = sqlite3.connect(os.path.join(s.tmp.name, "maze.db"))
+            conn.create_function("html_text", 1, mdb.html_text)   # index de recherche (déclencheurs)
+            with conn:
+                conn.execute("UPDATE campaigns SET timeline_enabled = 1 WHERE id = ?", (cid,))
+                # Ordre manuel différent de l'ordre de création.
+                for order, date, title, text, tags in ((2, "Séance 4", "Le bal", "", '["bal"]'),
+                                                       (0, "vers 850.M39", "Fondation", desc, '["origine","cité"]'),
+                                                       (1, "", "Le siège", "<p>Rien</p>", "[]")):
+                    conn.execute("INSERT INTO timeline_events (campaign_id, sort_order, date_label, title, description,"
+                                 " tags) VALUES (?, ?, ?, ?, ?, ?)", (cid, order, date, title, text, tags))
+            conn.close()
+
+            code, raw = s.call("GET", f"/api/campaigns/{cid}/export")
+            self.assertEqual(code, 200)
+            with zipfile.ZipFile(io.BytesIO(raw)) as zf:
+                data = json.loads(zf.read("campaign.json"))
+            self.assertEqual([e["title"] for e in data["timeline_events"]], ["Fondation", "Le siège", "Le bal"])
+            self.assertEqual(data["campaign"]["timeline_enabled"], 1)
+            _, check = s.call("GET", f"/api/campaigns/{cid}/export/check")
+            self.assertGreater(check["json_bytes"], len(desc))
+
+            code, new = s.call("POST", "/api/campaigns/import", raw=raw, content_type="application/zip")
+            self.assertEqual(code, 201, new)
+            nid = new["id"]
+            _, graph = s.call("GET", f"/api/campaigns/{nid}/graph")
+            new_mae, new_guild = graph["npcs"][0]["id"], graph["factions"][0]["id"]
+            conn = sqlite3.connect(os.path.join(s.tmp.name, "maze.db"))
+            try:
+                self.assertEqual(conn.execute("SELECT timeline_enabled FROM campaigns WHERE id = ?", (nid,)).fetchone(),
+                                 (1,))
+                rows = conn.execute("SELECT id, sort_order, date_label, title, description, tags, revision "
+                                    "FROM timeline_events WHERE campaign_id = ? ORDER BY sort_order, id",
+                                    (nid,)).fetchall()
+                self.assertEqual([(r[1], r[2], r[3], json.loads(r[5]), r[6]) for r in rows],
+                                 [(1, "vers 850.M39", "Fondation", ["origine", "cité"], 0),
+                                  (2, "", "Le siège", [], 0), (3, "Séance 4", "Le bal", ["bal"], 0)])
+                self.assertNotIn(rows[0][0], {e["id"] for e in data["timeline_events"]})
+                self.assertIn(f'data-mention="npc:{new_mae}"', rows[0][4])
+                self.assertIn(f'data-mention="faction:{new_guild}"', rows[0][4])
+                self.assertIn('data-mention="npc:0"', rows[0][4])   # fiche d'une autre campagne : lien coupé
+                self.assertIn('data-callout="secret"', rows[0][4])
+                mentions = conn.execute("SELECT target_kind, target_id FROM timeline_mentions WHERE event_id = ? "
+                                        "ORDER BY target_kind", (rows[0][0],)).fetchall()
+                self.assertEqual(mentions, [("faction", new_guild), ("npc", new_mae)])
+                # Recherche : les événements importés sont indexés (type « event »).
+                self.assertEqual(conn.execute("SELECT COUNT(*) FROM search_index WHERE kind = 'event' "
+                                              "AND campaign_id = ?", (nid,)).fetchone(), (3,))
+                # L'original n'a pas bougé.
+                self.assertEqual(conn.execute("SELECT COUNT(*) FROM timeline_events WHERE campaign_id = ?",
+                                              (cid,)).fetchone(), (3,))
+            finally:
+                conn.close()
+        finally:
+            s.stop()
+
+    def test_old_and_altered_archives(self):
+        """Archive d'avant la migration 032 : pas de section, chronologie désactivée. Archive modifiée : lignes
+        sans titre ou mal formées ignorées, valeur d'activation inattendue ramenée à 0."""
+        s = Server()
+        try:
+            code, old = import_campaign_json(s, {"schema": 31, "campaign": {"name": "Archive 031"},
+                                                 "npcs": [{"id": 4, "name": "Silas"}]})
+            self.assertEqual(code, 201, old)
+            code, odd = import_campaign_json(s, {
+                "campaign": {"name": "Modifiée", "timeline_enabled": 7},
+                "timeline_events": [{"id": 1, "title": "  "}, "pas un objet", {"id": 2, "sort_order": "x"},
+                                    {"id": 3, "title": "Seul", "tags": "pas une liste", "sort_order": 5,
+                                     "revision": 99}]})
+            self.assertEqual(code, 201, odd)
+            conn = sqlite3.connect(os.path.join(s.tmp.name, "maze.db"))
+            try:
+                for camp in (old, odd):
+                    self.assertEqual(conn.execute("SELECT timeline_enabled FROM campaigns WHERE id = ?",
+                                                  (camp["id"],)).fetchone(), (0,))
+                self.assertEqual(conn.execute("SELECT COUNT(*) FROM timeline_events WHERE campaign_id = ?",
+                                              (old["id"],)).fetchone(), (0,))
+                self.assertEqual(conn.execute("SELECT title, sort_order, tags, revision FROM timeline_events "
+                                              "WHERE campaign_id = ?", (odd["id"],)).fetchall(),
+                                 [("Seul", 1, "[]", 0)])
+            finally:
+                conn.close()
+        finally:
+            s.stop()
+
+
 def legacy_archive(migrations: list[str], users: list[tuple[str, str]] = (), extra: str | None = None) -> bytes:
     """Archive de sauvegarde au schéma d'une ancienne version (migrations listées seulement)."""
     from maze.db import MIGRATIONS_DIR

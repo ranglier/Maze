@@ -85,10 +85,16 @@ Order: database > server > interface > tests. Every REST call of the interface i
 - Interface: `graph/elements.js` (`buildElements`: nodes, edges, filters), `graph/style.js` (`graphStyle`), `graph/GraphView.jsx`, `graph/declutter.js`, `components/Workspace.jsx` (tab, selection), `Legend.jsx`.
 - Tests: node `elements.test.mjs`, `declutter.test.mjs`.
 
+**Timeline (optional module)**
+- DB: `032_timeline.sql` (`campaigns.timeline_enabled`, `timeline_events`, `timeline_mentions`, search type `event`).
+- Server: `timeline.py` (events, order, `sync_event_mentions`), `api.py` (`timeline_enabled` on campaigns), `search.py`; export / import in `transfer.py`; connector tools `list_events`, `create_event`, `update_event` in `mcp.py`.
+- Interface: `components/TimelineView.jsx` (list and ordinal timeline), `timeline.js`; "Chronologie" section on NPC, faction and place sheets.
+- Tests: `test_timeline`, `test_api` (`TimelineTransferTest`), `test_connector` (`test_timeline`); node `timeline.test.mjs`; e2e `chronologie`.
+
 **Campaign export and import**
 - Server: `transfer.py` (`SECTIONS`, import limits, id rewriting), `limits.py` (`MAZE_MAX_IMPORT_MB`).
 - Interface: `exportCampaign` in `api.js`, `components/CampaignMenu.jsx`, `AdminPage.jsx`.
-- Tests: `test_api` (`CampaignTransferTest`, `ImportNameTest`), `test_limits` (`ImportLimitsTest`), `test_factions` (`NestedFactionsTransferTest`), `test_registry`.
+- Tests: `test_api` (`CampaignTransferTest`, `ImportNameTest`, `TimelineTransferTest`), `test_limits` (`ImportLimitsTest`), `test_factions` (`NestedFactionsTransferTest`), `test_registry`.
 
 **Backups and restore**
 - Server: `backup.py` (CLI `python -m maze.backup`, rotation, restore), `admin.py` (`/api/admin/backups*`), `app.py` (`RestoringMiddleware`); host timer `deploy/systemd/maze-backup.*`.
@@ -140,7 +146,7 @@ Order: database > server > interface > tests. Every REST call of the interface i
 
 ### Recipe: add a migration
 
-1. New file `backend/maze/migrations/NNN_name.sql`, NNN = highest existing + 1 (currently 031). Never edit a released one (checksum recorded).
+1. New file `backend/maze/migrations/NNN_name.sql`, NNN = highest existing + 1 (currently 032). Never edit a released one (checksum recorded).
 2. No `BEGIN`/`COMMIT` in the file: `db.migrate` wraps it in one transaction with foreign keys suspended, then checked.
 3. New table whose id is cited elsewhere: `INTEGER PRIMARY KEY AUTOINCREMENT`. Rebuilt table: recreate all its indexes and triggers.
 4. Data that belongs to a campaign: give it a foreign key to its campaign (or parent row) with `ON DELETE CASCADE`, since deleting a campaign relies on cascades; add it to export / import (`transfer.SECTIONS`); restore needs nothing (whole database).

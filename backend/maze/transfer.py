@@ -51,6 +51,8 @@ MAX_RATIO = 100
 RATIO_FROM = 1024 * 1024
 MAX_OBJECTS = 500_000
 MAX_IMAGE = 50 * 1024 * 1024
+MAX_EVENTS = 5000            # événements de chronologie importés par campagne (comme timeline.MAX_EVENTS)
+MAX_EVENT_TEXT = 200_000     # description d'un événement (comme un champ long de fiche)
 MEDIA_NAME = FILE_NAME_RE  # extensions des fichiers produits par Maze (mediafiles)
 MENTION = re.compile(r'data-mention="(npc|faction|place|doc):(\d+)"')
 DOC_IMAGE = re.compile(r'data-doc-image="(\d+)"')
@@ -58,7 +60,7 @@ MEDIA_URL = re.compile(rf"/media/\d+/({FILE_NAME})")
 COMMENT = re.compile(r'data-comment="(\d+)"')
 TABLES = ["relation_types", "place_kinds", "factions", "npcs", "memberships", "relations", "images",
           "documents", "document_images", "library_images", "comments", "places", "place_links", "scenario_nodes",
-          "maps", "map_pins", "entry_comments"]
+          "maps", "map_pins", "entry_comments", "timeline_events"]
 
 
 class TransferError(Exception):
@@ -95,6 +97,8 @@ SECTIONS: tuple[tuple[str, str], ...] = (
     ("map_pins", "SELECT p.* FROM map_pins p JOIN maps m ON m.id = p.map_id WHERE m.campaign_id = ?"),
     # Commentaires des PNJ, factions et lieux (l'historique de leurs versions n'est pas exporté).
     ("entry_comments", "SELECT * FROM entry_comments WHERE campaign_id = ? ORDER BY id"),
+    # Chronologie (migration 032), dans son ordre ; timeline_mentions est reconstruite à l'import.
+    ("timeline_events", "SELECT * FROM timeline_events WHERE campaign_id = ? ORDER BY sort_order, id"),
 )
 
 
@@ -333,6 +337,8 @@ def _import_rows(db_path: Path, data: dict[str, Any], valid: set[str], user_id: 
     with db.transaction(db_path) as conn:
 
         campaign = _clean(conn, "campaigns", data["campaign"], {"id"})
+        if "timeline_enabled" in campaign:   # chronologie activée ou non (migration 032) : 0 ou 1 seulement
+            campaign["timeline_enabled"] = 1 if campaign["timeline_enabled"] == 1 else 0
         campaign["name"] = _unique_name(conn, str(campaign.get("name") or i18n.tr("Campagne importée", locale))[:200],
                                         user_id, locale)
         cid = db.insert(conn, "campaigns", campaign)
@@ -682,7 +688,38 @@ def _import_rows(db_path: Path, data: dict[str, Any], valid: set[str], user_id: 
                 "parent_id": roots[parent][0] if parent is not None else None})
             if parent is None and isinstance(row.get("id"), int):
                 roots[row["id"]] = (new_id, owner[0])
+
+        # Chronologie : ordre de l'export conservé (renuméroté), mentions de la description réécrites et
+        # recopiées dans timeline_mentions. Archive antérieure à la migration 032 : section absente, rien à faire.
+        events = [r for r in data.get("timeline_events", []) if isinstance(r, dict)]
+        events.sort(key=lambda r: (r.get("sort_order") if isinstance(r.get("sort_order"), int) else 0,
+                                   r.get("id") if isinstance(r.get("id"), int) else 0))
+        position = 1   # numérotation de timeline._renumber
+        for row in events[:MAX_EVENTS]:
+            values = _clean(conn, "timeline_events", row, {"id", "campaign_id", "sort_order", "revision"})
+            title = values.get("title") if isinstance(values.get("title"), str) else ""
+            if not title.strip():
+                continue
+            date_label = values.get("date_label") if isinstance(values.get("date_label"), str) else ""
+            description = values.get("description") if isinstance(values.get("description"), str) else ""
+            description = MENTION.sub(mention, description[:MAX_EVENT_TEXT])
+            event_id = db.insert(conn, "timeline_events", {
+                **values, "campaign_id": cid, "sort_order": position, "title": title[:200],
+                "date_label": date_label[:200], "description": description, "tags": values.get("tags", [])[:100]})
+            position += 1
+            _sync_event_mentions(conn, event_id, description)  # PROVISOIRE : timeline.sync_event_mentions
         return cid
+
+
+def _sync_event_mentions(conn: sqlite3.Connection, event_id: int, html: str) -> None:
+    """PROVISOIRE (en attendant timeline.py) : fiches citées par un événement, limitées à sa campagne."""
+    conn.execute("DELETE FROM timeline_mentions WHERE event_id = ?", (event_id,))
+    cid = conn.execute("SELECT campaign_id FROM timeline_events WHERE id = ?", (event_id,)).fetchone()[0]
+    tables = {"npc": "npcs", "faction": "factions", "place": "places", "doc": "documents"}
+    for kind, tid in {(k, int(i)) for k, i in MENTION.findall(html)}:
+        if conn.execute(f"SELECT 1 FROM {tables[kind]} WHERE id = ? AND campaign_id = ?", (tid, cid)).fetchone():
+            conn.execute("INSERT INTO timeline_mentions (event_id, target_kind, target_id) VALUES (?, ?, ?)",
+                         (event_id, kind, tid))
 
 
 # --- Routes ----------------------------------------------------------------------------------
