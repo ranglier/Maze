@@ -31,6 +31,7 @@
   "Aucune image dans cette campagne. Un administrateur peut en déposer dans la bibliothèque (Administration > Images).": "No images in this campaign. An administrator can upload some to the library (Administration > Images).",
   "Aucune relation. Utilisez Lier pour en créer une.": "No relationships. Use Link to create one.",
   "Aucune version pour l’instant. Maze en garde une à chaque enregistrement de la fiche (les modifications rapprochées d’un même MJ sont regroupées) ; vous pouvez aussi nommer l’état actuel.": "No versions yet. Maze keeps one each time the sheet is saved (close edits by the same GM are grouped); you can also name the current state.",
+  "Aussi membre de : {names}": "Also a member of: {names}",
   "Bibliothèque": "Library",
   "Carte des factions": "Faction graph",
   "Carte d’un scénario": "A scenario’s graph",

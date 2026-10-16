@@ -3,22 +3,22 @@ import { api } from '../api.js';
 import { NPC_STATUS } from '../constants.js';
 import { npcRingColors } from '../graph/elements.js';
 import { initialsAvatar, nodeId, normalize, parseNodeId, storage } from '../util.js';
+import { branchKeys, byOrder, factionForest, factionPaths, factionStructure } from '../factionTree.js';
 import CreateDialog from './CreateDialog.jsx';
 import EntityPanel from './EntityPanel.jsx';
 import { EntryShell } from './EntryNotes.jsx';
 import RelationDialog from './RelationDialog.jsx';
 import { Icon, useAction } from './ui.jsx';
 import { useTreeDrag } from './treeDrag.js';
-import { compareText, pt, t, tn } from '../i18n/index.js';
+import { compareText, formatList, pt, t, tn } from '../i18n/index.js';
 
 /*
- * Onglet Personnages : index de tous les PNJ et factions de la campagne (à gauche, rangés par
- * faction ou par ordre alphabétique, avec recherche et filtres), fiche en pleine page à droite.
+ * Onglet Personnages : index de tous les PNJ et factions de la campagne (à gauche, en arbre des factions et
+ * sous-factions, ou par ordre alphabétique, avec recherche et filtres ; logique dans factionTree.js), fiche en
+ * pleine page à droite.
  */
 
 const byName = (a, b) => compareText(a.name, b.name, { sensitivity: 'base' });
-// Ordre choisi par le MJ (glisser-déposer), sinon alphabétique (sort_order à 0 tant que rien n'est rangé).
-const byOrder = (a, b) => (a.sort_order || 0) - (b.sort_order || 0) || byName(a, b);
 
 export default function CharactersView({
   campaign, user, header, trailing, entity, editRequested, commentId, onNavigate, onEditDone, onCommentDone, onGraphLoaded,
@@ -157,70 +157,78 @@ function CharacterList({ graph, campaignName, currentId, onOpen, onCreate, onReo
   const [show, setShowState] = useState(() => storage.get('maze:characters:show') || 'all');
   const [grouping, setGroupingState] = useState(() => storage.get('maze:characters:group') || 'faction');
   const [status, setStatus] = useState('');
-  // Factions repliées par défaut : seules s'ouvrent celles que le MJ déplie (et celle de la fiche ouverte).
+  // Factions repliées par défaut : seules s'ouvrent celles que le MJ déplie (et la branche de la fiche ouverte).
+  // Clé = chemin dans l'arbre (« 74/77 ») : une faction à plusieurs parents se déplie sous chacun séparément.
   const [expanded, setExpanded] = useState(() => new Set());
-  // Fiche ouverte : ses factions se déplient (une fois ; le MJ peut les replier).
+  const structure = useMemo(() => (graph ? factionStructure(graph) : null), [graph]);
+  const paths = useMemo(() => (structure ? factionPaths(graph, structure) : null), [graph, structure]);
+  // Fiche ouverte : la branche qui y mène se déplie (une fois ; le MJ peut la replier). PNJ : tous les chemins vers
+  // ses factions ; faction : tous ses chemins d'ancêtres.
   const expandedFor = useRef(null);
   useEffect(() => {
-    if (!graph || !currentId?.startsWith('npc-') || expandedFor.current === currentId) return;
+    if (!graph || !paths || !currentId || expandedFor.current === currentId) return;
     expandedFor.current = currentId;
-    const npc = Number(currentId.slice(4));
-    const ids = graph.memberships.filter((m) => m.npc_id === npc).map((m) => m.faction_id);
-    if (ids.length) setExpanded((s) => (ids.every((id) => s.has(id)) ? s : new Set([...s, ...ids])));
-  }, [currentId, graph]);
+    const { kind, id } = parseNodeId(currentId);
+    const keys = kind === 'npc'
+      ? branchKeys(paths, graph.memberships.filter((m) => m.npc_id === id).map((m) => m.faction_id), { self: true })
+      : branchKeys(paths, kind === 'faction' ? [id] : []);
+    if (keys.size) setExpanded((s) => ([...keys].every((k) => s.has(k)) ? s : new Set([...s, ...keys])));
+  }, [currentId, graph, paths]);
   const setShow = (v) => { setShowState(v); storage.set('maze:characters:show', v); };
   const setGrouping = (v) => { setGroupingState(v); storage.set('maze:characters:group', v); };
+  const toggle = (key) => setExpanded((s) => { const n = new Set(s); if (n.has(key)) n.delete(key); else n.add(key); return n; });
 
+  // Calculé une fois par graphe et par filtre ; le rendu ne parcourt ensuite que les branches dépliées.
   const model = useMemo(() => {
     if (!graph) return null;
     const q = normalize(query.trim());
-    const ring = npcRingColors(graph);
-    const npcMatch = (n) => (!q || normalize(`${n.name} ${n.title || ''} ${(n.tags || []).join(' ')}`).includes(q))
-      && (!status || n.status === status);
-    const factionMatch = (f) => !q || normalize(`${f.name} ${f.kind || ''} ${(f.tags || []).join(' ')}`).includes(q);
+    const withNpcs = show !== 'faction';
+    const statusOk = (n) => !status || n.status === status;
+    const npcMatch = (n) => (!q || normalize(`${n.name} ${n.title || ''} ${(n.tags || []).join(' ')}`).includes(q)) && statusOk(n);
+    const factionText = (f) => !q || normalize(`${f.name} ${f.kind || ''} ${(f.tags || []).join(' ')}`).includes(q);
     const npcs = graph.npcs.filter(npcMatch).sort(byName);
-    const factions = graph.factions.filter(factionMatch).sort(byName);
-    const membersOf = new Map(graph.factions.map((f) => [f.id, []]));
-    const inFaction = new Set();
-    for (const m of graph.memberships) {
-      if (m.npc_id == null) continue; // sous-faction : pas dans les groupes de PNJ
-      inFaction.add(m.npc_id);
-      membersOf.get(m.faction_id)?.push(m);
+    const factions = graph.factions.filter(factionText).sort(byName);
+    const filtering = Boolean(q || (withNpcs && status));
+    let forest = null;
+    let loners = [];
+    let factionCount = factions.length;
+    if (grouping === 'faction' && show !== 'npc') {
+      // Filtre de statut seul : une faction n'a pas de statut, seules restent celles qui mènent à un PNJ retenu.
+      const factionMatch = q ? factionText : (withNpcs && status ? () => false : () => true);
+      forest = factionForest(graph, { structure, factionMatch, npcVisible: npcMatch, memberVisible: statusOk, showNpcs: withNpcs });
+      loners = withNpcs ? npcs.filter((n) => !structure.inFaction.has(n.id)).sort(byOrder) : [];
+      if (!q && withNpcs && status) factionCount = 0;
     }
-    return { npcs, factions, membersOf, inFaction, ring, npcMatch, all: graph.npcs.length + graph.factions.length };
-  }, [graph, query, status]);
-
-  // Glisser-déposer (vue par faction, sans filtre) : ordre des factions, et des PNJ dans leur groupe.
-  const dnd = useTreeDrag((dragged, target, where) => {
-    const place = (list, id) => {
-      const rest = list.filter((x) => x !== dragged.id);
-      rest.splice(rest.indexOf(id) + (where === 'after' ? 1 : 0), 0, dragged.id);
-      return rest;
+    return {
+      npcs, factions, forest, loners, filtering, withNpcs, ring: npcRingColors(graph),
+      shown: (withNpcs ? npcs.length : 0) + (show !== 'npc' ? factionCount : 0),
+      all: graph.npcs.length + graph.factions.length,
     };
-    if (dragged.group === 'factions') {
-      onReorder('faction', place(graph.factions.slice().sort(byOrder).map((f) => f.id), target.id));
-      return;
-    }
-    // PNJ : nouvel ordre du groupe, reporté dans l'ordre global (les places des autres PNJ ne bougent pas).
-    const groupIds = place(target.groupIds, target.id);
-    const global = graph.npcs.slice().sort(byOrder).map((n) => n.id);
-    const inGroup = new Set(groupIds);
+  }, [graph, structure, query, status, show, grouping]);
+
+  // Glisser-déposer (vue par faction, sans filtre) : entre frères seulement, à toute profondeur. Factions entre
+  // factions sœurs (même parent), PNJ dans leur groupe. Le nouvel ordre des frères est reporté dans l'ordre global
+  // (les autres fiches gardent leur place) : une faction à plusieurs parents garde ce rang sous chacun.
+  const dnd = useTreeDrag((dragged, target, where) => {
+    const rest = target.groupIds.filter((x) => x !== dragged.id);
+    rest.splice(rest.indexOf(target.id) + (where === 'after' ? 1 : 0), 0, dragged.id);
+    const global = (dragged.kind === 'faction' ? graph.factions : graph.npcs).slice().sort(byOrder).map((x) => x.id);
+    const inGroup = new Set(rest);
     let k = 0;
-    onReorder('npc', global.map((id) => (inGroup.has(id) ? groupIds[k++] : id)));
+    onReorder(dragged.kind, global.map((id) => (inGroup.has(id) ? rest[k++] : id)));
   });
   if (!model) return <aside className="doc-tree" aria-busy="true" />;
-  const npcById = new Map(graph.npcs.map((n) => [n.id, n]));
-  const filtering = Boolean(query.trim() || status);
+  const { filtering } = model;
   const canDrag = !filtering && grouping === 'faction' && Boolean(onReorder);
+  const dragProps = (row) => dnd.props(row, { enabled: canDrag, accepts: (d) => d.group === row.group });
 
-  const npcItem = (n, depth, role, leader, group = null) => {
+  const npcItem = (n, depth, leader, group = null) => {
     const id = nodeId('npc', n.id);
-    const row = group && { key: `${group.key}:${n.id}`, id: n.id, group: group.key, groupIds: group.ids, label: n.name };
+    const row = group && { key: `${group.key}:${n.id}`, id: n.id, kind: 'npc', group: group.key, groupIds: group.ids, label: n.name };
     return (
-      <li key={`${id}-${depth}-${role || ''}`}>
+      <li key={row ? row.key : id}>
         <div className={`doc-tree__item${id === currentId ? ' is-active' : ''}${row ? dnd.className(row.key) : ''}`}
-          style={{ '--depth': depth }}
-          {...(row ? dnd.props(row, { enabled: canDrag, accepts: (d) => d.group === row.group }) : {})}>
+          style={{ '--depth': depth }} {...(row ? dragProps(row) : {})}>
           <span className="doc-tree__caret" />
           <button type="button" className="doc-tree__link" onClick={() => onOpen(id)} aria-current={id === currentId ? 'page' : undefined}>
             <img className="char-list__avatar" src={n.portrait_thumb || initialsAvatar(n.name, model.ring.get(n.id) || '#5d6b80')} alt="" />
@@ -232,30 +240,58 @@ function CharacterList({ graph, campaignName, currentId, onOpen, onCreate, onReo
     );
   };
 
-  const factionItem = (f, members, draggable = false) => {
+  const factionLink = (f, extra = null) => {
     const id = nodeId('faction', f.id);
-    const open = filtering || expanded.has(f.id);
-    const row = { key: `f:${f.id}`, id: f.id, group: 'factions', label: f.name };
     return (
-      <li key={id}>
-        <div className={`doc-tree__item${id === currentId ? ' is-active' : ''}${dnd.className(row.key)}`} style={{ '--depth': 0 }}
-          {...dnd.props(row, { enabled: canDrag && draggable, accepts: (d) => d.group === 'factions' })}>
-          {members && members.length > 0 ? (
+      <button type="button" className="doc-tree__link" onClick={() => onOpen(id)} aria-current={id === currentId ? 'page' : undefined}>
+        <span className="char-list__seal" style={{ background: f.color }} />
+        <span className="doc-tree__label char-list__faction">{f.name}</span>
+        {extra}
+      </button>
+    );
+  };
+
+  // Faction de l'arbre : sous-factions puis PNJ, rendus seulement si la branche est dépliée.
+  const factionNode = (node, siblings) => {
+    const f = node.faction;
+    const id = nodeId('faction', f.id);
+    const parentPath = node.path.slice(0, -String(f.id).length - 1);
+    const hasKids = node.children.length > 0 || node.npcs.length > 0;
+    const open = hasKids && (filtering || expanded.has(node.path));
+    const row = { key: `f:${node.path}`, id: f.id, kind: 'faction', group: `fs:${parentPath}`, groupIds: siblings, label: f.name };
+    const subs = node.children.length;
+    const counts = [subs > 0 && tn('{n} sous-faction', '{n} sous-factions', subs),
+      model.withNpcs && tn('{n} PNJ', '{n} PNJ', node.npcs.length)].filter(Boolean);
+    const also = node.otherParents.length > 0
+      && t('Aussi membre de : {names}', { names: formatList(node.otherParents.map((p) => p.name)) });
+    const childIds = node.children.map((c) => c.faction.id);
+    const group = { key: `g${node.path}`, ids: node.npcs.map((x) => x.npc.id) };
+    return (
+      <li key={row.key}>
+        <div className={`doc-tree__item${id === currentId ? ' is-active' : ''}${dnd.className(row.key)}`}
+          style={{ '--depth': node.depth }} data-path={node.path} {...dragProps(row)}>
+          {hasKids && !filtering ? (
             <button type="button" className="doc-tree__caret" aria-label={open ? t('Replier') : t('Déplier')} aria-expanded={open}
-              onClick={() => setExpanded((s) => { const n = new Set(s); if (n.has(f.id)) n.delete(f.id); else n.add(f.id); return n; })}>
+              onClick={() => toggle(node.path)}>
               <Icon name={open ? 'chevron' : 'right'} size={13} />
             </button>
-          ) : <span className="doc-tree__caret" />}
-          <button type="button" className="doc-tree__link" onClick={() => onOpen(id)} aria-current={id === currentId ? 'page' : undefined}>
-            <span className="char-list__seal" style={{ background: f.color }} />
-            <span className="doc-tree__label char-list__faction">{f.name}</span>
-            {members && <span className="char-list__count">{members.length}</span>}
-          </button>
+          ) : <span className="doc-tree__caret">{hasKids && <Icon name="chevron" size={13} />}</span>}
+          {factionLink(f, (
+            <>
+              {also && <span className="char-list__also" role="img" title={also} aria-label={also}><Icon name="link" size={11} /></span>}
+              {counts.length > 0 && (
+                <span className="char-list__count" title={formatList(counts)}>
+                  {subs > 0 && <span className="char-list__subs"><Icon name="banner" size={10} />{subs}</span>}
+                  {model.withNpcs && (node.npcs.length > 0 || subs === 0) && <span>{node.npcs.length}</span>}
+                </span>
+              )}
+            </>
+          ))}
         </div>
-        {members && members.length > 0 && open && (
+        {open && (
           <ul>
-            {members.map((m) => npcItem(npcById.get(m.npc_id), 1, m.role, m.is_leader,
-              { key: `g${f.id}`, ids: members.map((x) => x.npc_id) }))}
+            {node.children.map((c) => factionNode(c, childIds))}
+            {node.npcs.map((x) => npcItem(x.npc, node.depth + 1, x.membership.is_leader, group))}
           </ul>
         )}
       </li>
@@ -263,29 +299,17 @@ function CharacterList({ graph, campaignName, currentId, onOpen, onCreate, onReo
   };
 
   let content;
-  if (grouping === 'faction' && show !== 'npc') {
-    // Factions avec leurs membres (filtrés), puis les PNJ sans faction.
-    const visible = new Set(model.npcs.map((n) => n.id));
-    const groups = graph.factions.slice().sort(byOrder).map((f) => {
-      const members = model.membersOf.get(f.id)
-        .filter((m) => visible.has(m.npc_id))
-        .sort((a, b) => {
-          const na = npcById.get(a.npc_id);
-          const nb = npcById.get(b.npc_id);
-          return (na.sort_order || 0) - (nb.sort_order || 0) || Number(b.is_leader) - Number(a.is_leader) || byName(na, nb);
-        });
-      const keep = show === 'faction' ? model.factions.includes(f) : (model.factions.includes(f) || members.length > 0);
-      return keep ? factionItem(f, show === 'faction' ? null : members, true) : null;
-    }).filter(Boolean);
-    const loners = show === 'faction' ? [] : model.npcs.filter((n) => !model.inFaction.has(n.id)).sort(byOrder);
-    const lonerGroup = { key: 'none', ids: loners.map((n) => n.id) };
+  if (model.forest) {
+    // Arbre des factions (racines au premier niveau), puis les PNJ sans faction.
+    const rootIds = model.forest.map((n) => n.faction.id);
+    const lonerGroup = { key: 'none', ids: model.loners.map((n) => n.id) };
     content = (
       <>
-        <ul className="doc-tree__list">{groups}</ul>
-        {loners.length > 0 && (
+        <ul className="doc-tree__list char-list__tree">{model.forest.map((n) => factionNode(n, rootIds))}</ul>
+        {model.loners.length > 0 && (
           <>
-            <div className="doc-tree__section"><span>{t('Sans faction')}</span><span className="char-list__count">{loners.length}</span></div>
-            <ul className="doc-tree__list">{loners.map((n) => npcItem(n, 0, null, false, lonerGroup))}</ul>
+            <div className="doc-tree__section"><span>{t('Sans faction')}</span><span className="char-list__count">{model.loners.length}</span></div>
+            <ul className="doc-tree__list">{model.loners.map((n) => npcItem(n, 0, false, lonerGroup))}</ul>
           </>
         )}
       </>
@@ -297,11 +321,18 @@ function CharacterList({ graph, campaignName, currentId, onOpen, onCreate, onReo
     ].sort(byName);
     content = (
       <ul className="doc-tree__list">
-        {items.map((i) => (i.kind === 'npc' ? npcItem(i.n, 0) : factionItem(i.f, null)))}
+        {items.map((i) => (i.kind === 'npc' ? npcItem(i.n, 0, false) : (
+          <li key={nodeId('faction', i.f.id)}>
+            <div className={`doc-tree__item${nodeId('faction', i.f.id) === currentId ? ' is-active' : ''}`} style={{ '--depth': 0 }}>
+              <span className="doc-tree__caret" />
+              {factionLink(i.f)}
+            </div>
+          </li>
+        )))}
       </ul>
     );
   }
-  const shownCount = (show !== 'faction' ? model.npcs.length : 0) + (show !== 'npc' ? model.factions.length : 0);
+  const shownCount = model.shown;
 
   return (
     <aside className="doc-tree char-list" aria-label={t('Personnages de la campagne')}>

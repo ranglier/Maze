@@ -5,8 +5,12 @@
 //     par défaut (compteur visible), dépliée à la souris puis repliée au clavier, PNJ et sous-faction distingués,
 //     chefs en tête, deux colonnes ; de nouveau repliée sur une autre fiche ;
 //   - carte des factions : arête de la sous-faction vers sa faction parente, masquée par le filtre des appartenances ;
+//   - index des personnages en arbre : factions racines, trois niveaux de sous-factions, faction à deux parents
+//     sous chacun (marque « Aussi membre de »), état déplié par chemin, branche d'une fiche profonde dépliée,
+//     recherche d'une faction profonde (ancêtres seulement), filtre « Factions » sans PNJ ;
 //   - mêmes écrans en anglais (compte réglé sur English).
-// Captures dans MAZE_E2E_SHOTS : fiche repliée et dépliée (français, anglais), carte avec l'imbrication.
+// Captures dans MAZE_E2E_SHOTS : fiche repliée et dépliée (français, anglais), carte avec l'imbrication, index en
+// arbre (aussi dans MAZE_TREE_SHOT si défini).
 //
 // Base vide ou déjà initialisée. Usage : node factions-imbriquees.mjs [url]   (défaut : $MAZE_URL ou http://127.0.0.1:8765)
 // Variables : MAZE_E2E_USER (admin), MAZE_E2E_PASSWORD (requis si la base a déjà un compte), HEADED=1,
@@ -254,6 +258,102 @@ try {
   check(Math.abs(s1.y - s2.y) < 2 && s2.x > s1.x + 100, 'panneau de la carte (440 px) : deux colonnes');
   await side.screenshot({ path: path.join(SHOTS, 'carte-panneau-deplie-fr.png') });
 
+  // --- Index des personnages : arbre des factions -------------------------------------------------------------
+  // Les Sept Couronnes > Maison Lannister > Maison Clegane > Bannerets du Chien ; Maison Martell membre des Sept
+  // Couronnes et de Dorne.
+  const crowns = await faction('Les Sept Couronnes', '#8a6d3b');
+  const lannister = await faction('Maison Lannister', '#b0413e');
+  const clegane = await faction('Maison Clegane', '#5b5b5b');
+  const bannerets = await faction('Bannerets du Chien', '#7a7a3a');
+  const dorne = await faction('Dorne', '#d08a2e');
+  const martell = await faction('Maison Martell', '#c96b2c');
+  for (const [m, p] of [[lannister, crowns], [clegane, lannister], [bannerets, clegane], [martell, crowns], [martell, dorne]]) {
+    await api(a, 'POST', '/api/memberships', { member_faction_id: m.id, faction_id: p.id });
+  }
+  const gregor = await npc('Gregor Clegane', 'La Montagne');
+  const sandor = await npc('Sandor Clegane', 'Le Limier');
+  await api(a, 'POST', '/api/memberships', { npc_id: gregor.id, faction_id: clegane.id, is_leader: true });
+  await api(a, 'POST', '/api/memberships', { npc_id: sandor.id, faction_id: bannerets.id });
+  const doran = await npc('Doran Martell', 'Prince de Dorne');
+  await api(a, 'POST', '/api/memberships', { npc_id: doran.id, faction_id: martell.id, is_leader: true });
+  const pC = String(crowns.id);
+  const pL = `${pC}/${lannister.id}`;
+  const pCl = `${pL}/${clegane.id}`;
+  const pB = `${pCl}/${bannerets.id}`;
+  const list = a.locator('aside.char-list');
+  const tree = list.locator('.char-list__tree');
+  const rowAt = (p) => tree.locator(`.doc-tree__item[data-path="${p}"]`);
+  const caretAt = (p) => rowAt(p).locator('button.doc-tree__caret');
+  const depthOf = async (p) => Number(await rowAt(p).evaluate((el) => el.style.getPropertyValue('--depth')));
+  const openIndex = async (hash = '') => {
+    await a.goto(`${BASE}/#/c/${cid}/personnages${hash}`);
+    await a.reload();
+    await tree.waitFor({ timeout: 15000 });
+  };
+  await openIndex();
+  const roots = await tree.locator(':scope > li > .doc-tree__item .doc-tree__label').allInnerTexts();
+  check(JSON.stringify(roots) === JSON.stringify(['Conseil du Port', 'Dorne', 'Les Sept Couronnes']),
+    `index : factions racines seules au premier niveau (${roots.join(', ')})`);
+  check(await caretAt(pC).getAttribute('aria-expanded') === 'false' && await rowAt(pL).count() === 0,
+    'index : factions repliées par défaut');
+  await caretAt(pC).click();
+  check(await caretAt(pC).getAttribute('aria-expanded') === 'true', 'index : chevron déplié (aria-expanded)');
+  check(await depthOf(pL) === 1, 'index : Maison Lannister sous Les Sept Couronnes (profondeur 1)');
+  const martellCrowns = rowAt(`${pC}/${martell.id}`);
+  check(await martellCrowns.locator('.char-list__also').getAttribute('title') === 'Aussi membre de : Dorne',
+    'faction à deux parents : marque « Aussi membre de : Dorne » sous Les Sept Couronnes');
+  await caretAt(String(dorne.id)).click();
+  const martellDorne = rowAt(`${dorne.id}/${martell.id}`);
+  check(await martellDorne.isVisible() && await martellDorne.locator('.char-list__also').getAttribute('title')
+    === 'Aussi membre de : Les Sept Couronnes', 'faction à deux parents : aussi sous Dorne');
+  await caretAt(pL).click();
+  await caretAt(pCl).click();
+  check(await depthOf(pCl) === 2 && await depthOf(pB) === 3, 'trois niveaux de sous-factions (profondeurs 2 et 3)');
+  check(await rowAt(pCl).locator('.char-list__count').getAttribute('title') === '1 sous-faction et 1 PNJ',
+    'compteur : sous-factions et PNJ directs');
+  const cleganeKids = await tree.locator(`li:has(> .doc-tree__item[data-path="${pCl}"]) > ul > li .doc-tree__label`).allInnerTexts();
+  check(JSON.stringify(cleganeKids) === JSON.stringify(['Bannerets du Chien', 'Gregor Clegane']),
+    `sous-factions puis PNJ (${cleganeKids.join(', ')})`);
+  await a.mouse.move(900, 20);
+  await list.screenshot({ path: path.join(SHOTS, 'index-arbre-factions-fr.png') });
+  if (process.env.MAZE_TREE_SHOT) await list.screenshot({ path: process.env.MAZE_TREE_SHOT });
+  check(await caretAt(`${pC}/${martell.id}`).getAttribute('aria-expanded') === 'false', 'Maison Martell repliée');
+  await caretAt(`${dorne.id}/${martell.id}`).click();
+  check(await caretAt(`${pC}/${martell.id}`).getAttribute('aria-expanded') === 'false',
+    'état déplié propre à chaque chemin (Martell dépliée sous Dorne, pas sous les Sept Couronnes)');
+  check(await tree.getByText('Doran Martell').count() === 1, 'PNJ de Maison Martell affiché sous Dorne seulement');
+
+  // Fiche profonde ouverte : la branche se déplie d'elle-même.
+  await openIndex(`/npc-${sandor.id}`);
+  await rowAt(pB).waitFor({ timeout: 10000 });
+  const sandorRow = tree.locator(`li:has(> .doc-tree__item[data-path="${pB}"]) .doc-tree__item.is-active`);
+  check(await sandorRow.innerText() === 'Sandor Clegane', 'fiche d’un PNJ profond : branche dépliée, PNJ en évidence');
+  check(await rowAt(String(dorne.id)).locator('button.doc-tree__caret').getAttribute('aria-expanded') === 'false',
+    'les autres branches restent repliées');
+  await openIndex(`/faction-${bannerets.id}`);
+  await rowAt(pB).waitFor({ timeout: 10000 });
+  check(await rowAt(pB).evaluate((el) => el.classList.contains('is-active'))
+    && await caretAt(pB).getAttribute('aria-expanded') === 'false', 'fiche d’une faction profonde : ses ancêtres dépliés, elle repliée');
+  await openIndex(`/faction-${martell.id}`);
+  await rowAt(`${dorne.id}/${martell.id}`).waitFor({ timeout: 10000 });
+  check(await rowAt(`${pC}/${martell.id}`).isVisible(), 'faction à deux parents : les deux chemins dépliés');
+
+  // Recherche d'une faction profonde : elle, ses PNJ et ses ancêtres, rien d'autre.
+  await list.getByRole('searchbox').fill('banneret');
+  await rowAt(pB).waitFor({ timeout: 5000 });
+  const found = await tree.locator('.doc-tree__item .doc-tree__label').allInnerTexts();
+  check(JSON.stringify(found) === JSON.stringify(['Les Sept Couronnes', 'Maison Lannister', 'Maison Clegane', 'Bannerets du Chien',
+    'Sandor Clegane']), `recherche : la faction, son PNJ et ses ancêtres seulement (${found.join(', ')})`);
+  check(await list.locator('.doc-tree__section').first().innerText().then((s) => s.startsWith('1 résultat')), 'recherche : 1 résultat');
+  await list.getByRole('searchbox').fill('');
+  // Filtre « Factions » : arbre sans PNJ.
+  await list.getByRole('radio', { name: 'Factions' }).click();
+  await caretAt(pL).click();
+  await caretAt(pCl).click();
+  check(await tree.locator('.char-list__avatar').count() === 0 && await rowAt(pB).isVisible()
+    && await rowAt(pB).locator('button.doc-tree__caret').count() === 0, 'filtre « Factions » : arbre des factions sans PNJ');
+  await list.getByRole('radio', { name: 'Tous' }).click();
+
   // --- Anglais ------------------------------------------------------------------------------------------------
   await api(a, 'PUT', '/api/auth/locale', { locale: 'en' });
   await a.goto(sheet(council));
@@ -274,6 +374,11 @@ try {
   await form.waitFor({ timeout: 10000 });
   check(await parents.locator('legend').innerText() === 'Member of', 'anglais : rubrique du formulaire');
   await parents.screenshot({ path: path.join(SHOTS, 'formulaire-membre-de-en.png') });
+  // Index en anglais : marque d'une faction à deux parents.
+  await a.goto(sheet(martell));
+  await tree.waitFor({ timeout: 10000 });
+  check(await rowAt(`${pC}/${martell.id}`).locator('.char-list__also').getAttribute('title') === 'Also a member of: Dorne',
+    'anglais : « Also a member of: Dorne »');
   await api(a, 'PUT', '/api/auth/locale', { locale: '' });
   ok = true;
 } catch (e) {
