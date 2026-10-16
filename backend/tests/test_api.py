@@ -164,6 +164,20 @@ def undo_nested_factions(conn: sqlite3.Connection) -> None:
     """)
 
 
+def undo_timeline(conn: sqlite3.Connection) -> None:
+    """Défait la migration 032 (chronologie), pour rejouer les migrations depuis une base plus ancienne."""
+    conn.executescript("""
+        DELETE FROM search_index WHERE kind = 'event';
+        DROP TRIGGER trg_timeline_mentions_npc;
+        DROP TRIGGER trg_timeline_mentions_faction;
+        DROP TRIGGER trg_timeline_mentions_place;
+        DROP TRIGGER trg_timeline_mentions_doc;
+        DROP TABLE timeline_mentions;
+        DROP TABLE timeline_events;
+        ALTER TABLE campaigns DROP COLUMN timeline_enabled;
+    """)
+
+
 def rewind_schema(conn: sqlite3.Connection, version: int) -> None:
     """Ramène l'enregistrement des migrations à `version` (user_version et schema_migrations), une fois le schéma
     lui-même défait par le test : les migrations suivantes seront rejouées par db.migrate."""

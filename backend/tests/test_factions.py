@@ -213,7 +213,7 @@ class NestedFactionsMigrationTest(unittest.TestCase):
                 rows = conn.execute("SELECT * FROM memberships ORDER BY id").fetchall()
             db.migrate(path)
             with sqlite3.connect(path) as conn:
-                self.assertEqual(conn.execute("PRAGMA user_version").fetchone()[0], 31)
+                self.assertEqual(conn.execute("PRAGMA user_version").fetchone()[0], db.migration_files()[-1][0])
                 after = conn.execute("SELECT id, npc_id, faction_id, role, is_leader, member_faction_id "
                                      "FROM memberships ORDER BY id").fetchall()
                 self.assertEqual(after, [tuple(r) + (None,) for r in rows])
