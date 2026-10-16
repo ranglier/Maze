@@ -161,6 +161,15 @@ def tr(template: str, locale: str | None, /, **params: Any) -> str:
     return translate(Msg(template, params), locale)
 
 
+def ptr(context: str, text: str, locale: str | None) -> str:
+    """Texte traduit selon son contexte, comme pt() de l'interface : clé « contexte|texte » du catalogue
+    (« foundry|Fiche » : nom d'une page de Foundry ; « Fiche » seul : sorte de fiche d'un message d'erreur) ; texte
+    français si la clé manque. Les paramètres ({name}) sont laissés tels quels, à remplir par qui l'utilise."""
+    if not locale or locale == SOURCE_LOCALE:
+        return text
+    return lookup(f"{context}|{text}", locale) or text
+
+
 def lookup(text: str, locale: str) -> str | None:
     """Traduction exacte d'un texte sans paramètres, ou None."""
     value = catalog(locale).get(text)

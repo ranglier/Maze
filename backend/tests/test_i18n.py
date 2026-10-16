@@ -14,6 +14,7 @@ import contextlib
 import io
 import json
 import os
+import re
 import sqlite3
 import tempfile
 import unittest
@@ -22,11 +23,15 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
-from maze import defaults, i18n
+from maze import defaults, foundry, i18n
 from tests.test_api import Client, Server
 
 PACKAGE = Path(__file__).resolve().parents[1] / "maze"
 CATALOGS = PACKAGE / "i18n"
+
+
+# Contexte d'une clé « contexte|texte » (i18n.ptr), comme pt() de l'interface.
+CONTEXT = re.compile(r"[a-z][\w-]*")
 
 
 def placeholders(text: str) -> set[str]:
@@ -106,11 +111,28 @@ class CatalogFilesTest(unittest.TestCase):
         self.assertEqual(problems, [])
 
     def test_keys_used_in_code(self):
-        """Une clé qui ne figure nulle part dans le code (faute de frappe, message supprimé) ne servirait jamais."""
+        """Une clé qui ne figure nulle part dans le code (faute de frappe, message supprimé) ne servirait jamais. Clé à
+        contexte (« foundry|Fiche », i18n.ptr) : le contexte et le texte doivent y figurer."""
         text = sources()
+
+        def used(key: str) -> bool:
+            context, sep, rest = key.partition("|")
+            if sep and CONTEXT.fullmatch(context):
+                return f'"{context}"' in text and rest in text
+            return key in text
+
         unused = [f"{p.parent.name}/{p.name} : « {key} »" for p in catalog_files()
-                  for key in json.loads(p.read_text(encoding="utf-8")) if key not in text]
+                  for key in json.loads(p.read_text(encoding="utf-8")) if not used(key)]
         self.assertEqual(unused, [])
+
+    def test_context(self):
+        """ptr : clé « contexte|texte » (même texte français, autre traduction), texte français si elle manque."""
+        self.assertEqual(i18n.translate("Fiche", "en"), "Entry")
+        self.assertEqual(i18n.ptr("foundry", "Fiche", "en"), "Sheet")
+        self.assertEqual(i18n.ptr("foundry", "Fiche", "fr"), "Fiche")
+        self.assertEqual(i18n.ptr("foundry", "Fiche de {name} (Maze)", "en"), "{name}'s sheet (Maze)")
+        self.assertEqual(i18n.ptr("inconnu", "Fiche", "en"), "Fiche")
+        self.assertEqual(i18n.ptr("foundry", "Fiche", None), "Fiche")
 
 
 class MessagesTest(unittest.TestCase):
@@ -379,6 +401,7 @@ class CompleteCatalogTest(unittest.TestCase):
         self.assert_translated(documents.TITLES.values(), "documents.TITLES")
         self.assert_translated([*image_copy.KIND_LABEL.values(), *image_copy.DOC_LABEL.values()], "image_copy")
         self.assert_translated(foundry.STATUS_LABELS.values(), "foundry.STATUS_LABELS")
+        self.assert_translated([f"foundry|{text}" for text in foundry.WORLD_LABELS.values()], "foundry.WORLD_LABELS")
         self.assert_translated([f.foundry_label or f.label for kind in entries.KINDS for f in entries.fields(kind)
                                 if f.foundry], "entries (Foundry)")
         self.assert_translated([label for _, label, *_ in defaults.DEFAULT_RELATION_TYPES], "natures de lien")
@@ -717,6 +740,15 @@ class FoundryExportLanguageTest(unittest.TestCase):
             # Autre langue = autre HTML, donc autre empreinte : le module réécrit les pages non modifiées.
             self.assertNotEqual(bob["en"]["hash"], bob["fr"]["hash"])
             self.assertEqual(en["campaign"]["name"], "Foundry")
+            # Langue des pages et noms à créer dans le monde (dossiers, pages) : ceux de la langue demandée, pas
+            # celle du poste du MJ (que Foundry seul connaît) ; langue inconnue du serveur : MAZE_DEFAULT_LOCALE.
+            self.assertEqual([d["locale"] for d in (default, fr, en, other)], ["fr", "fr", "en", "fr"])
+            self.assertEqual(fr["labels"], foundry.WORLD_LABELS)
+            self.assertEqual(other["labels"], foundry.WORLD_LABELS)
+            self.assertEqual({k: en["labels"][k] for k in ("Page.Sheet", "Page.Secrets", "Kind.npc", "Folder.Root",
+                                                          "Page.ActorLink")},
+                             {"Page.Sheet": "Sheet", "Page.Secrets": "Secrets (GM)", "Kind.npc": "NPCs",
+                              "Folder.Root": "{campaign} - {label}", "Page.ActorLink": "{name}'s sheet (Maze)"})
             self.assertEqual({k["key"]: k["label"] for k in en["place_kinds"]}["ville"], "Ville")   # données de la campagne
         finally:
             s.stop()

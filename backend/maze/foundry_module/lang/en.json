@@ -5,6 +5,13 @@
       "Label": "Import from Maze",
       "Hint": "NPCs, factions, places and maps of a Maze campaign as journals, scenes and actors."
     },
+    "Settings": {
+      "PageLanguage": {
+        "Name": "Language of imported pages",
+        "Hint": "Language of the pages, folders and names created in the world, the same for every GM. Automatic: the language of the first import (French for a world already imported before this setting), otherwise Foundry's language. Changing it rewrites, at the next import, the pages not changed in Foundry.",
+        "Auto": "Automatic"
+      }
+    },
     "Kind": {
       "npc": "NPCs",
       "faction": "Factions",

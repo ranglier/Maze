@@ -5,6 +5,13 @@
       "Label": "Importer depuis Maze",
       "Hint": "PNJ, factions, lieux et cartes d'une campagne de Maze en journaux, scènes et acteurs."
     },
+    "Settings": {
+      "PageLanguage": {
+        "Name": "Langue des pages importées",
+        "Hint": "Langue des pages, des dossiers et des noms créés dans le monde, la même pour tous les MJ. Automatique : celle du premier import (français pour un monde déjà importé avant ce réglage), sinon celle de Foundry. La changer réécrit, à l'import suivant, les pages non modifiées dans Foundry.",
+        "Auto": "Automatique"
+      }
+    },
     "Kind": {
       "npc": "PNJ",
       "faction": "Factions",

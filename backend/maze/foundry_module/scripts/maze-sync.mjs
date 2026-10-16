@@ -17,11 +17,17 @@
  * jour ce qui a changé dans Maze et laisse de côté ce qui a été modifié dans Foundry depuis le dernier import
  * (sauf si l'option « remplacer » est cochée) ; une fiche disparue de Maze est rangée dans « Retirés de Maze ».
  *
- * Langue : textes du module dans lang/<langue>.json (clés MAZE_SYNC.*, game.i18n.localize et format ; français et
- * anglais, Foundry retombe sur l'anglais pour une autre langue). Les pages composées par Maze suivent la langue du
- * monde : le module l'envoie dans l'export (?lang=, game.i18n.lang). Changer de langue renomme les dossiers et change
- * le HTML des pages, donc leur empreinte : l'import suivant réécrit les pages non modifiées dans Foundry et signale
- * les autres (« Modifiés dans Foundry »), sans les toucher sauf avec « Remplacer ».
+ * Langue : interface du module (fenêtre, boutons, journal, rapport) dans la langue du poste du MJ (lang/<langue>.json,
+ * clés MAZE_SYNC.*, game.i18n.localize et format ; Foundry retombe sur l'anglais pour une autre langue). Contenu créé
+ * dans le monde (pages composées par Maze, noms des dossiers et des pages, lien de la biographie) dans la langue des
+ * pages du monde, la même pour tous les MJ (pageLanguage) : réglage « Langue des pages importées » (portée monde) ;
+ * en « Automatique », langue retenue au premier import du monde (réglage caché pageLanguageUsed) ; monde déjà importé
+ * par une version d'avant ce réglage : français (langue de ces versions, empreintes préservées) ; sinon langue du
+ * poste (game.i18n.lang) ramenée aux langues du module. Envoyée dans l'export (?lang=) : Maze compose les pages et
+ * renvoie les noms à créer (`labels`) dans cette langue, puisque Foundry ne charge que celle du poste. Changer la
+ * langue des pages renomme les dossiers et change le HTML des pages, donc leur empreinte : l'import suivant réécrit
+ * les pages non modifiées dans Foundry et signale les autres (« Modifiés dans Foundry »), sans les toucher sauf avec
+ * « Remplacer ».
  */
 
 const MODULE_ID = "maze-sync";
@@ -43,8 +49,72 @@ const ACTOR_SYSTEMS = {
 /* Traduction                                                                                      */
 /* ---------------------------------------------------------------------------------------------- */
 
-/** Langue du monde (game.i18n.lang) ; « fr » avant l'initialisation de Foundry. */
+/** Langue du poste du MJ (game.i18n.lang, réglage client de Foundry) ; « fr » avant l'initialisation de Foundry. */
 const currentLang = () => globalThis.game?.i18n?.lang || "fr";
+
+/** Réglage du module ; chaîne vide s'il n'est pas (encore) enregistré. */
+function setting(key) {
+  try {
+    return globalThis.game?.settings?.get(MODULE_ID, key) ?? "";
+  } catch (err) {
+    return "";
+  }
+}
+
+/** Langues du module (entrée `languages` de module.json : fr, en…), dans l'ordre du manifeste. */
+function moduleLanguages() {
+  const declared = [...(globalThis.game?.modules?.get(MODULE_ID)?.languages ?? [])].map((l) => l?.lang).filter(Boolean);
+  return declared.length ? declared : ["fr", "en"];
+}
+
+/** Code de langue ramené aux langues du module (« en-US » > « en ») ; anglais à défaut, comme Foundry. */
+function knownLanguage(code) {
+  const known = moduleLanguages();
+  const wanted = String(code ?? "").trim().toLowerCase().replace("_", "-");
+  const found = known.find((l) => l.toLowerCase() === wanted) ?? known.find((l) => l.toLowerCase() === wanted.split("-")[0]);
+  return found ?? (known.includes("en") ? "en" : known[0]);
+}
+
+/** Choix du réglage « Langue des pages importées » : Automatique, puis chaque langue sous son nom (Français…). */
+function pageLanguageChoices() {
+  const choices = { auto: "MAZE_SYNC.Settings.PageLanguage.Auto" };
+  for (const lang of moduleLanguages()) {
+    let name = lang;
+    try { name = new Intl.DisplayNames([lang], { type: "language" }).of(lang) ?? lang; } catch (err) { /* inconnue */ }
+    choices[lang] = name.charAt(0).toLocaleUpperCase(lang) + name.slice(1);
+  }
+  return choices;
+}
+
+/** Documents déjà importés de Maze dans ce monde (n'importe quelle campagne). */
+function importedBefore() {
+  const g = globalThis.game;
+  return [g?.journal, g?.scenes, g?.actors, g?.folders].some((list) => list?.some?.((doc) => !!flagOf(doc)));
+}
+
+/**
+ * Langue des pages du monde, la même quel que soit le poste du MJ qui importe : réglage explicite du monde, sinon
+ * langue retenue au premier import, sinon français si le monde contient déjà des documents importés par une version
+ * d'avant ce réglage (pages en français : leurs empreintes restent valables), sinon langue du poste.
+ */
+function pageLanguage() {
+  const chosen = setting("pageLanguage");
+  if (chosen && chosen !== "auto") return knownLanguage(chosen);
+  const used = setting("pageLanguageUsed");
+  if (used) return used;
+  if (importedBefore()) return "fr";
+  return knownLanguage(currentLang());
+}
+
+/** Retient la langue des pages du monde après un export (réglage du monde : MJ seulement). */
+async function rememberPageLanguage(lang) {
+  if (!lang || setting("pageLanguageUsed") === lang) return;
+  try {
+    await game.settings.set(MODULE_ID, "pageLanguageUsed", lang);
+  } catch (err) {
+    console.warn(`${MODULE_ID} | pageLanguageUsed`, err);
+  }
+}
 
 /** Texte du module (lang/<langue>.json, clé MAZE_SYNC.<key>) : game.i18n.localize, ou format avec des valeurs. */
 function L(key, data) {
@@ -54,7 +124,7 @@ function L(key, data) {
   return data ? i18n.format(id, data) : i18n.localize(id);
 }
 
-/** Texte au pluriel : sous-clés one / other… choisies par Intl.PluralRules de la langue du monde ({n} fourni). */
+/** Texte au pluriel : sous-clés one / other… choisies par Intl.PluralRules de la langue du poste ({n} fourni). */
 function Ln(key, n, data = {}) {
   let category = "other";
   try { category = new Intl.PluralRules(currentLang()).select(n); } catch (err) { /* langue inconnue d'Intl */ }
@@ -191,8 +261,8 @@ class MazeClient {
     return (await this.json(`${API}/campaigns`)).campaigns;
   }
 
-  /** Export d'une campagne ; pages composées par Maze dans la langue `lang` (celle du monde par défaut). */
-  async exportCampaign(id, lang = currentLang()) {
+  /** Export d'une campagne ; pages et noms composés par Maze dans la langue `lang` (celle des pages du monde). */
+  async exportCampaign(id, lang = pageLanguage()) {
     return this.json(`${API}/campaigns/${id}/export?lang=${encodeURIComponent(lang)}`);
   }
 
@@ -227,8 +297,11 @@ class MazeImporter {
 
   async run() {
     this.log(L("Log.Reading"));
-    this.data = await this.client.exportCampaign(this.cid);
+    const lang = pageLanguage();
+    this.data = await this.client.exportCampaign(this.cid, lang);
     const d = this.data;
+    // Langue des pages retenue pour ce monde (celle que Maze a employée : la demandée, s'il la connaît).
+    await rememberPageLanguage(d.locale || lang);
     this.instance = d.instance;
     this.log(L("Log.Campaign", { name: d.campaign.name, npcs: d.npcs.length, factions: d.factions.length,
       places: d.places.length, maps: d.maps.length }));
@@ -320,6 +393,16 @@ class MazeImporter {
     return update;
   }
 
+  /**
+   * Nom créé dans le monde (dossier, page, lien), dans la langue des pages : libellé renvoyé par l'export de Maze
+   * (`labels`), sinon texte du module dans la langue du poste (export d'une version de Maze qui ne les renvoie pas).
+   */
+  label(key, data = {}) {
+    const template = this.data?.labels?.[key];
+    if (typeof template !== "string") return L(key, data);
+    return template.replace(/{(\w+)}/g, (all, name) => (name in data ? String(data[name]) : all));
+  }
+
   /* --- Dossiers ------------------------------------------------------------------------------ */
 
   async folder(type, key, name, parent = null) {
@@ -340,16 +423,16 @@ class MazeImporter {
   }
 
   rootName(label) {
-    return L("Folder.Root", { campaign: this.data.campaign.name, label });
+    return this.label("Folder.Root", { campaign: this.data.campaign.name, label });
   }
 
   /** Dossier d'un journal (ou d'un acteur) selon sa nature et sa place dans Maze. */
   async folderFor(type, kind, entity) {
-    if (kind === "faction") return this.folder(type, "faction-root", this.rootName(kindLabel("faction")));
+    if (kind === "faction") return this.folder(type, "faction-root", this.rootName(this.label("Kind.faction")));
     if (kind === "npc") {
-      const root = await this.folder(type, "npc-root", this.rootName(kindLabel("npc")));
+      const root = await this.folder(type, "npc-root", this.rootName(this.label("Kind.npc")));
       const group = entity.group ? this.data.factions.find((f) => f.id === entity.group) : null;
-      if (!group) return this.folder(type, "npc-group:none", L("Folder.NoFaction"), root);
+      if (!group) return this.folder(type, "npc-group:none", this.label("Folder.NoFaction"), root);
       return this.folder(type, `npc-group:${group.id}`, group.name, root);
     }
     // Lieux : un dossier par lieu qui a des sous-lieux, tant que la profondeur le permet.
@@ -361,7 +444,7 @@ class MazeImporter {
   }
 
   async placeFolder(place) {
-    const root = await this.folder("JournalEntry", "place-root", this.rootName(kindLabel("place")));
+    const root = await this.folder("JournalEntry", "place-root", this.rootName(this.label("Kind.place")));
     if (!place) return root;
     const parent = await this.placeFolder(this.placeById(place.parent));
     const childDepth = (parent.depth ?? (parent.ancestors?.length ?? 0) + 1) + 1;
@@ -491,7 +574,7 @@ class MazeImporter {
     let html = this.render(entity.html);
     if (kind === "place") {
       const scenes = this.scenesByPlace.get(entity.id) ?? [];
-      if (scenes.length) html += `<h2>${escapeHtml(L("Page.Maps"))}</h2><ul>` + scenes.map((s) => `<li><p>${uuidLink(s, s.name)}</p></li>`).join("") + "</ul>";
+      if (scenes.length) html += `<h2>${escapeHtml(this.label("Page.Maps"))}</h2><ul>` + scenes.map((s) => `<li><p>${uuidLink(s, s.name)}</p></li>`).join("") + "</ul>";
     }
     return html;
   }
@@ -523,8 +606,8 @@ class MazeImporter {
     const result = { updated: false, skipped: [] };
     const ownership = CONST.DOCUMENT_OWNERSHIP_LEVELS;
     const texts = [
-      { role: "sheet", name: L("Page.Sheet"), html: this.sheetHtml(kind, entity), sort: 0, title: false },
-      { role: "secrets", name: L("Page.Secrets"), html: this.render(entity.secret_html), sort: 50, title: true,
+      { role: "sheet", name: this.label("Page.Sheet"), html: this.sheetHtml(kind, entity), sort: 0, title: false },
+      { role: "secrets", name: this.label("Page.Secrets"), html: this.render(entity.secret_html), sort: 50, title: true,
         // Page réservée au MJ, même si le journal est partagé avec les joueurs.
         ownership: { default: ownership?.NONE ?? 0 } }
     ];
@@ -626,7 +709,7 @@ class MazeImporter {
     }
     if (!this.syncMaps.length) return;
     this.log(Ln("Log.Scenes", this.syncMaps.length));
-    const folder = await this.folder("Scene", "scene-root", this.rootName(L("Folder.Maps")));
+    const folder = await this.folder("Scene", "scene-root", this.rootName(this.label("Folder.Maps")));
     const icons = new Map(d.place_kinds.map((k) => [k.key, k.icon ? this.paths.get(k.icon) : null]));
     const places = new Map(d.places.map((p) => [p.id, p]));
     const v14 = game.release.generation >= 14;
@@ -729,7 +812,7 @@ class MazeImporter {
       try {
         const folder = await this.folderFor("Actor", "npc", npc);
         const journal = this.journals.get(`npc:${npc.id}`);
-        const bio = (journal ? `<p>${uuidLink(journal, L("Page.ActorLink", { name: npc.name }))}</p>` : "") + this.render(npc.actor_bio);
+        const bio = (journal ? `<p>${uuidLink(journal, this.label("Page.ActorLink", { name: npc.name }))}</p>` : "") + this.render(npc.actor_bio);
         const bioHash = hashText(bio);
         const img = this.imagePath(npc.cover);
         const actor = existing.get(npc.id);
@@ -792,7 +875,7 @@ class MazeImporter {
   async retireMissing() {
     for (const [type, docs] of Object.entries(this.stale)) {
       if (!docs.length) continue;
-      const folder = await this.folder(type, "removed", L("Folder.Removed"));
+      const folder = await this.folder(type, "removed", this.label("Folder.Removed"));
       for (const doc of docs) {
         await doc.update({ folder: folder.id, [`flags.${MODULE_ID}.removed`]: true });
         this.report.removed += 1;
@@ -1009,6 +1092,13 @@ Hooks.once("init", () => {
   game.settings.register(MODULE_ID, "lastCampaign", { scope: "client", config: false, type: String, default: "" });
   // Dernier scénario importé : « adresse|campagne|scénario » (scénario vide : toute la campagne).
   game.settings.register(MODULE_ID, "lastScenario", { scope: "client", config: false, type: String, default: "" });
+  // Langue des pages importées : réglage du monde, le même pour tous les MJ (voir pageLanguage). Automatique : langue
+  // retenue au premier import (pageLanguageUsed, caché).
+  game.settings.register(MODULE_ID, "pageLanguage", {
+    scope: "world", config: true, type: String, default: "auto", choices: pageLanguageChoices(),
+    name: "MAZE_SYNC.Settings.PageLanguage.Name", hint: "MAZE_SYNC.Settings.PageLanguage.Hint"
+  });
+  game.settings.register(MODULE_ID, "pageLanguageUsed", { scope: "world", config: false, type: String, default: "" });
   // Clés de traduction : Foundry les traduit à l'affichage (les traductions ne sont pas encore chargées à « init »).
   game.settings.registerMenu(MODULE_ID, "import", {
     name: "MAZE_SYNC.Menu.Name",

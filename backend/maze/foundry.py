@@ -49,11 +49,36 @@ MODULE_DIR = Path(__file__).resolve().parent / "foundry_module"
 # dépôt hors de l'image.
 LICENSE_FILES = (MODULE_DIR.parents[1] / "LICENSE", MODULE_DIR.parents[2] / "LICENSE")
 STATUS_LABELS = {"vivant": "Vivant", "mort": "Mort", "disparu": "Disparu", "inconnu": "Inconnu"}
-# Langue des pages composées ici (intitulés des rubriques, statuts, « passage secret »…) : celle du monde Foundry,
-# envoyée par le module (paramètre `lang` de l'export, game.i18n.lang), sinon MAZE_DEFAULT_LOCALE ; traductions dans
-# maze/i18n/<langue>/foundry.json. Les données des MJ (noms, types de lieux, natures de lien) ne sont jamais
-# traduites. Changer de langue change le HTML, donc l'empreinte (`hash`) des pages : à l'import suivant, le module
-# réécrit les pages non modifiées dans Foundry et signale les autres (« Modifiés dans Foundry »).
+# Langue des pages composées ici (intitulés des rubriques, statuts, « passage secret »…) : celle des pages du monde,
+# choisie par le module et envoyée dans le paramètre `lang` de l'export (réglage « Langue des pages importées » du
+# monde, sinon langue retenue au premier import, jamais celle du poste du MJ qui importe), sinon MAZE_DEFAULT_LOCALE ;
+# traductions dans maze/i18n/<langue>/foundry.json. Les données des MJ (noms, types de lieux, natures de lien) ne
+# sont jamais traduites. Changer de langue change le HTML, donc l'empreinte (`hash`) des pages : à l'import suivant, le
+# module réécrit les pages non modifiées dans Foundry et signale les autres (« Modifiés dans Foundry »).
+#
+# Noms créés par le module dans le monde (dossiers, pages « Fiche » et « Secrets (MJ) », lien de la biographie d'un
+# acteur) : renvoyés par l'export dans la même langue (`labels`, clés de lang/<langue>.json du module, paramètres
+# {campaign}, {label}, {name} remplis par le module), car Foundry ne charge que la langue du poste du MJ. Traduits
+# avec le contexte « foundry » (i18n.ptr, clés « foundry|Fiche »…) : « Fiche » et « PNJ » ont ailleurs une autre
+# traduction. Textes français identiques à lang/fr.json du module (vérifié par tests.test_foundry).
+WORLD_LABELS = {
+    "Folder.Root": "{campaign} - {label}",
+    "Folder.Maps": "Cartes",
+    "Folder.NoFaction": "Sans faction",
+    "Folder.Removed": "Retirés de Maze",
+    "Kind.npc": "PNJ",
+    "Kind.faction": "Factions",
+    "Kind.place": "Lieux",
+    "Page.Sheet": "Fiche",
+    "Page.Secrets": "Secrets (MJ)",
+    "Page.Maps": "Cartes",
+    "Page.ActorLink": "Fiche de {name} (Maze)",
+}
+
+
+def world_labels(locale: str) -> dict[str, str]:
+    """Noms des dossiers et des pages créés dans le monde, dans la langue des pages (voir WORLD_LABELS)."""
+    return {key: i18n.ptr("foundry", text, locale) for key, text in WORLD_LABELS.items()}
 
 
 # --- CORS ------------------------------------------------------------------------------------------
@@ -510,6 +535,9 @@ def build_export(conn: sqlite3.Connection, cid: int, version: str, instance: str
         "format": FORMAT,
         "maze_version": version,
         "instance": instance,
+        # Langue des pages (celle demandée si le serveur la connaît) et noms à créer dans le monde dans cette langue.
+        "locale": locale,
+        "labels": world_labels(locale),
         "campaign": {"id": campaign["id"], "name": campaign["name"], "description": campaign["description"],
                      "updated_at": campaign["updated_at"]},
         "place_kinds": [{"key": k["key"], "label": k["label"], "icon": k["image"] or None} for k in kinds],
@@ -549,7 +577,7 @@ def _list_campaigns(request: Request) -> dict[str, Any]:
 def export_campaign(request: Request) -> Response:
     cid = path_id(request)
     cfg = settings(request)
-    # Langue du monde Foundry (?lang=en, game.i18n.lang), sinon MAZE_DEFAULT_LOCALE (voir STATUS_LABELS).
+    # Langue des pages du monde choisie par le module (?lang=en), sinon MAZE_DEFAULT_LOCALE (voir WORLD_LABELS).
     locale = i18n.chosen_locale(request.query_params.get("lang"), request.scope)
 
     def work() -> dict[str, Any]:

@@ -6,7 +6,8 @@
 // écritures. Couvert : empreintes (valeurs figées : les changer ferait passer toutes les pages déjà importées pour
 // modifiées dans Foundry), blocs secrets révélés, construction des pages (fiche, secrets du MJ, images), liens et
 // images remplacés, dépôt des fichiers, choix des dossiers, rapprochement des documents, systèmes d'acteurs, textes du
-// module (lang/fr.json et lang/en.json, `game.i18n` simulé comme celui de Foundry) en français et en anglais.
+// module (lang/fr.json et lang/en.json, `game.i18n` simulé comme celui de Foundry) en français et en anglais, langue
+// des pages du monde (réglage du monde, langue retenue, mondes déjà importés) distincte de celle du poste du MJ.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -33,7 +34,9 @@ function langStrings(lang) {
 
 /** `game.i18n` de Foundry réduit à ce que le module utilise : lang, has, localize, format (clé absente : la clé). */
 function makeI18n(lang = 'fr') {
-  const strings = langStrings(lang);
+  // Langue sans fichier dans le module (fr-CA, pt-BR…) : Foundry retombe sur l'anglais.
+  const exists = (code) => fs.existsSync(path.join(MODULE_DIR, 'lang', `${code}.json`));
+  const strings = langStrings(exists(lang) ? lang : 'en');
   return {
     lang,
     has: (key) => key in strings,
@@ -70,7 +73,8 @@ function loadModule() {
   // Module ES = mode strict ; « use strict » sur la première ligne garde les numéros de ligne des erreurs.
   vm.runInContext(`"use strict";${SOURCE}`, ctx, { filename: 'maze-sync.mjs' });
   const inner = vm.runInContext(`({ MODULE_ID, ACTOR_SYSTEMS, hashText, normalizeSecrets, revealedIds, keepRevealed,
-    contentHash, linkLabel, escapeHtml, MazeImporter, MazeClient, MazeImportApp })`, ctx);
+    contentHash, linkLabel, escapeHtml, MazeImporter, MazeClient, MazeImportApp, pageLanguage, knownLanguage,
+    pageLanguageChoices })`, ctx);
   return { ctx, hooks, ...inner };
 }
 
@@ -95,13 +99,28 @@ function applyChanges(target, changes) {
   }
 }
 
-function makeWorld({ system = 'dark-heresy-v1', maxDepth = 4, lang = 'fr' } = {}) {
+/** Réglages du module (game.settings) : valeurs par défaut de Foundry, écritures retenues dans `values`. */
+function makeSettings(initial = {}) {
+  const values = { url: '', token: '', lastCampaign: '', lastScenario: '', pageLanguage: 'auto', pageLanguageUsed: '',
+    ...initial };
+  return {
+    values,
+    get: (module, key) => {
+      if (module !== MODULE_ID || !(key in values)) throw new Error(`réglage non enregistré : ${module}.${key}`);
+      return values[key];
+    },
+    set: async (module, key, value) => { values[key] = value; return value; },
+  };
+}
+
+function makeWorld({ system = 'dark-heresy-v1', maxDepth = 4, lang = 'fr', settings = {} } = {}) {
   let next = 1;
   const world = {
     writes: [],
     game: {
       journal: collection(), folders: collection(), scenes: collection(), actors: collection(),
       world: { id: 'monde' }, system: { id: system }, release: { generation: 13 }, i18n: makeI18n(lang),
+      settings: makeSettings(settings),
     },
   };
 
@@ -177,6 +196,12 @@ function makeWorld({ system = 'dark-heresy-v1', maxDepth = 4, lang = 'fr' } = {}
   };
   return world;
 }
+
+// Noms créés dans le monde, renvoyés par l'export (`labels`, foundry.WORLD_LABELS) : mêmes textes que lang/<langue>.json
+// du module (vérifié côté serveur par tests.test_foundry.WorldLabelsTest).
+const WORLD_KEYS = ['Folder.Root', 'Folder.Maps', 'Folder.NoFaction', 'Folder.Removed', 'Kind.npc', 'Kind.faction',
+  'Kind.place', 'Page.Sheet', 'Page.Secrets', 'Page.Maps', 'Page.ActorLink'];
+const worldLabels = (lang) => Object.fromEntries(WORLD_KEYS.map((k) => [k, langStrings(lang)[`MAZE_SYNC.${k}`]]));
 
 /** Export minimal d'une campagne (format maze-foundry/1 de backend/maze/foundry.py). */
 function exportData() {
@@ -515,10 +540,18 @@ test('chargement : réglages du client, menu réservé au MJ, API du module', ()
   const settings = [];
   const menus = [];
   mod.ctx.game = { settings: { register: (...a) => settings.push(a), registerMenu: (...a) => menus.push(a) },
-    modules: new Map([[MODULE_ID, {}]]), i18n: makeI18n('fr') };
+    modules: new Map([[MODULE_ID, { languages: new Set([{ lang: 'fr', path: 'lang/fr.json' }, { lang: 'en', path: 'lang/en.json' }]) }]]),
+    i18n: makeI18n('fr') };
   mod.hooks.once.init();
-  assert.deepEqual(settings.map(([m, key, o]) => [m, key, o.scope, o.config]),
-    ['url', 'token', 'lastCampaign', 'lastScenario'].map((k) => [MODULE_ID, k, 'client', false]));
+  // Adresse, jeton et derniers choix : poste du MJ ; langue des pages : monde (la même pour tous les MJ).
+  assert.deepEqual(settings.map(([m, key, o]) => [m, key, o.scope, o.config]), [
+    ...['url', 'token', 'lastCampaign', 'lastScenario'].map((k) => [MODULE_ID, k, 'client', false]),
+    [MODULE_ID, 'pageLanguage', 'world', true], [MODULE_ID, 'pageLanguageUsed', 'world', false]]);
+  const language = settings.find(([, key]) => key === 'pageLanguage')[2];
+  assert.equal(language.default, 'auto');
+  assert.deepEqual(plain(language.choices), { auto: 'MAZE_SYNC.Settings.PageLanguage.Auto', fr: 'Français', en: 'English' });
+  assert.deepEqual([language.name, language.hint],
+    ['MAZE_SYNC.Settings.PageLanguage.Name', 'MAZE_SYNC.Settings.PageLanguage.Hint']);
   assert.equal(menus[0][2].restricted, true);
   // Clés de traduction, traduites par Foundry à l'affichage (pas encore chargées à « init »).
   assert.deepEqual([menus[0][2].name, menus[0][2].label, menus[0][2].hint],
@@ -578,6 +611,7 @@ test('lang/fr.json et lang/en.json : mêmes clés, mêmes paramètres, toutes le
   const used = new Set();
   for (const m of SOURCE.matchAll(/\bLn?\("([\w.]+)"/g)) used.add(m[1]);
   for (const m of SOURCE.matchAll(/T\("([\w.]+)"/g)) used.add(m[1]);
+  for (const m of SOURCE.matchAll(/\blabel\("([\w.]+)"/g)) used.add(m[1]);
   for (const m of SOURCE.matchAll(/"MAZE_SYNC\.([\w.]+)"/g)) used.add(m[1]);
   for (const kind of ['npc', 'faction', 'place', 'map', 'actor']) used.add(`Kind.${kind}`);
   for (const status of ['brouillon', 'pret', 'en_cours', 'joue']) used.add(`Status.${status}`);
@@ -590,7 +624,8 @@ test('lang/fr.json et lang/en.json : mêmes clés, mêmes paramètres, toutes le
   assert.deepEqual(strings.filter((str) => /[éèàùçêâîôû«»]/.test(str) && !str.startsWith('MAZE_SYNC')), []);
 });
 
-test('anglais : dossiers, pages, acteurs et erreurs du monde dans la langue de Foundry', async () => {
+test('repli sans libellés de l’export : dossiers, pages et acteurs dans la langue de Foundry', async () => {
+  // Export d'une version de Maze qui ne renvoie pas `labels` : textes du module dans la langue du poste.
   const world = makeWorld({ lang: 'en' });
   const imp = importer(world);
   const data = imp.data;
@@ -653,5 +688,131 @@ test('anglais : fenêtre, rapport et erreurs de Maze ; langue envoyée avec l’
   assert.equal(urls[0], 'https://maze.example.org/api/foundry/v1/campaigns/9/export?lang=en');
   await assert.rejects(client.campaigns(), /^Error: Maze answered 503\.$/);
   await assert.rejects(new mod.MazeClient('maze', 't').campaigns(), /Invalid Maze address/);
+  delete mod.ctx.fetch;
+});
+
+/* --- Langue des pages du monde ---------------------------------------------------------------------------------- */
+
+test('langue des pages : réglage du monde, langue retenue, monde déjà importé, sinon langue du poste', () => {
+  // Monde neuf, réglage « Automatique » : langue du poste ramenée aux langues du module (anglais à défaut).
+  for (const [client, expected] of [['en', 'en'], ['fr', 'fr'], ['fr-CA', 'fr'], ['en_GB', 'en'], ['pt-BR', 'en']]) {
+    makeWorld({ lang: client });
+    assert.equal(mod.pageLanguage(), expected, client);
+  }
+  // Langue retenue au premier import : elle l'emporte sur le poste du MJ qui importe.
+  makeWorld({ lang: 'en', settings: { pageLanguageUsed: 'fr' } });
+  assert.equal(mod.pageLanguage(), 'fr');
+  makeWorld({ lang: 'fr', settings: { pageLanguageUsed: 'en' } });
+  assert.equal(mod.pageLanguage(), 'en');
+  // Monde importé par une version d'avant ce réglage (documents marqués, aucune langue retenue) : français, langue de
+  // ces versions, pour que les empreintes des pages restent valables. Dossier seul, scène ou acteur : de même.
+  let world = makeWorld({ lang: 'en' });
+  world.journal('npc', 1);
+  assert.equal(mod.pageLanguage(), 'fr');
+  for (const coll of ['folders', 'scenes', 'actors']) {
+    world = makeWorld({ lang: 'en' });
+    world.game[coll].push(new world.FakeDoc('Folder', { name: 'x', flags: { [MODULE_ID]: { instance: 'i', campaign: 1 } } }));
+    assert.equal(mod.pageLanguage(), 'fr', coll);
+  }
+  world = makeWorld({ lang: 'en' });
+  world.game.journal.push(new world.FakeDoc('JournalEntry', { name: 'Notes du MJ', flags: { autre: {} } }));
+  assert.equal(mod.pageLanguage(), 'en');   // documents d'autres modules : ignorés
+  // Réglage explicite : il l'emporte sur tout.
+  world = makeWorld({ lang: 'fr', settings: { pageLanguage: 'en', pageLanguageUsed: 'fr' } });
+  world.journal('npc', 1);
+  assert.equal(mod.pageLanguage(), 'en');
+  makeWorld({ lang: 'en', settings: { pageLanguage: 'fr' } });
+  assert.equal(mod.pageLanguage(), 'fr');
+  // Avant l'enregistrement des réglages (ou sans Foundry) : langue du poste.
+  mod.ctx.game = { i18n: makeI18n('en') };
+  assert.equal(mod.pageLanguage(), 'en');
+  assert.equal(mod.knownLanguage('EN-us'), 'en');
+  assert.equal(mod.knownLanguage(''), 'en');
+});
+
+/** Import complet (run) avec un client de Maze simulé, qui répond dans la langue demandée. */
+async function runImport(world, { exportLocale } = {}) {
+  const asked = [];
+  const client = {
+    exportCampaign: async (id, lang) => {
+      asked.push(lang);
+      const data = exportData();
+      for (const n of data.npcs) Object.assign(n, { images: [], cover: null });
+      const locale = exportLocale ?? lang;
+      return { ...data, locale, labels: worldLabels(locale) };
+    },
+  };
+  const lines = [];
+  const report = await new mod.MazeImporter(client, 7, { npc: true, faction: true, place: true, maps: false,
+    actors: false, overwrite: false }, (line) => lines.push(line)).run();
+  return { asked, lines, report };
+}
+
+const folderPath = (folder) => (folder ? [...folderPath(folder.folder), folder.name] : []);
+
+test('import, poste en anglais et monde en français : pages et dossiers en français, interface en anglais', async () => {
+  const world = makeWorld({ lang: 'en', settings: { pageLanguageUsed: 'fr' } });
+  const { asked, lines } = await runImport(world);
+  assert.deepEqual(asked, ['fr']);
+  assert.equal(lines[0], 'Reading the campaign from Maze…');                      // interface : langue du poste
+  const npc = world.game.journal.find((j) => j.name === 'PNJ 2');
+  assert.deepEqual(npc.pages.map((p) => p.name), ['Fiche']);                     // monde : langue des pages
+  assert.equal(folderPath(npc.folder).join(' / '), 'Morvane - PNJ / Sans faction');
+  assert.equal(folderPath(world.game.journal.find((j) => j.name === 'La Vigie').folder).join(' / '), 'Morvane - Factions');
+  assert.equal(world.game.settings.values.pageLanguageUsed, 'fr');
+
+  // Second import par un MJ dont Foundry est en anglais : rien ne bascule (mêmes noms, pages inchangées).
+  const before = world.game.folders.map((f) => f.name);
+  world.writes.length = 0;
+  const again = await runImport(world);
+  assert.deepEqual(again.asked, ['fr']);
+  assert.deepEqual(world.game.folders.map((f) => f.name), before);
+  assert.equal(again.report.updated, 0);
+  assert.deepEqual(plain(again.report.skipped), []);
+  assert.deepEqual(world.writes.filter(([, op]) => op === 'update'), []);
+});
+
+test('import : monde déjà importé sans langue retenue > français, retenu ; monde neuf > langue du poste', async () => {
+  // Monde importé par la version 1.1 (pages en français, aucune langue retenue), MJ en anglais.
+  let world = makeWorld({ lang: 'en' });
+  world.journal('npc', 2);
+  let result = await runImport(world);
+  assert.deepEqual(result.asked, ['fr']);
+  assert.equal(world.game.settings.values.pageLanguageUsed, 'fr');
+  assert.deepEqual(world.game.journal.find((j) => j.name === 'PNJ 2').pages.map((p) => p.name), ['Fiche']);
+
+  // Monde neuf, MJ en anglais : anglais, retenu pour les MJ suivants (même en français).
+  world = makeWorld({ lang: 'en' });
+  result = await runImport(world);
+  assert.deepEqual(result.asked, ['en']);
+  assert.equal(world.game.settings.values.pageLanguageUsed, 'en');
+  assert.deepEqual(world.game.journal.find((j) => j.name === 'PNJ 2').pages.map((p) => p.name), ['Sheet']);
+  assert.equal(folderPath(world.game.journal.find((j) => j.name === 'PNJ 2').folder).join(' / '),
+    'Morvane - NPCs / No faction');
+  world.game.i18n = makeI18n('fr');
+  result = await runImport(world);
+  assert.deepEqual(result.asked, ['en']);
+  assert.equal(result.lines[0], 'Lecture de la campagne dans Maze…');
+
+  // Langue que le serveur ne connaît pas : celle qu'il a employée (MAZE_DEFAULT_LOCALE) est retenue.
+  world = makeWorld({ lang: 'en' });
+  result = await runImport(world, { exportLocale: 'fr' });
+  assert.deepEqual(result.asked, ['en']);
+  assert.equal(world.game.settings.values.pageLanguageUsed, 'fr');
+});
+
+test('import, réglage explicite du monde : il l’emporte, la langue retenue suit', async () => {
+  const world = makeWorld({ lang: 'fr', settings: { pageLanguage: 'en', pageLanguageUsed: 'fr' } });
+  world.journal('npc', 2);
+  const { asked } = await runImport(world);
+  assert.deepEqual(asked, ['en']);
+  assert.equal(world.game.settings.values.pageLanguageUsed, 'en');
+  // Nouvelles pages et dossiers dans la langue choisie ; rapport dans celle du poste.
+  assert.equal(folderPath(world.game.journal.find((j) => j.name === 'PNJ 1').folder).join(' / '), 'Morvane - NPCs / La Vigie');
+  // Client de Maze : langue des pages envoyée par défaut, pas celle du poste.
+  const urls = [];
+  mod.ctx.fetch = async (url) => { urls.push(url); return { ok: false, status: 401 }; };
+  await assert.rejects(new mod.MazeClient('https://maze.example.org', 't').exportCampaign(9), /Jeton refusé/);
+  assert.equal(urls[0], 'https://maze.example.org/api/foundry/v1/campaigns/9/export?lang=en');
   delete mod.ctx.fetch;
 });
