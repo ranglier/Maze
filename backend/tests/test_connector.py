@@ -811,6 +811,19 @@ class ConnectorTest(unittest.TestCase):
         self.assertEqual(next(i for i in from_lib["images"] if i["id"] == from_lib["image_id"])["caption"], "Carte du port")
         self.assertTrue(self.tool(token, "delete_library_image", library_image_id=lib_id)[0])
         self.assertEqual(self.tool(token, "list_library", campaign_id=w)[1]["library"], [])
+        # Plusieurs d'un coup (library_image_ids) : les absentes sont listées, les autres supprimées.
+        body, ctype = multipart([("a.png", png_bytes((1, 2, 3))), ("b.png", png_bytes((4, 5, 6)))])
+        self.s.call("POST", f"/api/admin/campaigns/{w}/library", raw=body, content_type=ctype)
+        pair = sorted(i["id"] for i in self.tool(token, "list_library", campaign_id=w)[1]["library"])
+        self.assertIn("un seul", self.tool(token, "delete_library_image", library_image_id=pair[0],
+                                           library_image_ids=pair)[1])
+        self.assertIn("un seul", self.tool(token, "delete_library_image")[1])
+        self.assertIn("1 à 200", self.tool(token, "delete_library_image", library_image_ids=[])[1])
+        self.assertIn("1 à 200", self.tool(token, "delete_library_image", library_image_ids=list(range(1, 202)))[1])
+        ok, out = self.tool(token, "delete_library_image", library_image_ids=[pair[1], 999999, pair[0], pair[1]])
+        self.assertTrue(ok, out)
+        self.assertEqual(out, {"deleted": [pair[1], pair[0]], "missing": [999999]})
+        self.assertEqual(self.tool(token, "list_library", campaign_id=w)[1]["library"], [])
 
         # Images de campagnes en lecture seule ou non ouvertes.
         ok, ro_img = self.tool(token, "add_image", kind="npc", id=npc["id"], url=f"{base}/portrait.png")
@@ -846,6 +859,10 @@ class ConnectorTest(unittest.TestCase):
                 "SELECT id FROM library_images WHERE campaign_id IN (?, ?) ORDER BY campaign_id", (ro["id"], closed["id"]))]
         self.assertTrue(self.tool(token, "view_image", library_image_id=ro_lib)[0])
         self.assertIn("lecture seule", self.tool(token, "delete_library_image", library_image_id=ro_lib)[1])
+        self.assertIn("lecture seule", self.tool(token, "delete_library_image", library_image_ids=[ro_lib])[1])
+        self.assertEqual(self.tool(token, "delete_library_image", library_image_ids=[closed_lib]),
+                         (True, {"deleted": [], "missing": [closed_lib]}))
+        self.assertTrue(self.tool(token, "view_image", library_image_id=ro_lib)[0])   # rien supprimé
         self.assertIn("introuvable", self.tool(token, "list_library", campaign_id=closed["id"])[1])
         self.assertIn("introuvable", self.tool(token, "view_image", library_image_id=closed_lib)[1])
 

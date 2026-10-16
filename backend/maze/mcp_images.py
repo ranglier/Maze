@@ -21,8 +21,9 @@ from urllib.parse import unquote, urlsplit
 from PIL import Image
 from starlette.concurrency import run_in_threadpool
 
-from . import db, fetch, imaging
+from . import db, fetch, imaging, limits
 from .api import IMAGE_FIELD, TABLES, _store_images, touch_campaign
+from .media_admin import delete_library_rows
 from .mcp import ENTRY_KIND, ENTRY_TABLES, ID, Blocks, Context, ToolError, _int, _kind, _tool
 
 VIEW_SIDE = 1024          # côté maximal de l'aperçu renvoyé à Claude (JPEG)
@@ -369,15 +370,44 @@ async def list_library(ctx: Context, args: dict[str, Any]) -> Any:
 
 
 async def delete_library_image(ctx: Context, args: dict[str, Any]) -> Any:
-    row = _library_row(ctx, _int(args, "library_image_id"))
-    ctx.target = f"bibliothèque:{row['id']}"
-    ctx.check_write(row["campaign_id"], "Image")
+    if (args.get("library_image_id") is None) == (args.get("library_image_ids") is None):
+        raise ToolError("Indiquer library_image_id ou library_image_ids, et un seul des deux")
+    if args.get("library_image_id") is not None:
+        row = _library_row(ctx, _int(args, "library_image_id"))
+        ctx.target = f"bibliothèque:{row['id']}"
+        ctx.check_write(row["campaign_id"], "Image")
 
-    def _work(conn: sqlite3.Connection):
-        conn.execute("DELETE FROM library_images WHERE id = ?", (row["id"],))
-    await ctx.run(_work)
-    imaging.delete_files(_media_dir(ctx), row["file"], row["thumb"])
-    return {"deleted": row["id"]}
+        def _work(conn: sqlite3.Connection):
+            delete_library_rows(conn, [row])
+        await ctx.run(_work)
+        imaging.delete_files(_media_dir(ctx), row["file"], row["thumb"])
+        return {"deleted": row["id"]}
+
+    ids = args["library_image_ids"]
+    if not isinstance(ids, list) or not ids or len(ids) > limits.IMAGES_DELETE_MAX:
+        raise ToolError(f"library_image_ids : liste de 1 à {limits.IMAGES_DELETE_MAX} identifiants d'images "
+                        "de la bibliothèque")
+    wanted = list(dict.fromkeys(_int({"id": v}, "id") for v in ids))
+    with ctx.transaction() as conn:
+        found = {r["id"]: db.row_to_dict(r) for r in conn.execute(
+            f"SELECT * FROM library_images WHERE id IN ({','.join('?' * len(wanted))})", wanted)}
+    rows = [found[i] for i in wanted if i in found and found[i]["campaign_id"] in ctx.grants]
+    for cid in dict.fromkeys(r["campaign_id"] for r in rows):   # toutes ouvertes en écriture, sinon rien
+        ctx.check_write(cid, "Image")
+    ctx.target = f"bibliothèque x{len(rows)}"
+
+    def _work_many(conn: sqlite3.Connection) -> list[dict[str, Any]]:
+        # Relues dans la transaction : une image supprimée entre-temps compte parmi les absentes.
+        still = {r[0] for r in conn.execute(
+            f"SELECT id FROM library_images WHERE id IN ({','.join('?' * len(rows))})", [r["id"] for r in rows])}
+        kept = [r for r in rows if r["id"] in still]
+        delete_library_rows(conn, kept)
+        return kept
+    deleted = await ctx.run(_work_many) if rows else []
+    for r in deleted:
+        imaging.delete_files(_media_dir(ctx), r["file"], r["thumb"])
+    done = {r["id"] for r in deleted}
+    return {"deleted": [i for i in wanted if i in done], "missing": [i for i in wanted if i not in done]}
 
 
 # --- Catalogue -----------------------------------------------------------------------------------
@@ -422,8 +452,13 @@ TOOLS = [
           "Supprime définitivement une image de la galerie d'une fiche (l'image suivante devient la couverture).",
           {"image_id": ID}, ["image_id"], delete_image, write=True, destructive=True),
     _tool("delete_library_image", "Retirer de la bibliothèque",
-          "Supprime définitivement une image de la bibliothèque (par exemple une fois copiée vers sa fiche).",
-          {"library_image_id": ID}, ["library_image_id"], delete_library_image, write=True, destructive=True),
+          "Supprime définitivement une image de la bibliothèque (par exemple une fois copiée vers sa fiche) : "
+          "library_image_id, ou library_image_ids pour en supprimer plusieurs d'un coup (200 au plus, un seul des "
+          "deux paramètres). En liste, toutes doivent être dans des campagnes ouvertes en écriture ; les images "
+          "introuvables sont renvoyées dans missing, les autres dans deleted.",
+          {"library_image_id": ID,
+           "library_image_ids": {"type": "array", "items": ID, "minItems": 1, "maxItems": limits.IMAGES_DELETE_MAX}},
+          [], delete_library_image, write=True, destructive=True),
     _tool("add_document_image", "Illustrer une fiche rédigée",
           "Prépare une illustration pour une fiche rédigée (adresse web publique ou image de Maze) et renvoie le "
           "HTML à insérer dans son contenu avec update_document.",
