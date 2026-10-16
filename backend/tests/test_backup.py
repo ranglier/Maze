@@ -18,7 +18,8 @@ from pathlib import Path
 from PIL import Image
 
 from tests.test_api import (
-    Server, multipart, png_bytes, rewind_schema, undo_entry_revision, undo_nested_factions, undo_user_locale,
+    Server, multipart, png_bytes, rewind_schema, undo_entry_revision, undo_nested_factions, undo_timeline,
+    undo_user_locale,
 )
 from tests.test_maps import form
 
@@ -985,6 +986,7 @@ class AccessSettingsRestoreTest(unittest.TestCase):
                 undo_entry_revision(conn)   # migration 025
                 undo_user_locale(conn)   # migration 030
                 undo_nested_factions(conn)   # migration 031
+                undo_timeline(conn)   # migration 032
                 rewind_schema(conn, 23)
             db.migrate(db_path)
             with sqlite3.connect(db_path) as conn:

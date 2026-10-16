@@ -27,6 +27,7 @@ from . import auth, connector, db, entries
 from .collab import RESTORING
 from .api import RequestValidationError, in_tx, settings
 from .documents import UNSAVED_EDITS, has_unsaved_edits
+from .foundry_html import is_rich_html, markdown_to_html
 from .schemas import DocStatus
 
 log = logging.getLogger("maze.mcp")
@@ -40,6 +41,7 @@ MAX_BATCH = 20           # messages par lot JSON-RPC (audit PERF-13 ; les lots o
 RESULT_BUDGET = 40_000    # caractères visés pour get_campaign et une page de liens
 RESULT_MAX = 80_000       # au-delà, résultat refusé avec un message (plutôt qu'un échec du client)
 RELATIONS_DEFAULT, RELATIONS_MAX = 50, 100
+EVENTS_DEFAULT, EVENTS_MAX = 100, 200
 ENTRY_PATHS = {"npc": "npcs", "faction": "factions", "place": "places"}
 ENTRY_TABLES = {"npc": "npcs", "faction": "factions", "place": "places"}
 SUSPENDED = ("L'accès de Claude à Maze est suspendu. Un administrateur peut le réactiver dans "
@@ -66,6 +68,8 @@ add_document_image puis update_document pour illustrer une fiche rédigée. Cart
 interactive) : list_maps, view_map (aperçu quadrillé tous les 10 %), place_on_map pour épingler un lieu
 (x, y en %) ; les sous-lieux d'un lieu épinglé s'affichent en anneaux autour de lui sans épingle.
 set_place_kind pour donner un type (clé, voir get_campaign) à plusieurs lieux d'un coup.
+Chronologie (module facultatif, activé par le MJ campagne par campagne : get_campaign l'indique) :
+list_events, create_event, update_event ; date en texte libre, ordre manuel (before_id pour insérer ou déplacer).
 Répondre aux MJ en français."""
 
 
@@ -367,9 +371,12 @@ async def get_campaign(ctx: Context, args: dict[str, Any]) -> Any:
                 "SELECT key, label, directed, hint FROM relation_types WHERE campaign_id = ? ORDER BY sort_order, id",
                 (cid,)).fetchall())
             relation_count = conn.execute("SELECT COUNT(*) FROM relations WHERE campaign_id = ?", (cid,)).fetchone()[0]
-        return npcs, factions, members, parents, relation_types, relation_count
+            timeline = conn.execute(
+                "SELECT timeline_enabled, (SELECT COUNT(*) FROM timeline_events WHERE campaign_id = c.id) "
+                "FROM campaigns c WHERE id = ?", (cid,)).fetchone()
+        return npcs, factions, members, parents, relation_types, relation_count, timeline
 
-    npcs, factions, members, parents, relation_types, relation_count = await run_in_threadpool(load)
+    npcs, factions, members, parents, relation_types, relation_count, timeline = await run_in_threadpool(load)
     totals = {"npcs": len(npcs), "factions": len(factions), "places": len(places["places"])}
     for n in npcs:
         n["summary"] = _short(n["summary"])
@@ -391,6 +398,8 @@ async def get_campaign(ctx: Context, args: dict[str, Any]) -> Any:
         "place_kinds": [{"key": k["key"], "label": k["label"]} for k in places["kinds"]],
         "relation_types": relation_types,
         "relation_count": relation_count,
+        # Chronologie (migration 032) : activée ou non, et nombre d'événements ; list_events pour le détail.
+        "timeline": {"enabled": bool(timeline[0]), "events": timeline[1]},
     }
     return _fit_overview(out, lists)
 
@@ -712,6 +721,172 @@ async def add_entry_comment(ctx: Context, args: dict[str, Any]) -> Any:
     return await ctx.api("POST", f"/api/{ENTRY_PATHS[kind]}/{eid}/comments", body, write=True)
 
 
+# --- Chronologie (migration 032, routes de timeline.py) ------------------------------------------
+
+TIMELINE_OFF = ("La chronologie n'est pas activée pour la campagne « {name} » : le MJ peut l'activer dans le menu de "
+                "la campagne (les événements déjà saisis sont conservés).")
+
+
+def _timeline(ctx: Context, cid: int) -> tuple[bool, str]:
+    with ctx.transaction() as conn:
+        row = conn.execute("SELECT timeline_enabled, name FROM campaigns WHERE id = ?", (cid,)).fetchone()
+    return bool(row and row[0]), row[1] if row else str(cid)
+
+
+def _event_mentions(ctx: Context, cid: int, event_ids: list[int]) -> dict[int, list[dict[str, Any]]]:
+    """Fiches citées par chaque événement (timeline_mentions), avec leur nom."""
+    if not event_ids:
+        return {}
+    with ctx.transaction() as conn:
+        names = _names(conn, cid)
+        for row in conn.execute("SELECT id, title FROM documents WHERE campaign_id = ?", (cid,)):
+            names[("doc", row[0])] = row[1]
+        marks = ",".join("?" * len(event_ids))
+        rows = conn.execute(f"SELECT event_id, target_kind, target_id FROM timeline_mentions "
+                            f"WHERE event_id IN ({marks}) ORDER BY target_kind, target_id", event_ids).fetchall()
+    out: dict[int, list[dict[str, Any]]] = {}
+    for event_id, kind, target in rows:
+        out.setdefault(event_id, []).append({"kind": kind, "id": target, "name": names.get((kind, target))})
+    return out
+
+
+def _event_out(event: dict[str, Any], position: int | None, mentions: list[dict[str, Any]],
+               full: bool = False) -> dict[str, Any]:
+    out = {"id": event["id"], "campaign_id": event["campaign_id"], "date_label": event.get("date_label") or "",
+           "title": event["title"], "tags": event.get("tags") or [], "revision": event["revision"],
+           "mentions": mentions}
+    if position is not None:
+        out["position"] = position
+    if full:
+        out["description"] = event.get("description") or ""
+    else:
+        out["excerpt"] = _short(event.get("description"), 200)
+    return out
+
+
+def _event_html(ctx: Context, cid: int, text: str) -> str:
+    """Description : HTML de l'éditeur tel quel ; sinon Markdown converti (comme l'interface le fait pour les champs
+    longs), [[Nom]] devenant une mention de la fiche de ce nom dans la campagne."""
+    if not text.strip() or is_rich_html(text):
+        return text
+    with ctx.transaction() as conn:
+        by_name = {name.lower(): f"{kind}:{eid}" for (kind, eid), name in _names(conn, cid).items()}
+    return markdown_to_html(text, by_name.get)
+
+
+async def _events(ctx: Context, cid: int) -> list[dict[str, Any]]:
+    return (await ctx.api("GET", f"/api/campaigns/{cid}/events"))["events"]
+
+
+async def list_events(ctx: Context, args: dict[str, Any]) -> Any:
+    cid = ctx.check_read(_int(args, "campaign_id"))
+    event_id = _int(args, "event_id", required=False)
+    limit = _int(args, "limit", required=False) or EVENTS_DEFAULT
+    offset = _int(args, "offset", required=False) or 0
+    if not 1 <= limit <= EVENTS_MAX or offset < 0:
+        raise ToolError(f"limit entre 1 et {EVENTS_MAX}, offset positif")
+    enabled, name = _timeline(ctx, cid)
+    events = await _events(ctx, cid)
+    if event_id is not None:
+        ctx.target = f"event:{event_id}"
+        found = [(i, e) for i, e in enumerate(events) if e["id"] == event_id]
+        if not found:
+            raise ToolError("Événement introuvable dans cette campagne")
+        position, event = found[0]
+        return {"enabled": enabled, "event": _event_out(event, position, _event_mentions(ctx, cid, [event_id]).get(
+            event_id, []), full=True)}
+    page = events[offset:offset + limit]
+    mentions = _event_mentions(ctx, cid, [e["id"] for e in page])
+    out: dict[str, Any] = {"enabled": enabled, "total": len(events), "offset": offset,
+                           "events": [_event_out(e, offset + i, mentions.get(e["id"], [])) for i, e in enumerate(page)]}
+    if offset + len(page) < len(events):
+        out["next_offset"] = offset + len(page)
+    if not enabled:
+        out["note"] = TIMELINE_OFF.format(name=name)
+    return out
+
+
+def _event_body(ctx: Context, cid: int, args: dict[str, Any]) -> dict[str, Any]:
+    body: dict[str, Any] = {}
+    for key in ("title", "date_label"):
+        if args.get(key) is not None:
+            body[key] = str(args[key])
+    if args.get("description") is not None:
+        body["description"] = _event_html(ctx, cid, str(args["description"]))
+    if args.get("tags") is not None:
+        if not isinstance(args["tags"], list):
+            raise ToolError("Paramètre tags : liste de textes attendue")
+        body["tags"] = [str(t) for t in args["tags"]]
+    return body
+
+
+def _check_timeline_write(ctx: Context, cid: int) -> None:
+    enabled, name = _timeline(ctx, cid)
+    if not enabled:
+        raise ToolError(TIMELINE_OFF.format(name=name))
+
+
+async def _event_result(ctx: Context, cid: int, event_id: int) -> dict[str, Any]:
+    events = await _events(ctx, cid)
+    position, event = next(((i, e) for i, e in enumerate(events) if e["id"] == event_id), (None, None))
+    if event is None:   # supprimé entre l'écriture et la relecture (par un MJ)
+        raise ToolError("Événement introuvable dans cette campagne")
+    return _event_out(event, position, _event_mentions(ctx, cid, [event_id]).get(event_id, []))
+
+
+async def create_event(ctx: Context, args: dict[str, Any]) -> Any:
+    cid = ctx.check_write(_int(args, "campaign_id"), "Campagne")
+    _check_timeline_write(ctx, cid)
+    body = _event_body(ctx, cid, args)
+    if not body.get("title", "").strip():
+        raise ToolError("Paramètre manquant : title")
+    before_id = _int(args, "before_id", required=False)
+    if before_id is not None:
+        body["before_id"] = before_id
+    event = await ctx.api("POST", f"/api/campaigns/{cid}/events", body, write=True)
+    ctx.target = f"event:{event['id']}"
+    return await _event_result(ctx, cid, event["id"])
+
+
+async def update_event(ctx: Context, args: dict[str, Any]) -> Any:
+    eid = _int(args, "event_id")
+    ctx.target = f"event:{eid}"
+    cid = ctx.check_write(ctx.campaign_of("timeline_events", eid), "Événement")
+    _check_timeline_write(ctx, cid)
+    body = _event_body(ctx, cid, args)
+    before_id = _int(args, "before_id", required=False)
+    to_end = args.get("to_end") in (True, "true", 1)
+    if before_id is not None and to_end:
+        raise ToolError("Indiquer before_id ou to_end, pas les deux")
+    if not body and before_id is None and not to_end:
+        raise ToolError("Rien à modifier : title, date_label, description, tags, before_id ou to_end")
+    base_revision = _int(args, "base_revision", required=False)
+    ids: list[int] | None = None
+    if before_id is not None or to_end:
+        # Déplacement vérifié AVANT toute écriture (revue : un before_id faux ne doit pas laisser le PATCH
+        # enregistré derrière un message d'erreur).
+        if before_id == eid:
+            raise ToolError("before_id : un autre événement que celui qu'on déplace")
+        events = await _events(ctx, cid)
+        current = next((e for e in events if e["id"] == eid), None)
+        if current is None:
+            raise ToolError("Événement introuvable dans cette campagne")
+        if not body and base_revision is not None and base_revision != current["revision"]:
+            # Le déplacement seul ne passe pas par le PATCH : même contrôle de révision ici.
+            raise ToolError(f"Événement modifié entre-temps (révision {current['revision']}) : relire avec list_events")
+        ids = [e["id"] for e in events if e["id"] != eid]
+        if before_id is not None and before_id not in ids:
+            raise ToolError("before_id : événement introuvable dans cette campagne")
+        ids.insert(ids.index(before_id) if before_id is not None else len(ids), eid)
+    if body:
+        if base_revision is not None:
+            body["base_revision"] = base_revision
+        await ctx.api("PATCH", f"/api/events/{eid}", body, write=True)
+    if ids is not None:
+        await ctx.api("PUT", f"/api/campaigns/{cid}/events/order", {"ids": ids}, write=True)
+    return await _event_result(ctx, cid, eid)
+
+
 # --- Catalogue ---------------------------------------------------------------------------------
 
 ID = {"type": "integer"}
@@ -755,13 +930,15 @@ TOOLS = [
     _tool("list_campaigns", "Campagnes", "Campagnes ouvertes à Claude, avec leurs effectifs et le type d'accès.",
           {}, [], list_campaigns),
     _tool("search", "Rechercher",
-          "Recherche plein texte (sans accents) dans les PNJ, factions, lieux, fiches rédigées et commentaires.",
+          "Recherche plein texte (sans accents) dans les PNJ, factions, lieux, fiches rédigées, commentaires et "
+          "événements de chronologie (kind « event »).",
           {"query": {"type": "string"}, "campaign_id": {**ID, "description": "Limiter à une campagne"}},
           ["query"], search),
     _tool("get_campaign", "Vue d'ensemble d'une campagne",
           "Arbre des fiches rédigées (fiche de campagne > scénarios > pages), PNJ (avec factions), factions (avec "
           "member_of : factions dont elle est membre), "
-          "lieux (arbre), types de lieux et natures de lien. Résumés abrégés ; sur une grosse campagne, listes "
+          "lieux (arbre), types de lieux et natures de lien ; timeline : chronologie activée ou non et nombre "
+          "d'événements (list_events pour le détail). Résumés abrégés ; sur une grosse campagne, listes "
           "compactes ou tronquées (effectifs dans totals, voir note) : get_entry et search pour le détail.",
           {"campaign_id": ID}, ["campaign_id"], get_campaign),
     _tool("get_entry", "Lire une fiche", "Fiche complète d'un PNJ, d'une faction ou d'un lieu (liens, appartenances : "
@@ -843,6 +1020,33 @@ TOOLS = [
           {"kind": ENTRY_KIND, "id": ID, "body": {"type": "string"}, "field": {"type": "string"},
            "quote": {"type": "string"}, "parent_id": ID},
           ["kind", "id", "body"], add_entry_comment, write=True),
+    _tool("list_events", "Chronologie",
+          "Événements de la chronologie d'une campagne, dans leur ordre (position 0 = le premier) : date_label (date en "
+          "texte libre), "
+          "titre, id, révision, étiquettes, extrait du texte, fiches citées (mentions). Par pages (limit, "
+          f"{EVENTS_DEFAULT} par défaut, au plus {EVENTS_MAX} ; offset ; next_offset s'il en reste). event_id : un "
+          "seul événement, avec sa description HTML complète (à relire avant de la remplacer avec update_event). "
+          "enabled : chronologie activée ou non par le MJ (désactivée, elle n'apparaît pas dans Maze).",
+          {"campaign_id": ID, "event_id": ID, "limit": {"type": "integer", "minimum": 1, "maximum": EVENTS_MAX},
+           "offset": {"type": "integer", "minimum": 0}},
+          ["campaign_id"], list_events),
+    _tool("create_event", "Ajouter un événement",
+          "Ajoute un événement à la chronologie d'une campagne (activée par le MJ). date_label : date en texte libre (« 742.M41 », "
+          "« vers l'an 850 », « Séance 4 »), sans calendrier : l'ordre est celui de la liste. description : HTML de "
+          "l'éditeur (mentions @, encadrés Secret ou Accroche) ou Markdown ([[Nom]] : mention de la fiche de ce nom). "
+          "before_id : insérer avant cet événement ; sans lui, à la fin.",
+          {"campaign_id": ID, "title": {"type": "string"}, "date_label": {"type": "string"}, "description": CONTENT,
+           "tags": {"type": "array", "items": {"type": "string"}}, "before_id": ID},
+          ["campaign_id", "title"], create_event, write=True),
+    _tool("update_event", "Modifier un événement",
+          "Modifie les champs donnés d'un événement (les autres restent inchangés ; description : remplace tout le "
+          "texte, HTML ou Markdown comme create_event). base_revision (conseillé) : la révision lue avec list_events "
+          "ou renvoyée par le dernier appel ; refus si l'événement a changé depuis (le relire). Déplacer : before_id "
+          "(placer avant cet événement) ou to_end (le mettre à la fin). Pas de suppression par Claude.",
+          {"event_id": ID, "base_revision": ID, "title": {"type": "string"}, "date_label": {"type": "string"},
+           "description": CONTENT, "tags": {"type": "array", "items": {"type": "string"}}, "before_id": ID,
+           "to_end": {"type": "boolean"}},
+          ["event_id"], update_event, write=True),
 ]
 from . import mcp_images, mcp_maps  # noqa: E402 - outils d'images et de cartes, qui s'appuient sur ce qui précède
 

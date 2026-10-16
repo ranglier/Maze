@@ -6,6 +6,7 @@ import { ENTITY_FIELDS, editableKeys } from '../fields.js';
 import { initialsAvatar, nodeId } from '../util.js';
 import { EntrySideButton, SectionComment } from './EntryNotes.jsx';
 import Gallery from './Gallery.jsx';
+import { TimelineSection } from './TimelineView.jsx';
 import RichField from './RichField.jsx';
 import { mentionEntities } from './mentionEntities.js';
 import { ConflictPanel, useEntryDraft } from './EntryDraft.jsx';
@@ -18,7 +19,7 @@ import { N_, compareText, pt, t, tn } from '../i18n/index.js';
  * `mapAction` (facultatif) : action propre à la carte du scénario ({ label, icon, onClick }).
  */
 export default function EntityPanel({
-  kind, id, graph, version, startInEdit, nodeName, resolveRef, page = false, mapAction = null,
+  kind, id, graph, version, startInEdit, nodeName, resolveRef, page = false, mapAction = null, timelineEnabled = false,
   onClose, onOpenNode, onOpenEdge, onFocus, onStartLink, onChanged, onDeleted, onEditingChange,
 }) {
   const [entity, setEntity] = useState(null);
@@ -66,6 +67,7 @@ export default function EntityPanel({
             onMembershipsChanged={refresh} />
         ) : (
           <EntityView kind={kind} entity={entity} graph={graph} nodeName={nodeName} resolveRef={resolveRef}
+            timelineEnabled={timelineEnabled}
             onOpenNode={onOpenNode} onOpenEdge={onOpenEdge} onChanged={refresh} />
         )}
       </div>
@@ -101,7 +103,7 @@ export default function EntityPanel({
 
 // --- Consultation -------------------------------------------------------------
 
-function EntityView({ kind, entity, graph, nodeName, resolveRef, onOpenNode, onOpenEdge, onChanged }) {
+function EntityView({ kind, entity, graph, nodeName, resolveRef, timelineEnabled, onOpenNode, onOpenEdge, onChanged }) {
   const fields = ENTITY_FIELDS[kind];
   const coverId = kind === 'npc' ? entity.portrait_image_id : entity.emblem_image_id;
   const cover = entity.images.find((i) => i.id === coverId);
@@ -228,6 +230,8 @@ function EntityView({ kind, entity, graph, nodeName, resolveRef, onOpenNode, onO
           </ul>
         </section>
       )}
+
+      {timelineEnabled && <TimelineSection campaignId={entity.campaign_id} items={entity.timeline} />}
 
       {entity.maps?.length > 0 && (
         <section className="panel-section" data-entry-section="maps" data-entry-label={t('Sur les cartes')}>

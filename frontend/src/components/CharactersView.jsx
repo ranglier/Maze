@@ -91,6 +91,7 @@ export default function CharactersView({
             onCommentDone={onCommentDone} onRestored={reload}>
             <EntityPanel
               page
+              timelineEnabled={Boolean(campaign.timeline_enabled)}
               kind={selected.kind}
               id={selected.id}
               graph={graph}

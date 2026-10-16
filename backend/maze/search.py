@@ -1,4 +1,5 @@
-"""Recherche globale : PNJ, factions, lieux, fiches rédigées et commentaires (index FTS5, migrations 008 et 010)."""
+"""Recherche globale : PNJ, factions, lieux, fiches rédigées, commentaires et événements de la chronologie (index FTS5,
+migrations 008, 010 et 032)."""
 
 from __future__ import annotations
 
@@ -58,6 +59,10 @@ def search(request: Request) -> Response:
                        snippet(search_index, 5, ?, ?, '…', 14) AS snippet
                   FROM search_index
                  WHERE search_index MATCH ? AND campaign_id IN ({marks})
+                   -- Chronologie désactivée : ses événements ne sont pas cherchés (ils prendraient la place des
+                   -- autres résultats dans la limite MAX_RESULTS).
+                   AND (kind <> 'event'
+                        OR campaign_id IN (SELECT id FROM campaigns WHERE timeline_enabled = 1))
                  ORDER BY bm25(search_index, 0, 0, 0, 0, 8.0, 1.0)
                  LIMIT {MAX_RESULTS}""",
             (HL_START, HL_END, HL_START, HL_END, query, *campaigns)).fetchall()
@@ -109,6 +114,12 @@ def search(request: Request) -> Response:
                     continue
                 kind = "npc" if owner["npc_id"] else "faction" if owner["faction_id"] else "place"
                 item.update(entry_kind=kind, entry_id=owner[f"{kind}_id"], entry_name=owner["name"] or "")
+            elif r["kind"] == "event":
+                # Événement de la chronologie : l'interface ouvre #/c/<campagne>/chronologie?event=<id>.
+                event = conn.execute("SELECT date_label FROM timeline_events WHERE id = ?", (r["ref_id"],)).fetchone()
+                if event is None:
+                    continue
+                item.update(sub=event["date_label"], date_label=event["date_label"])
             elif r["kind"] in ("document", "comment"):
                 doc = conn.execute("SELECT kind, title FROM documents WHERE id = ?", (r["doc_id"],)).fetchone()
                 if doc is None:

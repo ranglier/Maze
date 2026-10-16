@@ -57,6 +57,7 @@ class CampaignCreate(_Strict):
 class CampaignUpdate(_Strict):
     name: Name | None = None
     description: Long | None = None
+    timeline_enabled: bool | None = None   # module Chronologie affiché (migration 032)
 
 
 # --- PNJ, factions et lieux (champs : registre entries.py, audit M23) -------------------------------
@@ -477,6 +478,36 @@ class PinSet(_Strict):
 
 class MapOrder(_Strict):
     ids: Annotated[list[int], Field(max_length=500)]
+
+
+# --- Chronologie (timeline.py, migration 032) ------------------------------------
+
+class _EventBase(_Strict):
+    @field_validator("tags", check_fields=False)
+    @classmethod
+    def _tags(cls, v: list[str] | None) -> list[str] | None:
+        return _clean_tags(v)
+
+
+class EventCreate(_EventBase):
+    title: Name
+    date_label: Short = ""
+    description: Long = ""   # HTML de l'éditeur, borné comme les champs longs des fiches
+    tags: Tags = []
+    before_id: int | None = None   # placé juste avant cet événement ; absent ou null : à la fin
+
+
+class EventUpdate(_EventBase):
+    title: Name | None = None
+    date_label: Short | None = None
+    description: Long | None = None
+    tags: Tags | None = None
+    base_revision: int | None = None
+
+
+class EventOrder(_Strict):
+    # Ordre complet des événements de la campagne, du premier au dernier.
+    ids: Annotated[list[int], Field(max_length=20000)]
 
 
 # --- Accès de Foundry VTT (Administration > Foundry) ----------------------------

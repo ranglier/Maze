@@ -8,6 +8,7 @@ import MapsView from './components/MapsView.jsx';
 import PlacesView from './components/PlacesView.jsx';
 import ScenariosView from './components/ScenariosView.jsx';
 import SearchPalette from './components/SearchPalette.jsx';
+import TimelineView from './components/TimelineView.jsx';
 import UserMenu from './components/UserMenu.jsx';
 import Workspace from './components/Workspace.jsx';
 import { Icon, useConfirm } from './components/ui.jsx';
@@ -33,6 +34,7 @@ const TREE_LABEL = {
  *   #/c/<id>/fiche/<npc|faction>-<n>    ancien lien de fiche : index des personnages
  *   #/c/<id>/lieux[/<lieu>][?edit=1]    lieux de la campagne (fiche ouverte en édition)
  *   #/c/<id>/cartes[/<carte>][?place=<lieu>]  cartes interactives des lieux (lieu montré sur la carte)
+ *   #/c/<id>/chronologie[?event=<n>]    chronologie (module facultatif, campaign.timeline_enabled), événement ouvert
  *   #/admin/<section>
  */
 function parseHash() {
@@ -45,6 +47,7 @@ function parseHash() {
     place: Number(params.get('place')) || null,
     edit: params.get('edit') === '1',
     factions: params.get('factions') === '1',
+    event: Number(params.get('event')) || null,
   };
   const route = parsePath(hash);
   if (route.view !== 'campaign') return route;
@@ -56,10 +59,11 @@ function parseHash() {
 function parsePath(hash) {
   const admin = hash.match(/^#\/admin(?:\/([\w-]+))?/);
   if (admin) return { view: 'admin', section: admin[1] || 'comptes' };
-  const m = hash.match(/^#\/c\/(\d+)(?:\/(scenarios|cartes|carte|personnages|fiche|lieux)(?:\/([\w-]+))?)?/);
+  const m = hash.match(/^#\/c\/(\d+)(?:\/(scenarios|cartes|carte|personnages|fiche|lieux|chronologie)(?:\/([\w-]+))?)?/);
   if (!m) return { view: 'campaign', id: null, tab: 'scenarios', docId: null };
   const id = Number(m[1]);
   if (m[2] === 'carte') return { view: 'campaign', id, tab: 'carte' };
+  if (m[2] === 'chronologie') return { view: 'campaign', id, tab: 'chronologie' };
   if (m[2] === 'lieux') return { view: 'campaign', id, tab: 'lieux', placeId: m[3] ? Number(m[3]) : null };
   if (m[2] === 'cartes') return { view: 'campaign', id, tab: 'lieux', sub: 'cartes', mapId: Number(m[3]) || null };
   if (m[2] === 'personnages' || m[2] === 'fiche') {
@@ -207,6 +211,15 @@ export default function App() {
     }
   }, [current, route]);
 
+  // Chronologie désactivée (ou campagne qui ne l'a pas) : l'adresse mène à la fiche de campagne.
+  useEffect(() => {
+    if (route.view === 'campaign' && route.tab === 'chronologie' && current && route.id === current.id
+      && !current.timeline_enabled) {
+      window.history.replaceState(window.history.state, '', `#/c/${current.id}`);
+      setRoute(parseHash());
+    }
+  }, [current, route]);
+
   useEffect(() => {
     if (route.view === 'admin') document.title = `${t('Administration')} | Maze`;
   }, [route.view, locale]);
@@ -248,7 +261,7 @@ export default function App() {
   const palette = (
     <>
       {searchOpen && (
-        <SearchPalette campaign={current} multiple={(campaigns?.length || 0) > 1}
+        <SearchPalette campaign={current} campaigns={campaigns} multiple={(campaigns?.length || 0) > 1}
           onClose={() => setSearchOpen(false)} onNavigate={navigate} />
       )}
       {logoutDialog}
@@ -323,6 +336,7 @@ export default function App() {
           ['carte', `#/c/${current.id}/carte`, 'graph', pt('nav', 'Carte')],
           ['personnages', `#/c/${current.id}/personnages`, 'person', t('Personnages')],
           ['lieux', `#/c/${current.id}/lieux`, 'pin', t('Lieux')],
+          ...(current.timeline_enabled ? [['chronologie', `#/c/${current.id}/chronologie`, 'timeline', t('Chronologie')]] : []),
         ].map(([tab, href, icon, label]) => (
           <a key={tab} href={href} className={route.tab === tab ? 'is-active' : ''} title={label}
             aria-current={route.tab === tab ? 'page' : undefined}>
@@ -330,7 +344,7 @@ export default function App() {
           </a>
         ))}
       </nav>
-      {route.tab !== 'carte' && (
+      {route.tab !== 'carte' && route.tab !== 'chronologie' && (
         <button type="button" className={`icon-btn tree-toggle${drawerOpen ? ' is-active' : ''}`} aria-expanded={drawerOpen}
           aria-haspopup="true"
           title={t(TREE_LABEL[route.tab])} aria-label={t(TREE_LABEL[route.tab])}
@@ -357,6 +371,20 @@ export default function App() {
         {bottomNav}
         <ScenariosView key={current.id} campaign={current} user={user} header={header} trailing={userMenu}
           docId={route.docId} find={route.find} commentId={route.comment} onNavigate={navigate}
+          onTargetDone={() => consumeQuery(window.location.hash.split('?')[0])} />
+        {palette}
+      </>
+    );
+  }
+
+  if (route.tab === 'chronologie') {
+    // Module désactivé : l'effet ci-dessus ramène sur la fiche de campagne.
+    if (!current.timeline_enabled) return <main className="splash" aria-busy="true" />;
+    return (
+      <>
+        {bottomNav}
+        <TimelineView key={current.id} campaign={current} header={header} trailing={userMenu}
+          eventId={route.event} onNavigate={navigate}
           onTargetDone={() => consumeQuery(window.location.hash.split('?')[0])} />
         {palette}
       </>

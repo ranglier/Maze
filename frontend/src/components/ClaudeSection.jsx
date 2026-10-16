@@ -46,6 +46,9 @@ const TOOL_LABEL = {
   place_on_map: N_('Épingle posée sur une carte'),
   remove_from_map: N_('Épingle retirée d’une carte'),
   set_place_kind: N_('Type de lieux modifié'),
+  list_events: N_('Lecture de la chronologie'),
+  create_event: N_('Création d’un événement'),
+  update_event: N_('Modification d’un événement'),
 };
 
 const LOG_VISIBLE = 10;   // actions visibles sans défiler ; les suivantes dans la barre de défilement du journal
