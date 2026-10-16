@@ -805,8 +805,8 @@ class SetupTest(unittest.TestCase):
 
 
 class SourceCodeTest(unittest.TestCase):
-    """AGPL, section 13 : adresse du code source et licence donnés par /api/auth/status, sans session (écran de
-    connexion) comme une fois connecté (menu du compte) ; MAZE_SOURCE_URL pour un fork modifié."""
+    """Adresse du code source et licence donnés par /api/auth/status, sans session (écran de connexion) comme une
+    fois connecté (menu du compte) ; MAZE_SOURCE_URL pour un fork."""
 
     def status(self, env: dict[str, str | None]) -> tuple[dict, dict]:
         s = Server(env)
@@ -823,13 +823,13 @@ class SourceCodeTest(unittest.TestCase):
         self.assertTrue(logged["authenticated"])
         for status in (anon, logged):
             self.assertEqual(status["source_url"], "https://github.com/ranglier/Maze")
-            self.assertEqual(status["license"], "AGPL-3.0-or-later")
+            self.assertEqual(status["license"], "MIT")
 
     def test_source_url_override(self):
         anon, logged = self.status({"MAZE_SOURCE_URL": " https://git.example.org/fork/maze "})
         for status in (anon, logged):
             self.assertEqual(status["source_url"], "https://git.example.org/fork/maze")
-            self.assertEqual(status["license"], "AGPL-3.0-or-later")
+            self.assertEqual(status["license"], "MIT")
 
     def test_invalid_source_url_falls_back_to_default(self):
         """L'adresse finit dans un lien de l'interface : autre chose que http(s) est ignoré, avec un avertissement."""

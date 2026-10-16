@@ -52,7 +52,7 @@ These rules exist because breaking one of them has already caused a bug, or woul
 
 ## Developer Certificate of Origin
 
-Maze is licensed under the GNU AGPL-3.0-or-later (see the [README](README.md#license) and [LICENSE](LICENSE)). Every contribution is published under that same license.
+Maze is released under the MIT License (see the [README](README.md#license) and [LICENSE](LICENSE)). Every contribution is published under that same license.
 
 Every commit must be signed off with `git commit -s`, which adds a line with your name and email address at the end of the message:
 
