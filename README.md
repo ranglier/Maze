@@ -4,7 +4,7 @@
 
 Maze is a web application for game masters who prepare their campaigns alone or with co-GMs. NPCs and factions live on a relationship graph, places in a tree with interactive maps, and scenarios in a collaborative editor that links to all of them. It runs as a single Docker container with a SQLite database, on your own server.
 
-> **Note:** the user interface is currently in **French only** (see [Project status](#project-status)). The detailed guide, also in French, is [docs/fr/guide.md](docs/fr/guide.md).
+> **Note:** the interface is available in **French and English** (see [Languages](#languages)). The detailed guide is in French: [docs/fr/guide.md](docs/fr/guide.md).
 
 ## Features
 
@@ -20,7 +20,7 @@ Maze is a web application for game masters who prepare their campaigns alone or 
 
 **Scenarios**
 - A campaign page, scenarios and nested sub-pages (acts, scenes, handouts), each with a status (draft, ready, in progress, played).
-- Rich text editor: tables, images, "read aloud" and "GM secret" boxes, `@` mentions of NPCs, factions and places, templates, reading mode, clean printing.
+- Rich text editor: tables, images, "read-aloud" and "GM secret" boxes, `@` mentions of NPCs, factions and places, templates, reading mode, clean printing.
 - **Real-time collaboration**: several GMs edit the same page and see each other's cursors. Offline edits are merged on reconnection; what cannot be merged is kept in the page history.
 - Comment threads anchored to passages, and a version history with named versions and one-click restore.
 
@@ -34,11 +34,22 @@ Maze is a web application for game masters who prepare their campaigns alone or 
 
 Maze is used in production by its author and has been through a thorough audit, but it is young as a community project:
 
-- **French-only interface, English on the way.** Every screen, message and piece of documentation (except this README) is in French. The translation layer is in place (gettext style, French text as the key: [frontend/src/i18n/README.md](frontend/src/i18n/README.md)) and the roughly 1,000 user-facing strings are being extracted; contributions for other languages are welcome.
+- **Interface in French and English.** Every screen, server message, the data created with a campaign and the Foundry VTT module are available in both languages. The documentation is in French, except this README, CONTRIBUTING.md and the translation guide. Other languages are welcome: see [Translations](#translations).
 - **One maintainer.** Reviews and answers may take a while.
 - **Free software.** Maze is licensed under the GNU AGPL-3.0-or-later (see [License](#license)).
 - **Built with heavy AI assistance.** Maze is developed with substantial help from Claude (Anthropic), under the direction and review of its author.
 - **System-agnostic core.** Nothing in Maze depends on a particular game system. The Foundry VTT module imports journals, scenes and map notes into any world; it currently fills in actors only for the Dark Heresy systems (`dark-heresy-v1` and `dark-heresy`).
+
+## Languages
+
+Maze speaks French and English. The language is chosen in this order:
+
+1. the account setting (account menu > Language: Automatic, Français, English), kept on every device;
+2. the choice made on the login screen, kept in that browser;
+3. the browser languages (the first one Maze knows);
+4. `MAZE_DEFAULT_LOCALE` (`fr` by default, see [Configuration](#configuration)).
+
+Server messages follow the same language. Relation types, place types and default titles are created in the language of the person who creates (or imports) the campaign; after that they are campaign data, never translated. `python -m maze.demo --lang en` creates an English demo campaign. The Foundry VTT module follows the language of the Foundry world. What stays in French: the tools of the Claude connector (read by Claude, who answers in the language of your conversation), the detailed guide and architecture notes, server logs, and internal values such as the backup origins of `MAZE_BACKUP_KEEP`.
 
 ## Quick start (Docker Compose)
 
@@ -138,7 +149,7 @@ With Docker, `.env` feeds `MAZE_BIND`, `FORWARDED_ALLOW_IPS`, `MAZE_PUBLIC_URL`,
 | MAZE_STATIC_DIR | /app/static in the image (`backend/maze/static` otherwise) | Built interface served by Maze (`frontend/dist` in development) |
 | MAZE_DB_WRITE_THREADS / MAZE_DB_READ_THREADS | 5 / 11 | Threads reserved for database writes and reads (writes waiting for a lock never delay reads) |
 | MAZE_PUBLIC_URL | (empty: derived from requests) | Public address, e.g. https://maze.example.org: OAuth addresses and MCP server URL of the Claude connector, Foundry module manifest |
-| MAZE_DEFAULT_LOCALE | fr | Language of the interface and of server messages when neither the account (account menu > Language) nor the browser asks for a language Maze knows: `fr` or `en`. Order: account setting, then browser language, then this value |
+| MAZE_DEFAULT_LOCALE | fr | Language of the interface and of server messages when neither the account (account menu > Language), the login screen choice nor the browser asks for a language Maze knows: `fr` or `en` (see [Languages](#languages)). Also the language of data created without a request (`python -m maze.demo` without `--lang`) and of Foundry pages when the module does not send the world's language |
 | MAZE_SOURCE_URL | https://github.com/ranglier/Maze | Where users of this instance can get its source code: "Code source (AGPL-3.0)" link on the login screen and in the account menu, as section 13 of the AGPL requires. A modified fork must point it to its own source code (see [License](#license)) |
 | MAZE_MAP_FONT | (empty) | TrueType font for map previews sent to Claude (`view_map`), tried before DejaVu Sans (in the image) and Pillow's font (no accents). Only useful outside the image |
 | MAZE_LIVE_MAX_PER_USER / MAZE_LIVE_MAX_TOTAL | 12 / 100 | Simultaneous real-time editing connections, per account and for the whole instance; beyond that, the page shows why and the browser retries later (close code 4429) |
@@ -266,7 +277,11 @@ GitHub Actions (`.github/workflows/ci.yml`) runs all of this on every push and p
 
 ## Contributing
 
-Contributions are welcome, internationalisation first. Issues and pull requests can be written in English or French. Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request: it covers the Developer Certificate of Origin (`git commit -s`), the workflow (test first, small focused pull requests, green CI) and the project rules (migrations, entry fields, editor schema version, Foundry module version, deployment scripts).
+Contributions are welcome. Issues and pull requests can be written in English or French. Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request: it covers the Developer Certificate of Origin (`git commit -s`), the workflow (test first, small focused pull requests, green CI) and the project rules (migrations, entry fields, editor schema version, Foundry module version, deployment scripts).
+
+### Translations
+
+Every visible string of the interface goes through `t()`, `tn()` or `pt()`, with the French text as the key, and server messages through `msg()` / `msgn()`; the English catalogs must stay complete, which the tests check. To fix a translation, translate a new string or propose a new language (interface, server messages and Foundry module), read [frontend/src/i18n/README.md](frontend/src/i18n/README.md).
 
 ## License
 
