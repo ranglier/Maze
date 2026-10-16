@@ -44,21 +44,5 @@
     "components/maps/constants.js",
     "places.js"
   ],
-  "characters": [
-    "components/CharactersView.jsx",
-    "components/CreateDialog.jsx",
-    "components/EntityPanel.jsx",
-    "components/EntryDraft.jsx",
-    "components/EntryNotes.jsx",
-    "components/Gallery.jsx",
-    "components/ImagePicker.jsx",
-    "components/Legend.jsx",
-    "components/Lightbox.jsx",
-    "components/RelationDialog.jsx",
-    "components/RelationPanel.jsx",
-    "components/RelationTypePicker.jsx",
-    "components/Workspace.jsx",
-    "entry-fields.generated.js",
-    "fields.js"
-  ]
+  "characters": []
 }

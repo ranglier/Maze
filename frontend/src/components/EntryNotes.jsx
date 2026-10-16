@@ -8,6 +8,7 @@ import CommentsPanel from './CommentsPanel.jsx';
 import { HistoryPanel, versionDate, versionTitle } from './HistoryPanel.jsx';
 import { useKinds } from './PlaceIcon.jsx';
 import { Icon, Markdown, useAction, useConfirm, useToast } from './ui.jsx';
+import { N_, t, tn } from '../i18n/index.js';
 
 /*
  * Panneau latéral des fiches PNJ, factions et lieux (pleine page) : Sommaire, Commentaires, Historique,
@@ -90,7 +91,11 @@ export function EntryShell({
   const confirm = useConfirm();
   const mainRef = useRef(null);
   const sections = useMemo(() => textSections(kind), [kind]);
-  const labelOf = useCallback((field) => sections.find((s) => s.key === field)?.label || null, [sections]);
+  // Libellé traduit à l'appel (registre en français).
+  const labelOf = useCallback((field) => {
+    const label = sections.find((s) => s.key === field)?.label;
+    return label ? t(label) : null;
+  }, [sections]);
 
   const [sideTab, setSideTab] = useState(() => {
     const saved = storage.get(SIDE_KEY);
@@ -124,8 +129,8 @@ export function EntryShell({
   const loadComments = useCallback(async () => {
     const key = `${kind}:${id}`;
     try {
-      const t = await api.entryComments(kind, id);
-      if (keyRef.current === key) setThreads(t);
+      const th = await api.entryComments(kind, id);
+      if (keyRef.current === key) setThreads(th);
     } catch (err) {
       if (keyRef.current === key) toast(err.message, 'error');
     }
@@ -206,31 +211,31 @@ export function EntryShell({
     };
     const nextAnchors = {};
     const nextRanges = new Map();
-    for (const t of threads || []) {
-      if (!t.field) {
+    for (const th of threads || []) {
+      if (!th.field) {
         // Toute la fiche (ou passage cherché dans toutes les sections, pour un fil posé par Claude).
         let found = null;
-        if (t.quote) {
+        if (th.quote) {
           for (const f of order) {
-            const hit = findQuote(indexOf(f), t.quote);
+            const hit = findQuote(indexOf(f), th.quote);
             if (hit) { found = { ...hit, f }; break; }
           }
           if (found) {
-            nextRanges.set(t.id, found.range);
-            nextAnchors[t.id] = { pos: order.indexOf(found.f) * 1e6 + found.at, text: t.quote };
+            nextRanges.set(th.id, found.range);
+            nextAnchors[th.id] = { pos: order.indexOf(found.f) * 1e6 + found.at, text: th.quote };
           }
         } else {
-          nextAnchors[t.id] = { pos: -1, text: '' };
+          nextAnchors[th.id] = { pos: -1, text: '' };
         }
         continue;
       }
-      if (!fields.has(t.field)) continue;                       // section vidée : fil « détaché »
-      const base = order.indexOf(t.field) * 1e6;
-      if (!t.quote) { nextAnchors[t.id] = { pos: base, text: '' }; continue; }
-      const hit = findQuote(indexOf(t.field), t.quote);
+      if (!fields.has(th.field)) continue;                       // section vidée : fil « détaché »
+      const base = order.indexOf(th.field) * 1e6;
+      if (!th.quote) { nextAnchors[th.id] = { pos: base, text: '' }; continue; }
+      const hit = findQuote(indexOf(th.field), th.quote);
       if (!hit) continue;                                        // extrait modifié
-      nextRanges.set(t.id, hit.range);
-      nextAnchors[t.id] = { pos: base + hit.at, text: t.quote };
+      nextRanges.set(th.id, hit.range);
+      nextAnchors[th.id] = { pos: base + hit.at, text: th.quote };
     }
     ranges.current = nextRanges;
     setAnchors((cur) => (JSON.stringify(cur) === JSON.stringify(nextAnchors) ? cur : nextAnchors));
@@ -238,11 +243,11 @@ export function EntryShell({
     if (canHighlight()) {
       const open = [];
       let active = null;
-      for (const t of threads || []) {
-        const r = nextRanges.get(t.id);
+      for (const th of threads || []) {
+        const r = nextRanges.get(th.id);
         if (!r) continue;
-        if (t.id === activeComment) active = r;
-        else if (!t.resolved) open.push(r);
+        if (th.id === activeComment) active = r;
+        else if (!th.resolved) open.push(r);
       }
       CSS.highlights.set(HL.open, new Highlight(...open));
       if (active) CSS.highlights.set(HL.active, new Highlight(active)); else CSS.highlights.delete(HL.active);
@@ -313,7 +318,7 @@ export function EntryShell({
   const reveal = useCallback((threadId) => {
     const root = mainRef.current;
     const range = ranges.current.get(threadId);
-    const thread = threads?.find((t) => t.id === threadId);
+    const thread = threads?.find((th) => th.id === threadId);
     const target = range ? range.getBoundingClientRect() : fieldEls.current.get(thread?.field)?.getBoundingClientRect();
     if (!root || !target) return;
     const box = root.getBoundingClientRect();
@@ -329,7 +334,7 @@ export function EntryShell({
 
   const startComment = useCallback((field, quote = '') => {
     if (editing) return;
-    setDraft({ field: field || '', quote, label: field ? labelOf(field) : 'Toute la fiche' });
+    setDraft({ field: field || '', quote, label: field ? labelOf(field) : t('Toute la fiche') });
     setActiveComment(null);
     setFab(null);
     window.getSelection()?.removeAllRanges();
@@ -353,7 +358,7 @@ export function EntryShell({
   };
 
   const resolveComment = async (thread, resolved) => {
-    const done = await run(() => api.updateEntryComment(thread.id, { resolved }), resolved ? 'Fil résolu' : 'Fil rouvert');
+    const done = await run(() => api.updateEntryComment(thread.id, { resolved }), resolved ? t('Fil résolu') : t('Fil rouvert'));
     if (!done) return;
     if (resolved && activeComment === thread.id) setActiveComment(null);
     loadComments();
@@ -369,10 +374,10 @@ export function EntryShell({
   const deleteComment = async (comment) => {
     const isThread = comment.parent_id === null;
     const yes = await confirm({
-      title: isThread ? 'Supprimer le fil' : 'Supprimer la réponse',
-      message: isThread ? 'Le commentaire et toutes ses réponses seront supprimés. Le texte de la fiche n’est pas modifié.'
-        : 'Cette réponse sera supprimée.',
-      confirmLabel: 'Supprimer',
+      title: isThread ? t('Supprimer le fil') : t('Supprimer la réponse'),
+      message: isThread ? t('Le commentaire et toutes ses réponses seront supprimés. Le texte de la fiche n’est pas modifié.')
+        : t('Cette réponse sera supprimée.'),
+      confirmLabel: t('Supprimer'),
     });
     if (!yes) return;
     if (await run(() => api.deleteEntryComment(comment.id)) === undefined) return;
@@ -391,7 +396,7 @@ export function EntryShell({
       for (const [threadId, range] of ranges.current) {
         let inside = false;
         try { inside = range.isPointInRange(point[0], point[1]); } catch { /* nœud hors du document */ }
-        const thread = threads?.find((t) => t.id === threadId);
+        const thread = threads?.find((th) => th.id === threadId);
         if (inside && thread && !thread.resolved) {
           setActiveComment(threadId);
           openSide('comments');
@@ -406,23 +411,23 @@ export function EntryShell({
   // Arrivée depuis la recherche globale (?comment=<id>).
   useEffect(() => {
     if (!commentId || !threads) return undefined;
-    const t = setTimeout(() => {
+    const timer = setTimeout(() => {
       const thread = threads.find((x) => x.id === commentId || x.replies.some((r) => r.id === commentId));
       if (thread) {
         openSide('comments');
         selectComment(thread.id);
       } else {
-        toast('Ce commentaire n’existe plus.', 'info');
+        toast(t('Ce commentaire n’existe plus.'), 'info');
       }
       onCommentDone?.();
     }, 150);
-    return () => clearTimeout(t);
+    return () => clearTimeout(timer);
   }, [commentId, threads]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // --- Historique --------------------------------------------------------------------------
   const openVersion = async (v) => {
     if (editing) {
-      toast('Enregistrez ou annulez d’abord la modification en cours.', 'info');
+      toast(t('Enregistrez ou annulez d’abord la modification en cours.'), 'info');
       return;
     }
     setVersionView({ version: v, content: null, current: null });
@@ -436,7 +441,7 @@ export function EntryShell({
   };
 
   const createVersion = async (label) => {
-    const created = await run(() => api.createEntryVersion(kind, id, { label }), 'Version enregistrée');
+    const created = await run(() => api.createEntryVersion(kind, id, { label }), t('Version enregistrée'));
     if (!created) return false;
     loadVersions();
     return true;
@@ -452,9 +457,10 @@ export function EntryShell({
 
   const deleteVersion = async (v) => {
     const yes = await confirm({
-      title: 'Supprimer cette version',
-      message: `La version du ${versionDate(v)} sera supprimée de l’historique. Le contenu actuel de la fiche ne change pas.`,
-      confirmLabel: 'Supprimer',
+      title: t('Supprimer cette version'),
+      message: t('La version du {date} sera supprimée de l’historique. Le contenu actuel de la fiche ne change pas.',
+        { date: versionDate(v) }),
+      confirmLabel: t('Supprimer'),
     });
     if (!yes) return;
     if (await run(() => api.deleteEntryVersion(kind, id, v.id)) === undefined) return;
@@ -466,13 +472,13 @@ export function EntryShell({
     const v = versionView?.version;
     if (!v) return;
     const yes = await confirm({
-      title: 'Restaurer cette version',
-      message: `Le texte de la fiche (nom, résumé, sections, étiquettes) reprendra la version du ${versionDate(v)}. `
-        + 'Les images, liens, appartenances et lieux ne changent pas. L’état actuel reste dans l’historique.',
-      confirmLabel: 'Restaurer',
+      title: t('Restaurer cette version'),
+      message: t('Le texte de la fiche (nom, résumé, sections, étiquettes) reprendra la version du {date}. Les images, liens, appartenances et lieux ne changent pas. L’état actuel reste dans l’historique.',
+        { date: versionDate(v) }),
+      confirmLabel: t('Restaurer'),
     });
     if (!yes) return;
-    const done = await run(() => api.restoreEntryVersion(kind, id, v.id), 'Version restaurée');
+    const done = await run(() => api.restoreEntryVersion(kind, id, v.id), t('Version restaurée'));
     if (!done) return;
     setVersionView(null);
     await onRestored?.();
@@ -480,11 +486,11 @@ export function EntryShell({
   };
 
   // --- Rendu -------------------------------------------------------------------------------
-  const openThreads = (threads || []).filter((t) => !t.resolved);
+  const openThreads = (threads || []).filter((th) => !th.resolved);
   const notes = useMemo(() => ({
     openCount: openThreads.length,
-    countFor: (field) => openThreads.filter((t) => t.field === field).length,
-    firstFor: (field) => openThreads.find((t) => t.field === field)?.id ?? null,
+    countFor: (field) => openThreads.filter((th) => th.field === field).length,
+    firstFor: (field) => openThreads.find((th) => th.field === field)?.id ?? null,
     startComment,
     showThread: (threadId) => { openSide('comments'); selectComment(threadId); },
     openSide,
@@ -509,36 +515,36 @@ export function EntryShell({
       </main>
       {fab && (
         <button type="button" className="comment-fab entry-fab" style={{ top: fab.top, left: fab.left }}
-          title="Commenter la sélection" aria-label="Commenter la sélection"
+          title={t('Commenter la sélection')} aria-label={t('Commenter la sélection')}
           onMouseDown={(e) => e.preventDefault()} onClick={() => startComment(fab.field, fab.quote)}>
           <Icon name="comment" size={17} />
         </button>
       )}
-      <aside className={`doc-side entry-side${sideOpen ? ' is-open' : ''}`} aria-label="Panneau latéral de la fiche">
+      <aside className={`doc-side entry-side${sideOpen ? ' is-open' : ''}`} aria-label={t('Panneau latéral de la fiche')}>
         <div className="doc-side__tabs" role="tablist">
           <button type="button" role="tab" aria-selected={sideTab === 'toc'} className={sideTab === 'toc' ? 'is-active' : ''}
             onClick={() => showTab('toc')}>
-            Sommaire
+            {t('Sommaire')}
           </button>
           <button type="button" role="tab" aria-selected={sideTab === 'comments'} className={sideTab === 'comments' ? 'is-active' : ''}
             onClick={() => showTab('comments')}>
-            Commentaires{openThreads.length > 0 && <span className="doc-side__badge">{openThreads.length}</span>}
+            {t('Commentaires')}{openThreads.length > 0 && <span className="doc-side__badge">{openThreads.length}</span>}
           </button>
           <button type="button" role="tab" aria-selected={sideTab === 'history'} className={sideTab === 'history' ? 'is-active' : ''}
             onClick={() => showTab('history')}>
-            Historique
+            {t('Historique')}
           </button>
-          <button type="button" className="icon-btn icon-btn--small doc-side__close" aria-label="Fermer le panneau"
+          <button type="button" className="icon-btn icon-btn--small doc-side__close" aria-label={t('Fermer le panneau')}
             onClick={() => setSideOpen(false)}>
             <Icon name="close" size={15} />
           </button>
         </div>
         {sideTab === 'toc' ? (
-          <nav className="doc-toc" aria-label="Sommaire de la fiche">
+          <nav className="doc-toc" aria-label={t('Sommaire de la fiche')}>
             {versionView ? (
-              <p className="muted doc-toc__empty">Sommaire de la version actuelle : revenez-y pour l’utiliser.</p>
+              <p className="muted doc-toc__empty">{t('Sommaire de la version actuelle : revenez-y pour l’utiliser.')}</p>
             ) : toc.length === 0 ? (
-              <p className="muted doc-toc__empty">{editing ? 'Le sommaire revient après l’enregistrement.' : 'Les sections de la fiche apparaîtront ici.'}</p>
+              <p className="muted doc-toc__empty">{editing ? t('Le sommaire revient après l’enregistrement.') : t('Les sections de la fiche apparaîtront ici.')}</p>
             ) : (
               <ul>
                 {toc.map((item, i) => (
@@ -559,12 +565,10 @@ export function EntryShell({
             onCreate={createVersion}
             onRename={renameVersion}
             onDelete={deleteVersion}
-            currentMeta={editing ? 'modification en cours' : 'texte enregistré'}
-            notice={editing ? 'Enregistrez ou annulez la modification en cours pour consulter ou restaurer une version.' : null}
-            emptyText={'Aucune version pour l’instant. Maze en garde une à chaque enregistrement de la fiche (les '
-              + 'modifications rapprochées d’un même MJ sont regroupées) ; vous pouvez aussi nommer l’état actuel.'}
-            note={'Seul le texte de la fiche est versionné (pas les images, liens ni lieux). Au-delà de 50, les versions '
-              + 'automatiques les plus anciennes sont effacées ; les versions nommées sont conservées.'}
+            currentMeta={editing ? t('modification en cours') : t('texte enregistré')}
+            notice={editing ? t('Enregistrez ou annulez la modification en cours pour consulter ou restaurer une version.') : null}
+            emptyText={t('Aucune version pour l’instant. Maze en garde une à chaque enregistrement de la fiche (les modifications rapprochées d’un même MJ sont regroupées) ; vous pouvez aussi nommer l’état actuel.')}
+            note={t('Seul le texte de la fiche est versionné (pas les images, liens ni lieux). Au-delà de 50, les versions automatiques les plus anciennes sont effacées ; les versions nommées sont conservées.')}
           />
         ) : (
           <CommentsPanel
@@ -574,11 +578,11 @@ export function EntryShell({
             activeId={activeComment}
             user={user}
             readOnly={false}
-            fieldLabel={(t) => (t.field ? labelOf(t.field) : null)}
-            orphan={{ withQuote: 'extrait introuvable dans le texte actuel', empty: 'Cette section a été vidée' }}
-            emptyText={editing ? 'Aucun commentaire.' : (TOUCH
-              ? 'Aucun commentaire. Sélectionnez un passage de la fiche puis touchez la bulle, ou commentez une section.'
-              : 'Aucun commentaire. Sélectionnez un passage de la fiche puis cliquez sur la bulle, ou utilisez celle d’une section.')}
+            fieldLabel={(th) => (th.field ? labelOf(th.field) : null)}
+            orphan={{ withQuote: t('extrait introuvable dans le texte actuel'), empty: t('Cette section a été vidée') }}
+            emptyText={editing ? t('Aucun commentaire.') : (TOUCH
+              ? t('Aucun commentaire. Sélectionnez un passage de la fiche puis touchez la bulle, ou commentez une section.')
+              : t('Aucun commentaire. Sélectionnez un passage de la fiche puis cliquez sur la bulle, ou utilisez celle d’une section.'))}
             onNewThread={editing ? undefined : () => startComment('')}
             onSubmitDraft={submitDraft}
             onCancelDraft={() => setDraft(null)}
@@ -594,12 +598,15 @@ export function EntryShell({
   );
 }
 
-/** Bouton de section : nombre de fils ouverts (affiche le premier), sinon « Commenter cette section ». */
+/** Bouton de section : nombre de fils ouverts (affiche le premier), sinon « Commenter cette section ».
+ * `label` : libellé du registre en français (traduit ici). */
 export function SectionComment({ field, label }) {
   const notes = useEntryNotes();
   if (!notes) return null;
   const count = notes.countFor(field);
-  const title = count ? `${count} commentaire${count > 1 ? 's' : ''} sur « ${label} »` : `Commenter « ${label} »`;
+  const shown = t(label);
+  const title = count ? tn('{n} commentaire sur « {label} »', '{n} commentaires sur « {label} »', count, { label: shown })
+    : t('Commenter « {label} »', { label: shown });
   return (
     <button type="button" className={`icon-btn icon-btn--small entry-sec-comment${count ? ' has-count' : ''}`}
       title={title} aria-label={title}
@@ -615,10 +622,12 @@ export function EntrySideButton() {
   if (!notes) return null;
   return (
     <button type="button" className="btn btn--small btn--ghost doc__comments-btn" onClick={() => notes.openSide()}
-      title="Sommaire, commentaires et historique de la fiche"
-      aria-label={`Sommaire, commentaires et historique${notes.openCount ? ` (${notes.openCount} fil${notes.openCount > 1 ? 's' : ''} ouvert${notes.openCount > 1 ? 's' : ''})` : ''}`}>
+      title={t('Sommaire, commentaires et historique de la fiche')}
+      aria-label={notes.openCount
+        ? tn('Sommaire, commentaires et historique ({n} fil ouvert)', 'Sommaire, commentaires et historique ({n} fils ouverts)', notes.openCount)
+        : t('Sommaire, commentaires et historique')}>
       <Icon name="comment" size={15} />
-      <span className="btn__label">Panneau</span>
+      <span className="btn__label">{t('Panneau')}</span>
       {notes.openCount > 0 && <span className="doc-side__badge">{notes.openCount}</span>}
     </button>
   );
@@ -627,9 +636,9 @@ export function EntrySideButton() {
 // --- Aperçu d'une version --------------------------------------------------------------------
 
 const DIFF = {
-  changed: 'Modifié depuis',
-  added: 'Ajouté depuis',
-  removed: 'Vidé depuis',
+  changed: N_('Modifié depuis'),
+  added: N_('Ajouté depuis'),
+  removed: N_('Vidé depuis'),
 };
 
 function diffState(before, after) {
@@ -642,11 +651,11 @@ function diffState(before, after) {
 }
 
 function Badge({ state }) {
-  return state ? <span className={`entry-diff entry-diff--${state}`}>{DIFF[state]}</span> : null;
+  return state ? <span className={`entry-diff entry-diff--${state}`}>{t(DIFF[state])}</span> : null;
 }
 
 // Champs d'en-tête de l'aperçu d'une version : registre (historyIdentity), présentation propre à l'aperçu.
-const VERSION_LABEL = { place: { kind: 'Type de lieu' } };
+const VERSION_LABEL = { place: { kind: N_('Type de lieu') } };
 
 function identityRows(kind, kinds) {
   const format = {
@@ -671,15 +680,15 @@ function EntryVersionView({ kind, view, resolveRef, onRestore, onClose }) {
           <span className="muted"> · {versionDate(version)}{version.author_name ? ` · ${version.author_name}` : ''}</span>
         </span>
         <button type="button" className="btn btn--small btn--primary" onClick={onRestore} disabled={content == null || version.is_current}>
-          Restaurer cette version
+          {t('Restaurer cette version')}
         </button>
-        <button type="button" className="btn btn--small btn--ghost" onClick={onClose}>Revenir à la version actuelle</button>
+        <button type="button" className="btn btn--small btn--ghost" onClick={onClose}>{t('Revenir à la version actuelle')}</button>
       </div>
-      {content == null ? <div className="doc-connecting" aria-busy="true">Chargement de la version…</div> : (
+      {content == null ? <div className="doc-connecting" aria-busy="true">{t('Chargement de la version…')}</div> : (
         <>
           <p className="entry-version__legend">
-            {version.is_current ? 'Cette version est identique au texte actuel de la fiche.'
-              : 'Les sections marquées ont changé entre cette version et le texte actuel de la fiche.'}
+            {version.is_current ? t('Cette version est identique au texte actuel de la fiche.')
+              : t('Les sections marquées ont changé entre cette version et le texte actuel de la fiche.')}
           </p>
           <header className="entry-version__head">
             <h1 className="doc__title">{content.name}</h1>
@@ -691,10 +700,10 @@ function EntryVersionView({ kind, view, resolveRef, onRestore, onClose }) {
               if (!content[key] && !state) return null;
               return (
                 <div key={key} className={state ? 'is-changed' : ''}>
-                  <dt>{label}</dt>
+                  <dt>{t(label)}</dt>
                   <dd>
                     {key === 'color' && content[key] && <span className="entry-version__swatch" style={{ background: content[key] }} />}
-                    {content[key] ? fmt(content[key]) : <span className="muted">vide</span>}
+                    {content[key] ? fmt(content[key]) : <span className="muted">{t('vide')}</span>}
                     <Badge state={state} />
                   </dd>
                 </div>
@@ -707,25 +716,25 @@ function EntryVersionView({ kind, view, resolveRef, onRestore, onClose }) {
             return (
               <section key={s.key} className={`panel-section entry-version__sec${s.secret ? ' panel-section--secret' : ''}${state ? ` is-${state}` : ''}`}>
                 <div className="panel-section__head">
-                  <h3>{s.secret && <Icon name="lock" size={14} />} {s.label}</h3>
+                  <h3>{s.secret && <Icon name="lock" size={14} />} {t(s.label)}</h3>
                   <Badge state={state} />
                 </div>
                 {content[s.key]?.trim()
                   ? (s.key === 'summary' ? <p className="sheet-summary">{content[s.key]}</p>
                     : <Markdown text={content[s.key]} resolve={resolveRef} />)
-                  : <p className="muted">Vide dans cette version.</p>}
+                  : <p className="muted">{t('Vide dans cette version.')}</p>}
               </section>
             );
           })}
           {(content.tags?.length > 0 || diffState(tags(content.tags), tags(current.tags))) && (
             <section className={`panel-section entry-version__sec${diffState(tags(content.tags), tags(current.tags)) ? ' is-changed' : ''}`}>
               <div className="panel-section__head">
-                <h3>Étiquettes</h3>
+                <h3>{t('Étiquettes')}</h3>
                 <Badge state={diffState(tags(content.tags), tags(current.tags))} />
               </div>
               {content.tags?.length > 0
-                ? <div className="tags">{content.tags.map((t) => <span key={t} className="tag">{t}</span>)}</div>
-                : <p className="muted">Aucune dans cette version.</p>}
+                ? <div className="tags">{content.tags.map((tag) => <span key={tag} className="tag">{tag}</span>)}</div>
+                : <p className="muted">{t('Aucune dans cette version.')}</p>}
             </section>
           )}
         </>

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { api } from '../api.js';
 import { setUnsaved } from '../session.js';
 import { Markdown } from './ui.jsx';
+import { t } from '../i18n/index.js';
 
 /*
  * Brouillon d'un formulaire de fiche PNJ, faction ou lieu (lot 3 de l'audit) :
@@ -89,7 +90,7 @@ export function useEntryDraft({ kind, entry, keys, empty }) {
         }
       }
     }
-    throw new Error('La fiche change sans cesse : réessayez dans un instant.');
+    throw new Error(t('La fiche change sans cesse : réessayez dans un instant.'));
   };
 
   /** Conflit sur un champ : garder sa saisie (« mine ») ou reprendre la version actuelle (« theirs »). */
@@ -114,7 +115,8 @@ export function useEntryDraft({ kind, entry, keys, empty }) {
   return { draft, set, dirty, save, conflict, resolve, keepAll, fieldKey: (k) => `${k}-${generation[k] || 0}` };
 }
 
-/** Conflit d'enregistrement : version actuelle de chaque champ changé des deux côtés, et choix. */
+/** Conflit d'enregistrement : version actuelle de chaque champ changé des deux côtés, et choix.
+ * `labels` : clé > libellé du registre en français (traduit ici). */
 export function ConflictPanel({ conflict, labels, rich, resolveRef, onResolve, onKeepAll }) {
   const ref = useRef(null);
   const shown = Boolean(conflict);
@@ -123,29 +125,32 @@ export function ConflictPanel({ conflict, labels, rich, resolveRef, onResolve, o
   if (!conflict) return null;
   return (
     <div className="entry-conflict" role="alert" data-entry-conflict="" ref={ref}>
-      <p><strong>Fiche modifiée entre-temps{conflict.author ? ` par ${conflict.author}` : ''}.</strong> Vos changements ne
-        sont pas encore enregistrés et restent dans le formulaire. Pour chaque champ modifié des deux côtés, gardez votre
-        saisie ou reprenez la version actuelle, puis enregistrez.</p>
+      <p>
+        <strong>{conflict.author ? t('Fiche modifiée entre-temps par {author}.', { author: conflict.author })
+          : t('Fiche modifiée entre-temps.')}</strong>
+        {' '}
+        {t('Vos changements ne sont pas encore enregistrés et restent dans le formulaire. Pour chaque champ modifié des deux côtés, gardez votre saisie ou reprenez la version actuelle, puis enregistrez.')}
+      </p>
       {conflict.fields.map((f) => (
         <div key={f.key} className="entry-conflict__field" data-conflict-field={f.key}>
-          <h4>{labels[f.key] || f.key} : version actuelle</h4>
+          <h4>{t('{field} : version actuelle', { field: labels[f.key] ? t(labels[f.key]) : f.key })}</h4>
           <div className="entry-conflict__theirs">
             {rich.has(f.key) ? <Markdown text={f.theirs} resolve={resolveRef} />
-              : <span>{Array.isArray(f.theirs) ? f.theirs.join(', ') : String(f.theirs ?? '') || '(vide)'}</span>}
+              : <span>{Array.isArray(f.theirs) ? f.theirs.join(', ') : String(f.theirs ?? '') || t('(vide)')}</span>}
           </div>
           <div className="entry-conflict__actions">
             <button type="button" className="btn btn--small btn--primary" onClick={() => onResolve(f.key, 'mine')}>
-              Garder ma saisie
+              {t('Garder ma saisie')}
             </button>
             <button type="button" className="btn btn--small btn--ghost" onClick={() => onResolve(f.key, 'theirs')}>
-              Reprendre la version actuelle
+              {t('Reprendre la version actuelle')}
             </button>
           </div>
         </div>
       ))}
       {conflict.fields.length > 1 && (
         <div className="entry-conflict__actions">
-          <button type="button" className="btn btn--small btn--ghost" onClick={onKeepAll}>Garder toute ma saisie</button>
+          <button type="button" className="btn btn--small btn--ghost" onClick={onKeepAll}>{t('Garder toute ma saisie')}</button>
         </div>
       )}
     </div>

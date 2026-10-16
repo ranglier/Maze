@@ -9,13 +9,14 @@ import { EntryShell } from './EntryNotes.jsx';
 import RelationDialog from './RelationDialog.jsx';
 import { Icon, useAction } from './ui.jsx';
 import { useTreeDrag } from './treeDrag.js';
+import { compareText, t, tn } from '../i18n/index.js';
 
 /*
  * Onglet Personnages : index de tous les PNJ et factions de la campagne (à gauche, rangés par
  * faction ou par ordre alphabétique, avec recherche et filtres), fiche en pleine page à droite.
  */
 
-const byName = (a, b) => a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' });
+const byName = (a, b) => compareText(a.name, b.name, { sensitivity: 'base' });
 // Ordre choisi par le MJ (glisser-déposer), sinon alphabétique (sort_order à 0 tant que rien n'est rangé).
 const byOrder = (a, b) => (a.sort_order || 0) - (b.sort_order || 0) || byName(a, b);
 
@@ -48,7 +49,7 @@ export default function CharactersView({
     for (const f of graph?.factions || []) { byNode.set(nodeId('faction', f.id), f); names.set(normalize(f.name), nodeId('faction', f.id)); }
     return { byNode, names };
   }, [graph]);
-  const nodeName = useCallback((id) => lookup.byNode.get(id)?.name || 'Fiche supprimée', [lookup]);
+  const nodeName = useCallback((id) => lookup.byNode.get(id)?.name || t('Fiche supprimée'), [lookup]);
   const resolveRef = useCallback((name) => lookup.names.get(normalize(name)), [lookup]);
 
   const selected = entity && graph && lookup.byNode.has(entity) ? parseNodeId(entity) : null;
@@ -70,10 +71,10 @@ export default function CharactersView({
         <div className="topbar__right">
         <div className="toolbar">
           <button type="button" className="btn btn--ghost" onClick={() => setDialog({ type: 'create', kind: 'npc' })}>
-            <Icon name="person" size={16} /><span className="btn__label">PNJ</span>
+            <Icon name="person" size={16} /><span className="btn__label">{t('PNJ')}</span>
           </button>
           <button type="button" className="btn btn--ghost" onClick={() => setDialog({ type: 'create', kind: 'faction' })}>
-            <Icon name="banner" size={16} /><span className="btn__label">Faction</span>
+            <Icon name="banner" size={16} /><span className="btn__label">{t('Faction')}</span>
           </button>
           <span className="toolbar__sep" />
         </div>
@@ -110,9 +111,9 @@ export default function CharactersView({
           </EntryShell>
         ) : (
           <main className="doc-main characters__main">
-            {!graph ? <div className="doc-loading" aria-busy="true">Chargement…</div>
+            {!graph ? <div className="doc-loading" aria-busy="true">{t('Chargement…')}</div>
               : entity ? (
-                <div className="doc"><p className="muted">Cette fiche n’existe plus.</p></div>
+                <div className="doc"><p className="muted">{t('Cette fiche n’existe plus.')}</p></div>
               ) : (
                 <CharactersHome graph={graph} campaignName={campaign.name} onOpen={go}
                   onCreate={(kind) => setDialog({ type: 'create', kind })} />
@@ -222,7 +223,7 @@ function CharacterList({ graph, campaignName, currentId, onOpen, onCreate, onReo
           <button type="button" className="doc-tree__link" onClick={() => onOpen(id)} aria-current={id === currentId ? 'page' : undefined}>
             <img className="char-list__avatar" src={n.portrait_thumb || initialsAvatar(n.name, model.ring.get(n.id) || '#5d6b80')} alt="" />
             <span className="doc-tree__label">{n.status === 'mort' ? `† ${n.name}` : n.name}</span>
-            {leader && <Icon name="star" size={12} title="Dirigeant" />}
+            {leader && <Icon name="star" size={12} title={t('Dirigeant')} />}
           </button>
         </div>
       </li>
@@ -238,7 +239,7 @@ function CharacterList({ graph, campaignName, currentId, onOpen, onCreate, onReo
         <div className={`doc-tree__item${id === currentId ? ' is-active' : ''}${dnd.className(row.key)}`} style={{ '--depth': 0 }}
           {...dnd.props(row, { enabled: canDrag && draggable, accepts: (d) => d.group === 'factions' })}>
           {members && members.length > 0 ? (
-            <button type="button" className="doc-tree__caret" aria-label={open ? 'Replier' : 'Déplier'} aria-expanded={open}
+            <button type="button" className="doc-tree__caret" aria-label={open ? t('Replier') : t('Déplier')} aria-expanded={open}
               onClick={() => setExpanded((s) => { const n = new Set(s); if (n.has(f.id)) n.delete(f.id); else n.add(f.id); return n; })}>
               <Icon name={open ? 'chevron' : 'right'} size={13} />
             </button>
@@ -281,7 +282,7 @@ function CharacterList({ graph, campaignName, currentId, onOpen, onCreate, onReo
         <ul className="doc-tree__list">{groups}</ul>
         {loners.length > 0 && (
           <>
-            <div className="doc-tree__section"><span>Sans faction</span><span className="char-list__count">{loners.length}</span></div>
+            <div className="doc-tree__section"><span>{t('Sans faction')}</span><span className="char-list__count">{loners.length}</span></div>
             <ul className="doc-tree__list">{loners.map((n) => npcItem(n, 0, null, false, lonerGroup))}</ul>
           </>
         )}
@@ -301,50 +302,50 @@ function CharacterList({ graph, campaignName, currentId, onOpen, onCreate, onReo
   const shownCount = (show !== 'faction' ? model.npcs.length : 0) + (show !== 'npc' ? model.factions.length : 0);
 
   return (
-    <aside className="doc-tree char-list" aria-label="Personnages de la campagne">
+    <aside className="doc-tree char-list" aria-label={t('Personnages de la campagne')}>
       <button type="button" className={`doc-tree__root${currentId ? '' : ' is-active'}`} onClick={() => onOpen(null)}>
         <Icon name="person" size={17} />
         <span>
-          <strong>Personnages</strong>
+          <strong>{t('Personnages')}</strong>
           <span className="doc-tree__sub">{campaignName}</span>
         </span>
       </button>
       <div className="char-list__tools">
-        <input type="search" className="input char-list__search" placeholder="Rechercher…" value={query}
-          onChange={(e) => setQuery(e.target.value)} aria-label="Rechercher dans les personnages" />
+        <input type="search" className="input char-list__search" placeholder={t('Rechercher…')} value={query}
+          onChange={(e) => setQuery(e.target.value)} aria-label={t('Rechercher dans les personnages')} />
         <div className="char-list__row">
-          <div className="segmented segmented--small" role="radiogroup" aria-label="Afficher">
-            {[['all', 'Tous'], ['npc', 'PNJ'], ['faction', 'Factions']].map(([k, label]) => (
+          <div className="segmented segmented--small" role="radiogroup" aria-label={t('Afficher')}>
+            {[['all', t('Tous')], ['npc', t('PNJ')], ['faction', t('Factions')]].map(([k, label]) => (
               <button key={k} type="button" role="radio" aria-checked={show === k} className={show === k ? 'is-active' : ''}
                 onClick={() => setShow(k)}>{label}</button>
             ))}
           </div>
           <button type="button" className="icon-btn icon-btn--small" onClick={() => setGrouping(grouping === 'faction' ? 'alpha' : 'faction')}
-            title={grouping === 'faction' ? 'Classer par ordre alphabétique' : 'Ranger par faction'}
-            aria-label={grouping === 'faction' ? 'Classer par ordre alphabétique' : 'Ranger par faction'}>
+            title={grouping === 'faction' ? t('Classer par ordre alphabétique') : t('Ranger par faction')}
+            aria-label={grouping === 'faction' ? t('Classer par ordre alphabétique') : t('Ranger par faction')}>
             <Icon name={grouping === 'faction' ? 'banner' : 'list'} size={15} />
           </button>
         </div>
         {show !== 'faction' && (
-          <select className="input char-list__status" value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Statut des PNJ">
-            <option value="">Tous les statuts</option>
+          <select className="input char-list__status" value={status} onChange={(e) => setStatus(e.target.value)} aria-label={t('Statut des PNJ')}>
+            <option value="">{t('Tous les statuts')}</option>
             {Object.entries(NPC_STATUS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
           </select>
         )}
       </div>
       <div className="doc-tree__section">
-        <span>{filtering ? `${shownCount} résultat${shownCount > 1 ? 's' : ''}` : `${model.all} fiche${model.all > 1 ? 's' : ''}`}</span>
-        <button type="button" className="icon-btn icon-btn--small" title="Nouveau PNJ" aria-label="Nouveau PNJ" onClick={() => onCreate('npc')}>
+        <span>{filtering ? tn('{n} résultat', '{n} résultats', shownCount) : tn('{n} fiche', '{n} fiches', model.all)}</span>
+        <button type="button" className="icon-btn icon-btn--small" title={t('Nouveau PNJ')} aria-label={t('Nouveau PNJ')} onClick={() => onCreate('npc')}>
           <Icon name="plus" size={15} />
         </button>
       </div>
       {content}
       {model.all === 0 && (
         <button type="button" className="doc-tree__empty" onClick={() => onCreate('npc')}>
-          <Icon name="plus" size={14} /> Créer le premier PNJ
+          <Icon name="plus" size={14} /> {t('Créer le premier PNJ')}
         </button>
       )}
-      {model.all > 0 && shownCount === 0 && <p className="muted char-list__none">Aucune fiche ne correspond.</p>}
+      {model.all > 0 && shownCount === 0 && <p className="muted char-list__none">{t('Aucune fiche ne correspond.')}</p>}
     </aside>
   );
 }
@@ -359,19 +360,21 @@ function CharactersHome({ graph, campaignName, onOpen, onCreate }) {
   return (
     <article className="doc">
       <header className="doc__head">
-        <p className="place__kind char-home__kind"><Icon name="person" size={15} /> Personnages de la campagne</p>
+        <p className="place__kind char-home__kind"><Icon name="person" size={15} /> {t('Personnages de la campagne')}</p>
         <h1 className="doc__title">{campaignName}</h1>
         <p className="muted">
-          {graph.npcs.length} PNJ{dead ? ` (dont ${dead} mort${dead > 1 ? 's' : ''})` : ''} · {graph.factions.length} faction{graph.factions.length > 1 ? 's' : ''} · {graph.relations.length} relation{graph.relations.length > 1 ? 's' : ''}
+          {dead ? tn('{npcs} (dont {n} mort)', '{npcs} (dont {n} morts)', dead, { npcs: tn('{n} PNJ', '{n} PNJ', graph.npcs.length) })
+            : tn('{n} PNJ', '{n} PNJ', graph.npcs.length)}
+          {' · '}{tn('{n} faction', '{n} factions', graph.factions.length)}
+          {' · '}{tn('{n} relation', '{n} relations', graph.relations.length)}
         </p>
       </header>
       {graph.npcs.length + graph.factions.length === 0 ? (
         <div className="place-empty">
-          <p>Rangez ici tous les personnages de la campagne et les factions qui tirent les ficelles. Chaque scénario
-            a ensuite sa propre carte des relations, avec les fiches qu’il cite.</p>
+          <p>{t('Rangez ici tous les personnages de la campagne et les factions qui tirent les ficelles. Chaque scénario a ensuite sa propre carte des relations, avec les fiches qu’il cite.')}</p>
           <div className="empty-state__actions">
-            <button type="button" className="btn btn--primary" onClick={() => onCreate('npc')}><Icon name="person" size={16} /> Créer un PNJ</button>
-            <button type="button" className="btn btn--ghost" onClick={() => onCreate('faction')}><Icon name="banner" size={16} /> Créer une faction</button>
+            <button type="button" className="btn btn--primary" onClick={() => onCreate('npc')}><Icon name="person" size={16} /> {t('Créer un PNJ')}</button>
+            <button type="button" className="btn btn--ghost" onClick={() => onCreate('faction')}><Icon name="banner" size={16} /> {t('Créer une faction')}</button>
           </div>
         </div>
       ) : factions.length > 0 && (
@@ -382,7 +385,7 @@ function CharactersHome({ graph, campaignName, onOpen, onCreate }) {
                 {f.emblem_thumb ? <img src={f.emblem_thumb} alt="" className="place-cards__img" />
                   : <span className="place-cards__img place-cards__img--icon" style={{ background: f.color }} />}
                 <span className="doc-cards__title">{f.name}</span>
-                <span className="doc-cards__meta">{[f.kind, `${counts.get(f.id) || 0} membre${(counts.get(f.id) || 0) > 1 ? 's' : ''}`].filter(Boolean).join(' · ')}</span>
+                <span className="doc-cards__meta">{[f.kind, tn('{n} membre', '{n} membres', counts.get(f.id) || 0)].filter(Boolean).join(' · ')}</span>
                 {f.summary && <span className="place-cards__summary">{f.summary}</span>}
               </button>
             </li>
