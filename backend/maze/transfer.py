@@ -51,7 +51,7 @@ MAX_RATIO = 100
 RATIO_FROM = 1024 * 1024
 MAX_OBJECTS = 500_000
 MAX_IMAGE = 50 * 1024 * 1024
-MAX_EVENTS = 20_000          # événements de chronologie importés par campagne
+MAX_EVENTS = 5000            # événements de chronologie importés par campagne (comme timeline.MAX_EVENTS)
 MAX_EVENT_TEXT = 200_000     # description d'un événement (comme un champ long de fiche)
 MEDIA_NAME = FILE_NAME_RE  # extensions des fichiers produits par Maze (mediafiles)
 MENTION = re.compile(r'data-mention="(npc|faction|place|doc):(\d+)"')
@@ -694,7 +694,7 @@ def _import_rows(db_path: Path, data: dict[str, Any], valid: set[str], user_id: 
         events = [r for r in data.get("timeline_events", []) if isinstance(r, dict)]
         events.sort(key=lambda r: (r.get("sort_order") if isinstance(r.get("sort_order"), int) else 0,
                                    r.get("id") if isinstance(r.get("id"), int) else 0))
-        position = 0
+        position = 1   # numérotation de timeline._renumber
         for row in events[:MAX_EVENTS]:
             values = _clean(conn, "timeline_events", row, {"id", "campaign_id", "sort_order", "revision"})
             title = values.get("title") if isinstance(values.get("title"), str) else ""

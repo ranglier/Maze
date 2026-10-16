@@ -1676,8 +1676,8 @@ class TimelineTransferTest(unittest.TestCase):
                                     "FROM timeline_events WHERE campaign_id = ? ORDER BY sort_order, id",
                                     (nid,)).fetchall()
                 self.assertEqual([(r[1], r[2], r[3], json.loads(r[5]), r[6]) for r in rows],
-                                 [(0, "vers 850.M39", "Fondation", ["origine", "cité"], 0),
-                                  (1, "", "Le siège", [], 0), (2, "Séance 4", "Le bal", ["bal"], 0)])
+                                 [(1, "vers 850.M39", "Fondation", ["origine", "cité"], 0),
+                                  (2, "", "Le siège", [], 0), (3, "Séance 4", "Le bal", ["bal"], 0)])
                 self.assertNotIn(rows[0][0], {e["id"] for e in data["timeline_events"]})
                 self.assertIn(f'data-mention="npc:{new_mae}"', rows[0][4])
                 self.assertIn(f'data-mention="faction:{new_guild}"', rows[0][4])
@@ -1720,7 +1720,7 @@ class TimelineTransferTest(unittest.TestCase):
                                               (old["id"],)).fetchone(), (0,))
                 self.assertEqual(conn.execute("SELECT title, sort_order, tags, revision FROM timeline_events "
                                               "WHERE campaign_id = ?", (odd["id"],)).fetchall(),
-                                 [("Seul", 0, "[]", 0)])
+                                 [("Seul", 1, "[]", 0)])
             finally:
                 conn.close()
         finally:
