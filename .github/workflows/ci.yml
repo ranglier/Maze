@@ -121,6 +121,8 @@ jobs:
       - name: Parcours navigateur (frontend/e2e/run-all.sh)
         env:
           TMPDIR: ${{ runner.temp }}/e2e
+          # Parcours en parallèle, un par processeur (4 sur les runners GitHub), chacun sur sa propre instance.
+          MAZE_E2E_JOBS: "4"
         run: |
           mkdir -p "$TMPDIR"
           NODE_PATH="$(npm root -g)" frontend/e2e/run-all.sh
