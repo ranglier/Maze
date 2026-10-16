@@ -3,6 +3,7 @@
   "Accroche": "Read-aloud",
   "Affichage": "Display",
   "Afficher": "Show",
+  "Afficher la liste des membres": "Show the member list",
   "Afficher la légende des liens": "Show the link legend",
   "Afficher les liens « {label} »": "Show “{label}” links",
   "Affiché sur le lien. Laissez vide pour afficher la nature du lien.": "Shown on the link. Leave empty to show the relationship type.",
@@ -23,7 +24,7 @@
   "Aucun commentaire. Sélectionnez un passage de la fiche puis touchez la bulle, ou commentez une section.": "No comments. Select a passage of the sheet, then tap the bubble, or comment on a section.",
   "Aucun détail. Modifiez la relation pour en ajouter.": "No details. Edit the relationship to add some.",
   "Aucun lieu dans cette campagne : créez-en dans l’onglet Lieux.": "No places in this campaign yet: create some in the Places tab.",
-  "Aucun membre. Ajoutez une faction depuis la fiche d'un PNJ, ou liez un PNJ à cette faction.": "No members. Add a faction from an NPC’s sheet, or link an NPC to this faction.",
+  "Aucun membre. Ajoutez des PNJ depuis leur fiche, ou des sous-factions depuis la fiche de chacune (Membre de).": "No members. Add NPCs from their sheets, or sub-factions from each one’s sheet (Member of).",
   "Aucune dans cette version.": "None in this version.",
   "Aucune faction": "No factions",
   "Aucune fiche ne correspond.": "No matching sheet.",
@@ -43,6 +44,7 @@
   "Ce lieu n’existe plus.": "This place no longer exists.",
   "Ce scénario n’existe plus.": "This scenario no longer exists.",
   "Centrer sur la carte": "Centre on the graph",
+  "Cette faction n’est membre d’aucune autre faction.": "This faction is not a member of any other faction.",
   "Cette faction n’est reliée à aucun lieu.": "This faction is not linked to any place.",
   "Cette fiche n’existe plus.": "This sheet no longer exists.",
   "Cette relation relie une fiche absente de cette carte.": "This relationship links a sheet that is not on this graph.",
@@ -88,6 +90,7 @@
   "Enregistrez ou annulez la modification en cours pour consulter ou restaurer une version.": "Save or cancel the current edit to view or restore a version.",
   "Envoi…": "Uploading…",
   "Exporter la carte en image": "Export the graph as an image",
+  "Faction parente à ajouter": "Parent faction to add",
   "Faction {name} créée": "Faction {name} created",
   "Faction à rejoindre": "Faction to join",
   "Factions": "Factions",
@@ -155,6 +158,7 @@
   "Masquer les liens « {label} »": "Hide “{label}” links",
   "Membre de": "Member of",
   "Membres": "Members",
+  "Membres : {detail}": "Members: {detail}",
   "Modifier": "Edit",
   "Modifier la fiche": "Edit sheet",
   "Modifier la relation": "Edit the relationship",
@@ -206,6 +210,7 @@
   "Relations": "Relationships",
   "Relations secrètes": "Secret relationships",
   "Replier": "Collapse",
+  "Replier la liste des membres": "Collapse the member list",
   "Replier la légende": "Collapse the legend",
   "Reprendre la version actuelle": "Take the current version",
   "Ressources": "Resources",
@@ -243,6 +248,8 @@
     "other": "Contents, comments and history ({n} open threads)"
   },
   "Sommaire, commentaires et historique de la fiche": "Contents, comments and history of the sheet",
+  "Sous-faction": "Sub-faction",
+  "Sous-faction d’une ou plusieurs factions : elle apparaît parmi leurs membres. Enregistré immédiatement.": "As a sub-faction of one or more factions, it appears among their members. Saved immediately.",
   "Statut": "Status",
   "Statut des PNJ": "NPC status",
   "Supprimer (uniquement si aucun lien ne l’utilise)": "Delete (only if no link uses it)",
@@ -304,6 +311,7 @@
     "one": "{npcs} ({n} dead)",
     "other": "{npcs} ({n} dead)"
   },
+  "{npcs} et {factions}": "{npcs} and {factions}",
   "{n} PNJ": {
     "one": "{n} NPC",
     "other": "{n} NPCs"
@@ -332,6 +340,10 @@
   "{n} résultat": {
     "one": "{n} result",
     "other": "{n} results"
+  },
+  "{n} sous-faction": {
+    "one": "{n} sub-faction",
+    "other": "{n} sub-factions"
   },
   "{n} type de lien masqué": {
     "one": "{n} relationship type hidden",
