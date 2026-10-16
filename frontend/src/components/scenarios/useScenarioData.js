@@ -3,6 +3,7 @@ import { api } from '../../api.js';
 import { DOC_COLOR, NEUTRAL_RING, PLACE_COLOR, placeKind } from '../../constants.js';
 import { npcRingColors } from '../../graph/elements.js';
 import { initialsAvatar } from '../../util.js';
+import { t, useLocale } from '../../i18n/index.js';
 
 /**
  * Données de l'onglet Scénarios : arbre des fiches, carte (PNJ et factions), lieux, et la liste des fiches qu'une
@@ -13,9 +14,9 @@ export default function useScenarioData({ cid, campaignName, run }) {
   const [graph, setGraph] = useState(null);
 
   const loadTree = useCallback(async () => {
-    const t = await run(() => api.documents(cid));
-    if (t) setTree(t);
-    return t;
+    const data = await run(() => api.documents(cid));
+    if (data) setTree(data);
+    return data;
   }, [cid, run]);
 
   const loadGraph = useCallback(async () => {
@@ -34,16 +35,18 @@ export default function useScenarioData({ cid, campaignName, run }) {
 
   useEffect(() => { loadTree(); loadGraph(); loadPlaces(); }, [loadTree, loadGraph, loadPlaces]);
 
+  // Sous-titres et noms par défaut traduits : recalculés au changement de langue.
+  const locale = useLocale();
   const entities = useMemo(() => {
     if (!graph) return [];
     const ring = npcRingColors(graph);
     return [
       ...graph.npcs.map((n) => {
         const color = ring.get(n.id) || NEUTRAL_RING;
-        return { kind: 'npc', id: n.id, name: n.name, sub: n.title || 'PNJ', color,
+        return { kind: 'npc', id: n.id, name: n.name, sub: n.title || t('PNJ'), color,
           image: n.portrait_thumb || initialsAvatar(n.name, color), summary: n.summary, status: n.status };
       }),
-      ...graph.factions.map((f) => ({ kind: 'faction', id: f.id, name: f.name, sub: f.kind || 'Faction',
+      ...graph.factions.map((f) => ({ kind: 'faction', id: f.id, name: f.name, sub: f.kind || t('Faction'),
         color: f.color, image: f.emblem_thumb, summary: f.summary })),
       ...(places || []).map((p) => {
         const parent = places.find((x) => x.id === p.parent_id);
@@ -53,16 +56,16 @@ export default function useScenarioData({ cid, campaignName, run }) {
       // Autres fiches rédigées : renvois du type « voir la page La filature de Rathbone ».
       ...(tree?.documents || []).map((d) => {
         const parent = tree.documents.find((x) => x.id === d.parent_id);
-        const name = d.kind === 'campaign' ? 'Fiche de campagne' : (d.title || 'Sans titre');
-        const sub = d.kind === 'campaign' ? campaignName : d.kind === 'scenario' ? 'Scénario'
-          : `Page de « ${parent?.title || 'Sans titre'} »`;
+        const name = d.kind === 'campaign' ? t('Fiche de campagne') : (d.title || t('Sans titre'));
+        const sub = d.kind === 'campaign' ? campaignName : d.kind === 'scenario' ? t('Scénario')
+          : t('Page de « {title} »', { title: parent?.title || t('Sans titre') });
         return { kind: 'doc', id: d.id, name, sub, color: DOC_COLOR, icon: 'book', status: d.status };
       }),
     ];
-  }, [graph, places, placeKinds, tree, campaignName]);
+  }, [graph, places, placeKinds, tree, campaignName, locale]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const patchTreeDoc = useCallback((id, changes) => {
-    setTree((t) => t && { ...t, documents: t.documents.map((d) => (d.id === id ? { ...d, ...changes } : d)) });
+    setTree((cur) => cur && { ...cur, documents: cur.documents.map((d) => (d.id === id ? { ...d, ...changes } : d)) });
   }, []);
 
   return { tree, graph, places, loadTree, loadGraph, loadPlaces, entities, patchTreeDoc };

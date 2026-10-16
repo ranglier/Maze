@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from '../ui.jsx';
+import { t } from '../../i18n/index.js';
 import { useSheet } from '../../viewport.js';
 import MoveDialog, { flattenTree } from '../MoveDialog.jsx';
 import { DOC_STATUS, childrenOf } from './docs.js';
@@ -29,7 +30,7 @@ export default function DocTree({ tree, campaignName, currentId, onOpen, onCreat
     draggable: true,
     onDragStart: (e) => {
       e.dataTransfer.effectAllowed = 'move';
-      e.dataTransfer.setData('text/plain', d.title || 'Sans titre');
+      e.dataTransfer.setData('text/plain', d.title || t('Sans titre'));
       setDrag(d.id);
     },
     onDragEnd: endDrag,
@@ -74,9 +75,9 @@ export default function DocTree({ tree, campaignName, currentId, onOpen, onCreat
     return (
       <li key={d.id}>
         <div className={`doc-tree__item${d.id === currentId ? ' is-active' : ''}${drag === d.id ? ' is-dragging' : ''}${dropClass(d.id)}`}
-          style={{ '--depth': depth }} title="Glisser pour déplacer" {...dragProps(d)}>
+          style={{ '--depth': depth }} title={t('Glisser pour déplacer')} {...dragProps(d)}>
           {kids.length > 0 ? (
-            <button type="button" className="doc-tree__caret" aria-label={open ? 'Replier' : 'Déplier'} aria-expanded={open}
+            <button type="button" className="doc-tree__caret" aria-label={open ? t('Replier') : t('Déplier')} aria-expanded={open}
               onClick={() => setCollapsed((s) => { const n = new Set(s); if (n.has(d.id)) n.delete(d.id); else n.add(d.id); return n; })}>
               <Icon name={open ? 'chevron' : 'right'} size={13} />
             </button>
@@ -84,9 +85,9 @@ export default function DocTree({ tree, campaignName, currentId, onOpen, onCreat
           <button type="button" className="doc-tree__link" onClick={() => onOpen(d.id)}
             aria-current={d.id === currentId ? 'page' : undefined}>
             <span className={`status-dot status--${d.status}`} title={DOC_STATUS[d.status]?.label} />
-            <span className="doc-tree__label">{d.title || 'Sans titre'}</span>
+            <span className="doc-tree__label">{d.title || t('Sans titre')}</span>
           </button>
-          <button type="button" className="doc-tree__more" aria-label={`Actions pour ${d.title}`}
+          <button type="button" className="doc-tree__more" aria-label={t('Actions pour {title}', { title: d.title })}
             onClick={(e) => setMenu({ item: d, rect: e.currentTarget.getBoundingClientRect(), first: i === 0, last: i === arr.length - 1 })}>
             <Icon name="more" size={16} />
           </button>
@@ -97,18 +98,18 @@ export default function DocTree({ tree, campaignName, currentId, onOpen, onCreat
   });
 
   return (
-    <aside className="doc-tree" aria-label="Fiches de la campagne">
+    <aside className="doc-tree" aria-label={t('Fiches de la campagne')}>
       <button type="button" className={`doc-tree__root${root?.id === currentId ? ' is-active' : ''}${dropClass(root?.id)}`}
         onClick={() => onOpen(root.id)} {...rootDropProps}>
         <Icon name="book" size={17} />
         <span>
-          <strong>Fiche de campagne</strong>
+          <strong>{t('Fiche de campagne')}</strong>
           <span className="doc-tree__sub">{campaignName}</span>
         </span>
       </button>
       <div className="doc-tree__section">
-        <span>Scénarios</span>
-        <button type="button" className="icon-btn icon-btn--small" title="Nouveau scénario" aria-label="Nouveau scénario"
+        <span>{t('Scénarios')}</span>
+        <button type="button" className="icon-btn icon-btn--small" title={t('Nouveau scénario')} aria-label={t('Nouveau scénario')}
           onClick={() => onCreate(root.id)}>
           <Icon name="plus" size={15} />
         </button>
@@ -116,7 +117,7 @@ export default function DocTree({ tree, campaignName, currentId, onOpen, onCreat
       <ul className="doc-tree__list">{renderItems(root.id, 0)}</ul>
       {childrenOf(docs, root.id).length === 0 && (
         <button type="button" className="doc-tree__empty" onClick={() => onCreate(root.id)}>
-          <Icon name="plus" size={14} /> Créer le premier scénario
+          <Icon name="plus" size={14} /> {t('Créer le premier scénario')}
         </button>
       )}
       {menu && (
@@ -132,12 +133,12 @@ export default function DocTree({ tree, campaignName, currentId, onOpen, onCreat
           }} />
       )}
       {moving && (
-        <MoveDialog title={`Déplacer « ${moving.title || 'Sans titre'} »`}
-          intro="Choisissez la fiche qui la contiendra. Sous la fiche de campagne, elle devient un scénario."
+        <MoveDialog title={t('Déplacer « {title} »', { title: moving.title || t('Sans titre') })}
+          intro={t('Choisissez la fiche qui la contiendra. Sous la fiche de campagne, elle devient un scénario.')}
           options={[
-            { id: root.id, label: 'Fiche de campagne', icon: 'book', depth: 0, current: moving.parent_id === root.id },
+            { id: root.id, label: t('Fiche de campagne'), icon: 'book', depth: 0, current: moving.parent_id === root.id },
             ...flattenTree((p) => childrenOf(docs, p), root.id, moving.id).map(({ item, depth }) => ({
-              id: item.id, label: item.title || 'Sans titre', depth: depth + 1, current: moving.parent_id === item.id,
+              id: item.id, label: item.title || t('Sans titre'), depth: depth + 1, current: moving.parent_id === item.id,
             })),
           ]}
           onClose={() => setMoving(null)}
@@ -164,12 +165,12 @@ function TreeMenu({ menu, onClose, onAction }) {
     <div className="popover popover--menu" ref={ref} role="menu"
       style={{ position: 'fixed', top: menu.rect.bottom + 4, left: Math.min(menu.rect.left, window.innerWidth - 240), right: 'auto' }}>
       <div className="popover__group popover__group--actions">
-        <button type="button" role="menuitem" onClick={() => onAction('child')}><Icon name="plus" size={15} /> Ajouter une sous-page</button>
-        <button type="button" role="menuitem" onClick={() => onAction('duplicate')}><Icon name="copy" size={15} /> Dupliquer</button>
-        <button type="button" role="menuitem" disabled={menu.first} onClick={() => onAction('up')}><Icon name="up" size={15} /> Monter</button>
-        <button type="button" role="menuitem" disabled={menu.last} onClick={() => onAction('down')}><Icon name="down" size={15} /> Descendre</button>
-        <button type="button" role="menuitem" onClick={() => onAction('move')}><Icon name="swap" size={15} /> Déplacer vers…</button>
-        <button type="button" role="menuitem" className="danger-text" onClick={() => onAction('delete')}><Icon name="trash" size={15} /> Supprimer</button>
+        <button type="button" role="menuitem" onClick={() => onAction('child')}><Icon name="plus" size={15} /> {t('Ajouter une sous-page')}</button>
+        <button type="button" role="menuitem" onClick={() => onAction('duplicate')}><Icon name="copy" size={15} /> {t('Dupliquer')}</button>
+        <button type="button" role="menuitem" disabled={menu.first} onClick={() => onAction('up')}><Icon name="up" size={15} /> {t('Monter')}</button>
+        <button type="button" role="menuitem" disabled={menu.last} onClick={() => onAction('down')}><Icon name="down" size={15} /> {t('Descendre')}</button>
+        <button type="button" role="menuitem" onClick={() => onAction('move')}><Icon name="swap" size={15} /> {t('Déplacer vers…')}</button>
+        <button type="button" role="menuitem" className="danger-text" onClick={() => onAction('delete')}><Icon name="trash" size={15} /> {t('Supprimer')}</button>
       </div>
     </div>,
     document.body,

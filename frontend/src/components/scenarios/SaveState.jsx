@@ -1,17 +1,22 @@
 import { useEffect, useState } from 'react';
+import { t } from '../../i18n/index.js';
 
 /** Libellé d'enregistrement : texte (temps réel) et titre/statut (API). */
 export function saveLabel(live, metaState) {
-  if (!live) return { key: 'saving', text: 'Connexion…' };
+  if (!live) return { key: 'saving', text: t('Connexion…') };
   // Connexion refusée par le serveur faute de place (4429, audit PERF-9) : sa raison, au lieu de « Connexion… ».
   if (live.status === 'offline') {
-    return { key: 'error', text: `${live.busy ? `${live.busy} : ` : 'Hors ligne : '}modifications conservées, envoi à la reconnexion` };
+    return { key: 'error', text: live.busy
+      ? t('{reason} : modifications conservées, envoi à la reconnexion', { reason: t(live.busy) })
+      : t('Hors ligne : modifications conservées, envoi à la reconnexion') };
   }
-  if (live.status === 'connecting' && live.busy) return { key: 'error', text: `${live.busy} : nouvel essai automatique` };
-  if (live.status === 'connecting' || live.status === 'waiting') return { key: 'saving', text: 'Connexion…' };
-  if (metaState === 'error') return { key: 'error', text: 'Échec de l’enregistrement du titre' };
-  if (live.pending > 0 || metaState === 'saving' || metaState === 'dirty') return { key: 'saving', text: 'Enregistrement…' };
-  return { key: 'saved', text: 'Enregistré' };
+  if (live.status === 'connecting' && live.busy) {
+    return { key: 'error', text: t('{reason} : nouvel essai automatique', { reason: t(live.busy) }) };
+  }
+  if (live.status === 'connecting' || live.status === 'waiting') return { key: 'saving', text: t('Connexion…') };
+  if (metaState === 'error') return { key: 'error', text: t('Échec de l’enregistrement du titre') };
+  if (live.pending > 0 || metaState === 'saving' || metaState === 'dirty') return { key: 'saving', text: t('Enregistrement…') };
+  return { key: 'saved', text: t('Enregistré') };
 }
 
 /**
@@ -28,7 +33,7 @@ export function SaveState({ status, onRetry }) {
   return (
     <span className={`save-state save-state--${shown.key}`} role="status">
       {shown.text}
-      {onRetry && <button type="button" className="link-btn" onClick={onRetry}>Réessayer</button>}
+      {onRetry && <button type="button" className="link-btn" onClick={onRetry}>{t('Réessayer')}</button>}
     </span>
   );
 }

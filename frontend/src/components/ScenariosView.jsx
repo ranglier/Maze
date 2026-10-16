@@ -8,6 +8,7 @@ import { LiveDocument } from '../editor/live.js';
 import { storage } from '../util.js';
 import { fmtDate } from './AdminPage.jsx';
 import { useAction, useConfirm, useToast } from './ui.jsx';
+import { t, tn } from '../i18n/index.js';
 import DocTree from './scenarios/DocTree.jsx';
 import DocBar from './scenarios/DocBar.jsx';
 import DocSide from './scenarios/DocSide.jsx';
@@ -119,7 +120,7 @@ export default function ScenariosView({ campaign, user, header, trailing, docId,
     setActiveComment(null);
     setVersionView(null);
     setVersions(null);
-    const loadComments = () => api.comments(currentId).then((t) => { if (!cancelled) setThreads(t); }).catch(() => {});
+    const loadComments = () => api.comments(currentId).then((list) => { if (!cancelled) setThreads(list); }).catch(() => {});
     loadComments();
     api.getDocument(currentId).then((d) => {
       if (cancelled) return;
@@ -132,7 +133,7 @@ export default function ScenariosView({ campaign, user, header, trailing, docId,
         epoch: d.live_epoch,
         user: { name: user.display_name || user.username },
         meta: { campaignId: cid, created: d.created_at,
-          title: d.title || (d.kind === 'campaign' ? 'Fiche de campagne' : 'Sans titre') },
+          title: d.title || (d.kind === 'campaign' ? t('Fiche de campagne') : t('Sans titre')) },
         onChange: (st) => { if (!cancelled) setLiveState(st); },
       });
       instance.onMeta = (m) => {
@@ -172,22 +173,22 @@ export default function ScenariosView({ campaign, user, header, trailing, docId,
     if (liveError === 'reset') {
       if (restoringRef.current) {
         restoringRef.current = false;
-        toast('Version restaurée.', 'success');
+        toast(t('Version restaurée.'), 'success');
       } else {
-        toast('La fiche a été remplacée : rechargement.', 'info');
+        toast(t('La fiche a été remplacée : rechargement.'), 'info');
       }
       setReloadKey((k) => k + 1);
     } else if (liveError === 'deleted') {
       if (deletingRef.current) return;  // suppression faite ici : deleteDoc s'occupe de la suite
-      toast('Cette fiche a été supprimée.', 'error');
+      toast(t('Cette fiche a été supprimée.'), 'error');
       loadTree().then(() => onNavigate(`#/c/${cid}/scenarios`));
     } else if (liveError === 'forbidden') {
-      toast('Vous n’avez plus accès à cette campagne.', 'error');
+      toast(t('Vous n’avez plus accès à cette campagne.'), 'error');
       onNavigate('#/');
     } else if (liveError === 'auth') {
       window.location.reload();
     } else if (liveError === 'toolarge') {
-      toast('Modification trop volumineuse pour être enregistrée (collage de plus de 2 Mo) : la fiche est rechargée, votre texte est gardé dans son historique. Collez-le en plusieurs fois.', 'error');
+      toast(t('Modification trop volumineuse pour être enregistrée (collage de plus de 2 Mo) : la fiche est rechargée, votre texte est gardé dans son historique. Collez-le en plusieurs fois.'), 'error');
       setReloadKey((k) => k + 1);
     }
     // 'version' : Maze a été mis à jour ; session.js garde le texte non envoyé puis recharge la page.
@@ -216,7 +217,7 @@ export default function ScenariosView({ campaign, user, header, trailing, docId,
 
   const duplicateDoc = async (item) => {
     flushMeta();
-    const created = await run(() => api.duplicateDocument(item.id), 'Fiche dupliquée');
+    const created = await run(() => api.duplicateDocument(item.id), t('Fiche dupliquée'));
     if (!created) return;
     await loadTree();
     onNavigate(`#/c/${cid}/scenarios/${created.id}`);
@@ -225,13 +226,14 @@ export default function ScenariosView({ campaign, user, header, trailing, docId,
   const confirmSaveTemplate = async ({ name, description }) => {
     const content = editorRef.current?.getTemplateHtml();
     if (content == null) {
-      toast('La fiche n’est pas encore prête, réessayez dans un instant.', 'info');
+      toast(t('La fiche n’est pas encore prête, réessayez dans un instant.'), 'info');
       return false;
     }
     const created = await run(() => api.createTemplate({ name, description, content }));
     if (!created) return false;
-    toast(`Modèle « ${name} » enregistré : il est proposé à la création des fiches${created.shared
-      ? ', et visible par tous les MJ de l’instance' : ''}.`, 'success');
+    toast(created.shared
+      ? t('Modèle « {name} » enregistré : il est proposé à la création des fiches, et visible par tous les MJ de l’instance.', { name })
+      : t('Modèle « {name} » enregistré : il est proposé à la création des fiches.', { name }), 'success');
     setSaveTemplate(false);
     return true;
   };
@@ -257,17 +259,18 @@ export default function ScenariosView({ campaign, user, header, trailing, docId,
   const deleteDoc = async (item) => {
     const subCount = tree.documents.filter((d) => d.parent_id === item.id).length;
     const yes = await confirm({
-      title: `Supprimer « ${item.title || 'Sans titre'} »`,
+      title: t('Supprimer « {title} »', { title: item.title || t('Sans titre') }),
       message: subCount
-        ? `La fiche et ses ${subCount} sous-page(s) seront définitivement supprimées, images comprises.`
-        : 'La fiche sera définitivement supprimée, images comprises.',
-      confirmLabel: 'Supprimer',
+        ? tn('La fiche et sa sous-page seront définitivement supprimées, images comprises.',
+          'La fiche et ses {n} sous-pages seront définitivement supprimées, images comprises.', subCount)
+        : t('La fiche sera définitivement supprimée, images comprises.'),
+      confirmLabel: t('Supprimer'),
     });
     if (!yes) return;
     if (pendingMeta.current?.id === item.id) pendingMeta.current = null;
     const wasOpen = item.id === currentId || isDescendant(item.id, currentId);
     deletingRef.current = wasOpen;
-    const done = await run(() => api.deleteDocument(item.id), 'Fiche supprimée');
+    const done = await run(() => api.deleteDocument(item.id), t('Fiche supprimée'));
     if (done === undefined) {
       deletingRef.current = false;
       return;
@@ -288,7 +291,8 @@ export default function ScenariosView({ campaign, user, header, trailing, docId,
   const createEntity = async (kind, name) => {
     const payload = kind === 'faction' ? { name, color: '#8e5aa8' } : { name };
     const created = await run(() => api.createEntity(kind, cid, payload),
-      { npc: `PNJ « ${name} » créé`, faction: `Faction « ${name} » créée`, place: `Lieu « ${name} » créé` }[kind]);
+      { npc: t('PNJ « {name} » créé', { name }), faction: t('Faction « {name} » créée', { name }),
+        place: t('Lieu « {name} » créé', { name }) }[kind]);
     if (!created) return null;
     await (kind === 'place' ? loadPlaces() : loadGraph());
     return { kind, id: created.id, name: created.name };
@@ -298,9 +302,9 @@ export default function ScenariosView({ campaign, user, header, trailing, docId,
   const editorReady = Boolean(live && liveState?.synced && doc && doc.id === currentId);
   useEffect(() => {
     if (!editorReady || (!find && !commentId)) return undefined;
-    const t = setTimeout(() => {
+    const timer = setTimeout(() => {
       if (find) {
-        if (!editorRef.current?.revealText(find)) toast('Passage introuvable dans le texte (il est peut-être dans le titre).', 'info');
+        if (!editorRef.current?.revealText(find)) toast(t('Passage introuvable dans le texte (il est peut-être dans le titre).'), 'info');
       } else if (commentId) {
         setActiveComment(commentId);
         showComments();
@@ -308,7 +312,7 @@ export default function ScenariosView({ campaign, user, header, trailing, docId,
       }
       onTargetDone?.();
     }, 350);
-    return () => clearTimeout(t);
+    return () => clearTimeout(timer);
   }, [editorReady, find, commentId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // --- Table des matières : section en cours de lecture --------------------------------
@@ -356,7 +360,7 @@ export default function ScenariosView({ campaign, user, header, trailing, docId,
   for (const p of liveState?.peers || []) {
     if (p.id === liveState.you || others.some((o) => o.user_id === p.user_id)) continue;
     if (p.user_id === user.id && (liveState.peers || []).filter((x) => x.user_id === user.id).length > 1) {
-      others.push({ ...p, name: `${p.name} (autre onglet)` });
+      others.push({ ...p, name: t('{name} (autre onglet)', { name: p.name }) });
     } else if (p.user_id !== user.id) {
       others.push(p);
     }
@@ -385,7 +389,7 @@ export default function ScenariosView({ campaign, user, header, trailing, docId,
         />
 
         <main className="doc-main" ref={scrollRef}>
-          {!doc ? <div className="doc-loading" aria-busy="true">Chargement…</div> : (
+          {!doc ? <div className="doc-loading" aria-busy="true">{t('Chargement…')}</div> : (
             <article className="doc" key={doc.id}>
               <DocBar campaignId={cid} campaignName={campaign.name} breadcrumb={breadcrumb} others={others}
                 openThreads={openThreads} menuOpen={Boolean(docMenu)}
@@ -403,10 +407,10 @@ export default function ScenariosView({ campaign, user, header, trailing, docId,
                     className="doc__title"
                     rows={1}
                     value={doc.title}
-                    placeholder="Titre"
+                    placeholder={t('Titre')}
                     readOnly={readMode}
                     maxLength={200}
-                    aria-label="Titre de la fiche"
+                    aria-label={t('Titre de la fiche')}
                     onChange={(e) => {
                       const title = e.target.value.replace(/[\r\n]+/g, ' ');
                       setDoc((d) => ({ ...d, title }));
@@ -417,7 +421,7 @@ export default function ScenariosView({ campaign, user, header, trailing, docId,
                 )}
                 <div className="doc__meta">
                   {!isRoot && (
-                    <div className="status-pick" role="radiogroup" aria-label="Statut">
+                    <div className="status-pick" role="radiogroup" aria-label={t('Statut')}>
                       {Object.entries(DOC_STATUS).map(([k, v]) => (
                         <button key={k} type="button" role="radio" aria-checked={doc.status === k} disabled={readMode}
                           className={`status-pick__opt status--${k}${doc.status === k ? ' is-active' : ''}`}
@@ -427,7 +431,7 @@ export default function ScenariosView({ campaign, user, header, trailing, docId,
                       ))}
                     </div>
                   )}
-                  <span className="muted">Modifiée le {fmtDate(doc.updated_at)}</span>
+                  <span className="muted">{t('Modifiée le {date}', { date: fmtDate(doc.updated_at) })}</span>
                 </div>
               </header>
 
@@ -444,14 +448,14 @@ export default function ScenariosView({ campaign, user, header, trailing, docId,
                   entities={entities}
                   entitiesLoaded={Boolean(graph && places && tree)}
                   placeholder={isRoot
-                    ? 'Présentez la campagne : univers, ton, enjeux, fils rouges… Tapez @ pour citer un PNJ, une faction, un lieu ou une autre fiche.'
-                    : 'Écrivez le scénario. Tapez @ pour citer un PNJ, une faction, un lieu ou une autre fiche, / pour insérer un bloc.'}
+                    ? t('Présentez la campagne : univers, ton, enjeux, fils rouges… Tapez @ pour citer un PNJ, une faction, un lieu ou une autre fiche.')
+                    : t('Écrivez le scénario. Tapez @ pour citer un PNJ, une faction, un lieu ou une autre fiche, / pour insérer un bloc.')}
                   onHeadings={setHeadings}
                   onMentionClick={(target, rect) => {
                     // Renvoi vers une autre fiche : on l'ouvre directement.
                     if (target.kind === 'doc') {
                       if (tree?.documents.some((d) => d.id === target.id)) { flushMeta(); go(target.id); }
-                      else toast('Cette fiche a été supprimée.', 'info');
+                      else toast(t('Cette fiche a été supprimée.'), 'info');
                       return;
                     }
                     setPreview({ ...target, rect });
@@ -464,7 +468,7 @@ export default function ScenariosView({ campaign, user, header, trailing, docId,
                   onCommentAnchors={setAnchors}
                 />
                 {imagePick && (
-                  <ImagePicker campaignId={cid} title="Insérer une image"
+                  <ImagePicker campaignId={cid} title={t('Insérer une image')}
                     onClose={() => { imagePick.resolve(imagePick.result || null); setImagePick(null); }}
                     onUpload={async (files) => {
                       const img = await run(() => api.uploadDocumentImage(imagePick.docId, files[0]));
@@ -481,14 +485,16 @@ export default function ScenariosView({ campaign, user, header, trailing, docId,
               ) : (
                 <div className="doc-connecting" aria-busy="true">
                   {liveState?.status === 'waiting'
-                    ? 'Un autre MJ ouvre cette fiche pour la première fois, elle sera prête dans un instant…'
-                    : liveState?.status === 'closed' ? 'Connexion à la fiche interrompue.' : 'Connexion à la fiche…'}
+                    ? t('Un autre MJ ouvre cette fiche pour la première fois, elle sera prête dans un instant…')
+                    : liveState?.status === 'closed' ? t('Connexion à la fiche interrompue.') : t('Connexion à la fiche…')}
                   {(liveState?.status === 'closed' || (liveState?.status === 'connecting' && liveState?.attempts > 0)) && (
                     <p className="doc-connecting__retry">
                       {liveState.status !== 'closed' && (liveState.busy
-                        ? `${liveState.busy} : nouvel essai en cours. ` : 'Le serveur ne répond pas, nouvel essai en cours. ')}
+                        ? t('{reason} : nouvel essai en cours.', { reason: t(liveState.busy) })
+                        : t('Le serveur ne répond pas, nouvel essai en cours.'))}
+                      {liveState.status !== 'closed' && ' '}
                       <button type="button" className="btn btn--small btn--ghost" onClick={() => setReloadKey((k) => k + 1)}>
-                        Réessayer maintenant
+                        {t('Réessayer maintenant')}
                       </button>
                     </p>
                   )}
@@ -544,12 +550,12 @@ export default function ScenariosView({ campaign, user, header, trailing, docId,
       )}
       {docMenu && doc && (
         <PopupMenu rect={docMenu.rect} align="right" onClose={closeDocMenu} anchorSelector=".doc__more" items={[
-          !isRoot && !readMode && { key: 'dup', icon: 'copy', label: 'Dupliquer la fiche', hint: 'avec ses sous-pages',
+          !isRoot && !readMode && { key: 'dup', icon: 'copy', label: t('Dupliquer la fiche'), hint: t('avec ses sous-pages'),
             onClick: () => duplicateDoc(doc) },
-          !readMode && { key: 'tpl', icon: 'template', label: 'Enregistrer comme modèle', onClick: () => setSaveTemplate(true) },
-          { key: 'hist', icon: 'history', label: 'Historique des versions', onClick: showHistory },
+          !readMode && { key: 'tpl', icon: 'template', label: t('Enregistrer comme modèle'), onClick: () => setSaveTemplate(true) },
+          { key: 'hist', icon: 'history', label: t('Historique des versions'), onClick: showHistory },
           // Panneau latéral replié (écran étroit) : le sommaire n'a pas d'autre accès.
-          window.matchMedia('(max-width: 1280px)').matches && { key: 'toc', icon: 'list', label: 'Sommaire', onClick: showToc },
+          window.matchMedia('(max-width: 1280px)').matches && { key: 'toc', icon: 'list', label: t('Sommaire'), onClick: showToc },
         ]} />
       )}
       {newDoc && (

@@ -4,6 +4,7 @@ import { applyAwarenessUpdate, Awareness, encodeAwarenessUpdate, removeAwareness
 import { rescueEdits } from '../session.js';
 import { docToHtml, htmlToDoc, schema } from './schema.js';
 import { SCHEMA_VERSION, STALE_EVENT } from './schemaVersion.js';
+import { N_ } from '../i18n/core.js';
 
 /*
  * Connexion temps réel d'une fiche (voir backend/maze/collab.py pour le protocole).
@@ -28,6 +29,11 @@ const RETRY_MS = [1000, 2000, 4000, 8000, 15000];
 const CONNECT_TIMEOUT_MS = 10000;
 // 4429 : trop de connexions temps réel (par compte ou sur le serveur, audit PERF-9) ; raison affichée, nouvel essai.
 const CLOSE_BUSY = 4429;
+// Raisons envoyées par le serveur (backend/maze/collab.py, en français) et raison par défaut : gardées telles quelles
+// dans l'état (busy), traduites à l'affichage (t(busy)).
+N_('Trop de fiches ouvertes en temps réel par ce compte');
+N_('Trop de connexions temps réel sur ce serveur');
+const BUSY_DEFAULT = N_('Trop de connexions temps réel');
 // 4426 : version du schéma de l'éditeur différente de celle du serveur (Maze mis à jour, audit H3).
 const FINAL_CODES = { 4401: 'auth', 4403: 'forbidden', 4404: 'deleted', 4409: 'reset', 4413: 'toolarge', 4426: 'version' };
 const MAX_UPDATE = 2 * 1024 * 1024;
@@ -142,7 +148,7 @@ export class LiveDocument {
       const delay = RETRY_MS[Math.min(this.attempt, RETRY_MS.length - 1)];
       this.attempt += 1;
       // Connexion refusée faute de place (4429) : raison du serveur affichée jusqu'à la prochaine connexion réussie.
-      const busy = e.code === CLOSE_BUSY ? (e.reason || 'Trop de connexions temps réel') : null;
+      const busy = e.code === CLOSE_BUSY ? (e.reason || BUSY_DEFAULT) : null;
       this.setState({ status: this.state.synced ? 'offline' : 'connecting', attempts: this.attempt, busy });
       this.retryTimer = setTimeout(() => this.connect(), delay);
     };

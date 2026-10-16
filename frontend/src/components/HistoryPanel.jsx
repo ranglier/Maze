@@ -1,14 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
 import { renderDocInto } from '../editor/schema.js';
 import { Icon } from './ui.jsx';
+import { dateFormat, t } from '../i18n/index.js';
 
 /*
  * Historique des versions d'une fiche (panneau latéral) et aperçu d'une version (zone principale).
  */
 
-const timeFmt = new Intl.DateTimeFormat('fr-FR', { hour: '2-digit', minute: '2-digit' });
-const dayFmt = new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-const fullFmt = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+// Formats de la langue courante, demandés à l'affichage (dateFormat les garde en cache).
+const timeFmt = () => dateFormat({ hour: '2-digit', minute: '2-digit' });
+const dayFmt = () => dateFormat({ weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+const fullFmt = () => dateFormat({ day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 
 const parseDate = (iso) => new Date(iso);
 
@@ -16,29 +18,29 @@ function dayLabel(date) {
   const today = new Date();
   const start = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
   const diff = Math.round((start(today) - start(date)) / 86400000);
-  if (diff === 0) return 'Aujourd’hui';
-  if (diff === 1) return 'Hier';
-  const label = dayFmt.format(date);
+  if (diff === 0) return t('Aujourd’hui');
+  if (diff === 1) return t('Hier');
+  const label = dayFmt().format(date);
   return label.charAt(0).toUpperCase() + label.slice(1);
 }
 
 export function versionTitle(v) {
-  if (v.label) return v.kind === 'restore' ? `Restauration : ${v.label}` : v.label;
-  if (v.kind === 'restore') return 'Version restaurée';
-  if (v.kind === 'manual') return 'Version enregistrée';
-  return 'Enregistrement automatique';
+  if (v.label) return v.kind === 'restore' ? t('Restauration : {label}', { label: v.label }) : v.label;
+  if (v.kind === 'restore') return t('Version restaurée');
+  if (v.kind === 'manual') return t('Version enregistrée');
+  return t('Enregistrement automatique');
 }
 
-export const versionDate = (v) => fullFmt.format(parseDate(v.created_at));
+export const versionDate = (v) => fullFmt().format(parseDate(v.created_at));
 
 function sizeLabel(bytes) {
-  return bytes < 1024 ? `${bytes} o` : `${Math.round(bytes / 1024)} ko`;
+  return bytes < 1024 ? t('{n} o', { n: bytes }) : t('{n} ko', { n: Math.round(bytes / 1024) });
 }
 
 export function HistoryPanel({
   versions, activeId, readOnly, onSelect, onCurrent, onCreate, onRename, onDelete,
   // Textes propres aux fiches PNJ, factions et lieux (par défaut : fiches rédigées).
-  currentMeta = 'en cours d’édition', emptyText, note, notice,
+  currentMeta = t('en cours d’édition'), emptyText, note, notice,
 }) {
   const [naming, setNaming] = useState(false);
   const [label, setLabel] = useState('');
@@ -68,28 +70,27 @@ export function HistoryPanel({
       {!readOnly && (naming ? (
         <form className="history__new" onSubmit={submitNew} data-own-escape>
           <input value={label} onChange={(e) => setLabel(e.target.value)} maxLength={120} autoFocus
-            placeholder="Nom de la version (ex. : avant la séance 4)" aria-label="Nom de la version"
+            placeholder={t('Nom de la version (ex. : avant la séance 4)')} aria-label={t('Nom de la version')}
             onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); setNaming(false); } }} />
           <div className="history__new-actions">
-            <button type="button" className="btn btn--small btn--ghost" onClick={() => setNaming(false)}>Annuler</button>
-            <button type="submit" className="btn btn--small btn--primary">Enregistrer</button>
+            <button type="button" className="btn btn--small btn--ghost" onClick={() => setNaming(false)}>{t('Annuler')}</button>
+            <button type="submit" className="btn btn--small btn--primary">{t('Enregistrer')}</button>
           </div>
         </form>
       ) : (
         <button type="button" className="btn btn--small btn--ghost history__save" onClick={() => setNaming(true)}>
-          <Icon name="star" size={14} /> Nommer l’état actuel
+          <Icon name="star" size={14} /> {t('Nommer l’état actuel')}
         </button>
       ))}
       {notice && <p className="history__notice">{notice}</p>}
       <button type="button" className={`history__item history__item--current${activeId == null ? ' is-active' : ''}`}
         onClick={onCurrent}>
-        <span className="history__title">Version actuelle</span>
+        <span className="history__title">{t('Version actuelle')}</span>
         <span className="history__meta">{currentMeta}</span>
       </button>
-      {versions === null ? <p className="muted history__empty">Chargement…</p> : versions.length === 0 ? (
+      {versions === null ? <p className="muted history__empty">{t('Chargement…')}</p> : versions.length === 0 ? (
         <p className="muted history__empty">
-          {emptyText || 'Aucune version pour l’instant. Maze en garde automatiquement à chaque séance d’écriture ; vous pouvez '
-            + 'aussi nommer l’état actuel avant une modification importante.'}
+          {emptyText || t('Aucune version pour l’instant. Maze en garde automatiquement à chaque séance d’écriture ; vous pouvez aussi nommer l’état actuel avant une modification importante.')}
         </p>
       ) : groups.map((g) => (
         <section key={g.day} className="history__group">
@@ -99,12 +100,12 @@ export function HistoryPanel({
               <li key={v.id}>
                 {renaming?.id === v.id ? (
                   <form className="history__new" onSubmit={submitRename} data-own-escape>
-                    <input value={renaming.label} maxLength={120} autoFocus aria-label="Nom de la version"
+                    <input value={renaming.label} maxLength={120} autoFocus aria-label={t('Nom de la version')}
                       onChange={(e) => setRenaming({ ...renaming, label: e.target.value })}
                       onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); setRenaming(null); } }} />
                     <div className="history__new-actions">
-                      <button type="button" className="btn btn--small btn--ghost" onClick={() => setRenaming(null)}>Annuler</button>
-                      <button type="submit" className="btn btn--small btn--primary">Renommer</button>
+                      <button type="button" className="btn btn--small btn--ghost" onClick={() => setRenaming(null)}>{t('Annuler')}</button>
+                      <button type="submit" className="btn btn--small btn--primary">{t('Renommer')}</button>
                     </div>
                   </form>
                 ) : (
@@ -113,20 +114,20 @@ export function HistoryPanel({
                       <span className="history__title">
                         {v.kind === 'manual' && <Icon name="star" size={13} />}
                         {v.kind === 'restore' && <Icon name="refresh" size={13} />}
-                        {timeFmt.format(parseDate(v.created_at))} · {versionTitle(v)}
+                        {timeFmt().format(parseDate(v.created_at))} · {versionTitle(v)}
                       </span>
                       <span className="history__meta">
-                        {v.author_name ? `${v.author_name} · ` : ''}{v.is_current ? 'identique à l’actuelle' : sizeLabel(v.size)}
+                        {v.author_name ? `${v.author_name} · ` : ''}{v.is_current ? t('identique à l’actuelle') : sizeLabel(v.size)}
                       </span>
                     </button>
                     {!readOnly && (
                       <span className="history__actions">
-                        <button type="button" className="icon-btn icon-btn--small" title="Nommer cette version"
-                          aria-label="Nommer cette version" onClick={() => setRenaming({ id: v.id, label: v.label })}>
+                        <button type="button" className="icon-btn icon-btn--small" title={t('Nommer cette version')}
+                          aria-label={t('Nommer cette version')} onClick={() => setRenaming({ id: v.id, label: v.label })}>
                           <Icon name="edit" size={13} />
                         </button>
-                        <button type="button" className="icon-btn icon-btn--small" title="Supprimer cette version"
-                          aria-label="Supprimer cette version" onClick={() => onDelete(v)}>
+                        <button type="button" className="icon-btn icon-btn--small" title={t('Supprimer cette version')}
+                          aria-label={t('Supprimer cette version')} onClick={() => onDelete(v)}>
                           <Icon name="trash" size={13} />
                         </button>
                       </span>
@@ -140,7 +141,7 @@ export function HistoryPanel({
       ))}
       {versions?.length > 0 && (
         <p className="muted history__note">
-          {note || 'Les versions automatiques les plus anciennes sont effacées au-delà de 100 ; les versions nommées sont conservées.'}
+          {note || t('Les versions automatiques les plus anciennes sont effacées au-delà de 100 ; les versions nommées sont conservées.')}
         </p>
       )}
     </div>
@@ -163,13 +164,13 @@ export function VersionPreview({ version, content, readOnly, onRestore, onClose 
         </span>
         {!readOnly && (
           <button type="button" className="btn btn--small btn--primary" onClick={onRestore} disabled={content == null}>
-            Restaurer cette version
+            {t('Restaurer cette version')}
           </button>
         )}
-        <button type="button" className="btn btn--small btn--ghost" onClick={onClose}>Revenir à la version actuelle</button>
+        <button type="button" className="btn btn--small btn--ghost" onClick={onClose}>{t('Revenir à la version actuelle')}</button>
       </div>
       {content == null
-        ? <div className="doc-connecting" aria-busy="true">Chargement de la version…</div>
+        ? <div className="doc-connecting" aria-busy="true">{t('Chargement de la version…')}</div>
         : <div ref={ref} className="doc-content version-view__content" />}
     </div>
   );
