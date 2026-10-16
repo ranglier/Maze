@@ -12,7 +12,8 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 
-from . import auth, db, defaults, imaging
+from . import auth, db, defaults, i18n, imaging
+from .i18n import msg
 from .entry_history import record_change
 from .maps import maps_for_place
 from .api import (
@@ -34,7 +35,7 @@ TREE_FIELDS = ("p.id, p.parent_id, p.name, p.kind, p.summary, p.tags, p.sort_ord
 # chaîne de milliers de niveaux (archive générée par un script) dépassait les limites de récursion (SQLite, Python,
 # rendu de l'arbre). Création, déplacement et import la respectent ; un arbre déjà plus profond reste utilisable.
 MAX_DEPTH = 32
-TOO_DEEP = f"Trop de niveaux de sous-lieux ({MAX_DEPTH} au plus)"
+TOO_DEEP = msg("Trop de niveaux de sous-lieux ({max} au plus)", max=MAX_DEPTH)
 
 
 def depth(conn: sqlite3.Connection, place_id: int) -> int:
@@ -305,7 +306,7 @@ def create_place_kind(request: Request) -> Response:
         scoped(conn, request, "campaigns", cid, "Campagne")
         if conn.execute("SELECT 1 FROM place_kinds WHERE campaign_id = ? AND lower(label) = lower(?)",
                         (cid, label)).fetchone():
-            raise HTTPException(409, f"Le type « {label} » existe déjà")
+            raise HTTPException(409, msg("Le type « {label} » existe déjà", label=label))
         order = conn.execute("SELECT COALESCE(MAX(sort_order), -1) + 1 FROM place_kinds WHERE campaign_id = ?",
                              (cid,)).fetchone()[0]
         new_id = db.insert(conn, "place_kinds", {
@@ -328,7 +329,7 @@ def update_place_kind(request: Request) -> Response:
             values["label"] = values["label"].strip()
             if conn.execute("SELECT 1 FROM place_kinds WHERE campaign_id = ? AND lower(label) = lower(?) AND id <> ?",
                             (current["campaign_id"], values["label"], kid)).fetchone():
-                raise HTTPException(409, f"Le type « {values['label']} » existe déjà")
+                raise HTTPException(409, msg("Le type « {label} » existe déjà", label=values["label"]))
         if values:
             db.update(conn, "place_kinds", kid, values, touch=False)
         row = kind_out(db.rows_to_dicts(conn.execute(
@@ -362,7 +363,7 @@ async def set_place_kind_image(request: Request) -> Response:
     current = await in_tx(request, _work)
     limit = cfg.max_upload_mb * 1024 * 1024
     if int(request.headers.get("content-length") or 0) > limit * 2:
-        raise HTTPException(413, f"Envoi trop volumineux (max {cfg.max_upload_mb} Mo)")
+        raise HTTPException(413, msg("Envoi trop volumineux (max {size} Mo)", size=cfg.max_upload_mb))
     form = await request.form(max_files=1, max_fields=2)
     try:
         upload = form.get("file")
@@ -370,13 +371,13 @@ async def set_place_kind_image(request: Request) -> Response:
             raise HTTPException(400, "Aucun fichier reçu (champ 'file')")
         raw = await upload.read(limit + 1)
         if len(raw) > limit:
-            raise HTTPException(413, f"{upload.filename} dépasse {cfg.max_upload_mb} Mo")
+            raise HTTPException(413, msg("{name} dépasse {size} Mo", name=upload.filename or "", size=cfg.max_upload_mb))
     finally:
         await form.close()
     try:
         rel = await run_in_threadpool(imaging.process_icon, raw, cfg.media_dir, current["campaign_id"])
     except imaging.ImageError as exc:
-        raise HTTPException(400, str(exc)) from exc
+        raise HTTPException(400, i18n.message(exc)) from exc
     try:
         def _work(conn: sqlite3.Connection):
             current = scoped(conn, request, "place_kinds", kid, "Type de lieu")  # supprimé entre-temps ?

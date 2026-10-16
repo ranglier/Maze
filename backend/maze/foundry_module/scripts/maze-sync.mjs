@@ -16,6 +16,12 @@
  * tel que Foundry l'a enregistré (blocs secrets révélés ramenés à leur forme cachée). Un nouvel import met à
  * jour ce qui a changé dans Maze et laisse de côté ce qui a été modifié dans Foundry depuis le dernier import
  * (sauf si l'option « remplacer » est cochée) ; une fiche disparue de Maze est rangée dans « Retirés de Maze ».
+ *
+ * Langue : textes du module dans lang/<langue>.json (clés MAZE_SYNC.*, game.i18n.localize et format ; français et
+ * anglais, Foundry retombe sur l'anglais pour une autre langue). Les pages composées par Maze suivent la langue du
+ * monde : le module l'envoie dans l'export (?lang=, game.i18n.lang). Changer de langue renomme les dossiers et change
+ * le HTML des pages, donc leur empreinte : l'import suivant réécrit les pages non modifiées dans Foundry et signale
+ * les autres (« Modifiés dans Foundry »), sans les toucher sauf avec « Remplacer ».
  */
 
 const MODULE_ID = "maze-sync";
@@ -23,9 +29,8 @@ const APP_ID = "maze-sync-import";
 const API = "/api/foundry/v1";
 const FORMAT = "maze-foundry/1";
 const KINDS = ["npc", "faction", "place"];
-const KIND_LABEL = { npc: "PNJ", faction: "Factions", place: "Lieux" };
 const KIND_DATA = { npc: "npcs", faction: "factions", place: "places" };
-const SCENARIO_STATUS = { brouillon: "brouillon", pret: "prêt", en_cours: "en cours", joue: "joué" };
+const SCENARIO_STATUS = ["brouillon", "pret", "en_cours", "joue"];
 const DEFAULT_NOTE_ICON = "icons/svg/book.svg";
 
 // Acteurs : systèmes pris en charge (type d'acteur et champs remplis ; le reste de la fiche n'est jamais touché).
@@ -33,6 +38,32 @@ const ACTOR_SYSTEMS = {
   "dark-heresy-v1": { type: "npc", bio: "system.biography" },
   "dark-heresy": { type: "npc", bio: "system.notes", faction: "system.faction" }
 };
+
+/* ---------------------------------------------------------------------------------------------- */
+/* Traduction                                                                                      */
+/* ---------------------------------------------------------------------------------------------- */
+
+/** Langue du monde (game.i18n.lang) ; « fr » avant l'initialisation de Foundry. */
+const currentLang = () => globalThis.game?.i18n?.lang || "fr";
+
+/** Texte du module (lang/<langue>.json, clé MAZE_SYNC.<key>) : game.i18n.localize, ou format avec des valeurs. */
+function L(key, data) {
+  const id = `MAZE_SYNC.${key}`;
+  const i18n = globalThis.game?.i18n;
+  if (!i18n) return id;
+  return data ? i18n.format(id, data) : i18n.localize(id);
+}
+
+/** Texte au pluriel : sous-clés one / other… choisies par Intl.PluralRules de la langue du monde ({n} fourni). */
+function Ln(key, n, data = {}) {
+  let category = "other";
+  try { category = new Intl.PluralRules(currentLang()).select(n); } catch (err) { /* langue inconnue d'Intl */ }
+  const i18n = globalThis.game?.i18n;
+  const known = (k) => !i18n?.has || i18n.has(`MAZE_SYNC.${k}`);
+  return L(known(`${key}.${category}`) ? `${key}.${category}` : `${key}.other`, { ...data, n });
+}
+
+const kindLabel = (kind) => L(`Kind.${kind}`);
 
 /* ---------------------------------------------------------------------------------------------- */
 /* Outils                                                                                          */
@@ -137,22 +168,22 @@ class MazeClient {
   }
 
   async request(path) {
-    if (!/^https?:\/\//i.test(this.base)) throw new Error("Adresse de Maze invalide (https://…)");
+    if (!/^https?:\/\//i.test(this.base)) throw new Error(L("Error.BadUrl"));
     let response;
     try {
       response = await fetch(this.base + path, { headers: { Authorization: `Bearer ${this.token}` }, cache: "no-store" });
     } catch (err) {
-      throw new Error(`Maze injoignable (${this.base}) : adresse, certificat ou CORS. ${err.message ?? err}`);
+      throw new Error(L("Error.Unreachable", { url: this.base, error: err.message ?? err }));
     }
-    if (response.status === 401) throw new Error("Jeton refusé par Maze (révoqué ou mal copié).");
-    if (response.status === 404) throw new Error("Introuvable dans Maze (campagne non ouverte à ce jeton ?).");
-    if (!response.ok) throw new Error(`Maze a répondu ${response.status}.`);
+    if (response.status === 401) throw new Error(L("Error.TokenRefused"));
+    if (response.status === 404) throw new Error(L("Error.NotFound"));
+    if (!response.ok) throw new Error(L("Error.Status", { status: response.status }));
     return response;
   }
 
   async json(path) {
     const data = await (await this.request(path)).json();
-    if (data.format !== FORMAT) throw new Error(`Format inattendu (${data.format}) : mettre à jour le module.`);
+    if (data.format !== FORMAT) throw new Error(L("Error.Format", { format: data.format }));
     return data;
   }
 
@@ -160,8 +191,9 @@ class MazeClient {
     return (await this.json(`${API}/campaigns`)).campaigns;
   }
 
-  async exportCampaign(id) {
-    return this.json(`${API}/campaigns/${id}/export`);
+  /** Export d'une campagne ; pages composées par Maze dans la langue `lang` (celle du monde par défaut). */
+  async exportCampaign(id, lang = currentLang()) {
+    return this.json(`${API}/campaigns/${id}/export?lang=${encodeURIComponent(lang)}`);
   }
 
   async file(path) {
@@ -194,17 +226,18 @@ class MazeImporter {
   }
 
   async run() {
-    this.log("Lecture de la campagne dans Maze…");
+    this.log(L("Log.Reading"));
     this.data = await this.client.exportCampaign(this.cid);
     const d = this.data;
     this.instance = d.instance;
-    this.log(`${d.campaign.name} : ${d.npcs.length} PNJ, ${d.factions.length} factions, ${d.places.length} lieux, ${d.maps.length} cartes.`);
+    this.log(L("Log.Campaign", { name: d.campaign.name, npcs: d.npcs.length, factions: d.factions.length,
+      places: d.places.length, maps: d.maps.length }));
     // Scénario choisi : seulement ses fiches (et, au choix, leurs voisines). Les autres déjà importées restent
     // telles quelles et servent toujours de cibles aux liens ; elles ne passent pas dans « Retirés de Maze ».
     this.selection = null;
     if (this.options.scenario) {
       const sc = (d.scenarios ?? []).find((s) => s.id === this.options.scenario);
-      if (!sc?.cast) throw new Error("Scénario introuvable dans Maze (supprimé ?) : reconnectez-vous pour rafraîchir la liste.");
+      if (!sc?.cast) throw new Error(L("Error.Scenario"));
       this.selection = Object.fromEntries(KINDS.map((k) => [k, new Set([
         ...(sc.cast[k] ?? []), ...(this.options.related ? sc.related?.[k] ?? [] : [])])]));
       this.scenarioTitle = sc.title;
@@ -217,7 +250,8 @@ class MazeImporter {
     this.syncMaps = sel ? d.maps.filter((m) => (m.place != null && sel.place.has(m.place))
       || m.pins.some((pin) => sel.place.has(pin.place))) : d.maps;
     if (sel) {
-      this.log(`Scénario « ${this.scenarioTitle} » : ${sel.npc.size} PNJ, ${sel.faction.size} factions, ${sel.place.size} lieux, ${this.syncMaps.length} carte(s).`);
+      this.log(Ln("Log.Scenario", this.syncMaps.length, { title: this.scenarioTitle, npcs: sel.npc.size,
+        factions: sel.faction.size, places: sel.place.size }));
     }
     await this.uploadFiles();
     await this.ensureJournals();
@@ -268,7 +302,7 @@ class MazeImporter {
     for (const [id, list] of groups) {
       list.sort((a, b) => createdTime(a) - createdTime(b));
       out.set(id, list[0]);
-      for (const copy of list.slice(1)) this.report.duplicates.push(`${label} : ${copy.name}`);
+      for (const copy of list.slice(1)) this.report.duplicates.push(L("Report.Item", { kind: label, name: copy.name }));
     }
     return out;
   }
@@ -306,16 +340,16 @@ class MazeImporter {
   }
 
   rootName(label) {
-    return `${this.data.campaign.name} - ${label}`;
+    return L("Folder.Root", { campaign: this.data.campaign.name, label });
   }
 
   /** Dossier d'un journal (ou d'un acteur) selon sa nature et sa place dans Maze. */
   async folderFor(type, kind, entity) {
-    if (kind === "faction") return this.folder(type, "faction-root", this.rootName("Factions"));
+    if (kind === "faction") return this.folder(type, "faction-root", this.rootName(kindLabel("faction")));
     if (kind === "npc") {
-      const root = await this.folder(type, "npc-root", this.rootName("PNJ"));
+      const root = await this.folder(type, "npc-root", this.rootName(kindLabel("npc")));
       const group = entity.group ? this.data.factions.find((f) => f.id === entity.group) : null;
-      if (!group) return this.folder(type, "npc-group:none", "Sans faction", root);
+      if (!group) return this.folder(type, "npc-group:none", L("Folder.NoFaction"), root);
       return this.folder(type, `npc-group:${group.id}`, group.name, root);
     }
     // Lieux : un dossier par lieu qui a des sous-lieux, tant que la profondeur le permet.
@@ -327,7 +361,7 @@ class MazeImporter {
   }
 
   async placeFolder(place) {
-    const root = await this.folder("JournalEntry", "place-root", this.rootName("Lieux"));
+    const root = await this.folder("JournalEntry", "place-root", this.rootName(kindLabel("place")));
     if (!place) return root;
     const parent = await this.placeFolder(this.placeById(place.parent));
     const childDepth = (parent.depth ?? (parent.ancestors?.length ?? 0) + 1) + 1;
@@ -372,7 +406,7 @@ class MazeImporter {
       else todo.push(path);
     }
     if (!todo.length) return;
-    this.log(`Téléchargement de ${todo.length} image(s)…`);
+    this.log(Ln("Log.Downloading", todo.length));
     let done = 0;
     await pool(todo, 4, async (path) => {
       const name = path.split("/").pop();
@@ -382,13 +416,13 @@ class MazeImporter {
         // FilePicker.upload ne lève pas d'erreur quand Foundry refuse le fichier : il renvoie false ou un
         // objet sans chemin.
         const result = await FP.upload("data", dir, file, {}, { notify: false });
-        if (!result?.path) throw new Error(result?.message || "dépôt refusé par Foundry");
+        if (!result?.path) throw new Error(result?.message || L("Error.UploadRefused"));
         this.paths.set(path, result.path);
       } catch (err) {
-        this.report.errors.push(`Image ${name} : ${err.message ?? err}`);
+        this.report.errors.push(L("Error.Image", { name, error: err.message ?? err }));
       }
       done += 1;
-      if (done % 20 === 0) this.log(`… ${done} / ${todo.length}`);
+      if (done % 20 === 0) this.log(L("Log.Progress", { done, total: todo.length }));
     });
   }
 
@@ -410,7 +444,7 @@ class MazeImporter {
         continue;
       }
       // Rapprochement sur toutes les fiches de Maze : une fiche hors du scénario n'est pas « disparue ».
-      const matched = this.match(this.ours(game.journal, kind), this.data[KIND_DATA[kind]], KIND_LABEL[kind]);
+      const matched = this.match(this.ours(game.journal, kind), this.data[KIND_DATA[kind]], kindLabel(kind));
       const chosen = new Set(this.entities[kind].map((e) => e.id));
       for (const [id, doc] of matched) {
         if (!chosen.has(id) && !flagOf(doc).removed) this.journals.set(`${kind}:${id}`, doc);
@@ -430,7 +464,7 @@ class MazeImporter {
     }
     this.fresh = new Set();
     if (create.length) {
-      this.log(`Création de ${create.length} journal(aux)…`);
+      this.log(Ln("Log.Creating", create.length));
       const created = await inBatches(create, 100, (batch) => JournalEntry.implementation.createDocuments(batch));
       for (const doc of created) {
         this.journals.set(`${flagOf(doc).kind}:${flagOf(doc).id}`, doc);
@@ -457,7 +491,7 @@ class MazeImporter {
     let html = this.render(entity.html);
     if (kind === "place") {
       const scenes = this.scenesByPlace.get(entity.id) ?? [];
-      if (scenes.length) html += "<h2>Cartes</h2><ul>" + scenes.map((s) => `<li><p>${uuidLink(s, s.name)}</p></li>`).join("") + "</ul>";
+      if (scenes.length) html += `<h2>${escapeHtml(L("Page.Maps"))}</h2><ul>` + scenes.map((s) => `<li><p>${uuidLink(s, s.name)}</p></li>`).join("") + "</ul>";
     }
     return html;
   }
@@ -465,7 +499,7 @@ class MazeImporter {
   async fillJournals() {
     const total = KINDS.reduce((n, k) => n + this.entities[k].length, 0);
     if (!total) return;
-    this.log(`Mise à jour du contenu de ${total} journal(aux)…`);
+    this.log(Ln("Log.Filling", total));
     let done = 0;
     for (const kind of KINDS) {
       for (const e of this.entities[kind]) {
@@ -475,12 +509,12 @@ class MazeImporter {
           const result = await this.fillJournal(doc, kind, e);
           if (result.updated && !this.fresh.has(doc.id)) this.report.updated += 1;
           else if (!result.updated && !result.skipped.length) this.report.unchanged += 1;
-          for (const page of result.skipped) this.report.skipped.push(`${KIND_LABEL[kind]} : ${e.name} (${page})`);
+          for (const page of result.skipped) this.report.skipped.push(L("Report.Skipped", { kind: kindLabel(kind), name: e.name, page }));
         } catch (err) {
-          this.report.errors.push(`${e.name} : ${err.message ?? err}`);
+          this.report.errors.push(L("Error.Entry", { name: e.name, error: err.message ?? err }));
         }
         done += 1;
-        if (done % 50 === 0) this.log(`… ${done} / ${total}`);
+        if (done % 50 === 0) this.log(L("Log.Progress", { done, total }));
       }
     }
   }
@@ -489,8 +523,8 @@ class MazeImporter {
     const result = { updated: false, skipped: [] };
     const ownership = CONST.DOCUMENT_OWNERSHIP_LEVELS;
     const texts = [
-      { role: "sheet", name: "Fiche", html: this.sheetHtml(kind, entity), sort: 0, title: false },
-      { role: "secrets", name: "Secrets (MJ)", html: this.render(entity.secret_html), sort: 50, title: true,
+      { role: "sheet", name: L("Page.Sheet"), html: this.sheetHtml(kind, entity), sort: 0, title: false },
+      { role: "secrets", name: L("Page.Secrets"), html: this.render(entity.secret_html), sort: 50, title: true,
         // Page réservée au MJ, même si le journal est partagé avec les joueurs.
         ownership: { default: ownership?.NONE ?? 0 } }
     ];
@@ -584,15 +618,15 @@ class MazeImporter {
 
   async syncScenes() {
     const d = this.data;
-    const existing = this.match(this.ours(game.scenes, "map"), d.maps, "Carte");
+    const existing = this.match(this.ours(game.scenes, "map"), d.maps, kindLabel("map"));
     const chosen = new Set(this.syncMaps.map((m) => m.id));
     for (const map of d.maps) {
       const scene = existing.get(map.id);
       if (!chosen.has(map.id) && scene && !flagOf(scene).removed) this.addSceneOfPlace(map, scene);
     }
     if (!this.syncMaps.length) return;
-    this.log(`Cartes : ${this.syncMaps.length} scène(s)…`);
-    const folder = await this.folder("Scene", "scene-root", this.rootName("Cartes"));
+    this.log(Ln("Log.Scenes", this.syncMaps.length));
+    const folder = await this.folder("Scene", "scene-root", this.rootName(L("Folder.Maps")));
     const icons = new Map(d.place_kinds.map((k) => [k.key, k.icon ? this.paths.get(k.icon) : null]));
     const places = new Map(d.places.map((p) => [p.id, p]));
     const v14 = game.release.generation >= 14;
@@ -600,7 +634,7 @@ class MazeImporter {
       let scene = existing.get(map.id);
       try {
         const src = this.paths.get(this.mapFile(map));
-        if (!src) throw new Error("fond de carte non téléchargé");
+        if (!src) throw new Error(L("Error.NoBackground"));
         const base = { name: map.name, folder: folder.id, width: map.width, height: map.height, padding: 0 };
         if (!scene) {
           // Foundry 14 : le fond appartient au niveau de la scène (posé juste après).
@@ -631,7 +665,7 @@ class MazeImporter {
         }
         this.addSceneOfPlace(map, scene);
       } catch (err) {
-        this.report.errors.push(`Carte ${map.name} : ${err.message ?? err}`);
+        this.report.errors.push(L("Error.Map", { name: map.name, error: err.message ?? err }));
       }
     }
   }
@@ -683,19 +717,19 @@ class MazeImporter {
   async syncActors() {
     const system = ACTOR_SYSTEMS[game.system.id];
     if (!system) {
-      this.report.errors.push(`Acteurs : système « ${game.system.id} » non pris en charge (journaux seulement).`);
+      this.report.errors.push(L("Error.System", { system: game.system.id }));
       return;
     }
     const npcs = this.actorNpcs;
     if (!npcs.length) return;
-    this.log(`Acteurs : ${npcs.length} PNJ…`);
-    const existing = this.match(this.ours(game.actors, "npc"), this.data.npcs, "Acteur");
+    this.log(L("Log.Actors", { n: npcs.length }));
+    const existing = this.match(this.ours(game.actors, "npc"), this.data.npcs, kindLabel("actor"));
     const written = [];
     for (const npc of npcs) {
       try {
         const folder = await this.folderFor("Actor", "npc", npc);
         const journal = this.journals.get(`npc:${npc.id}`);
-        const bio = (journal ? `<p>${uuidLink(journal, `Fiche de ${npc.name} (Maze)`)}</p>` : "") + this.render(npc.actor_bio);
+        const bio = (journal ? `<p>${uuidLink(journal, L("Page.ActorLink", { name: npc.name }))}</p>` : "") + this.render(npc.actor_bio);
         const bioHash = hashText(bio);
         const img = this.imagePath(npc.cover);
         const actor = existing.get(npc.id);
@@ -733,7 +767,7 @@ class MazeImporter {
             update[system.bio] = bio;
             update[`flags.${MODULE_ID}.bio`] = bioHash;
           } else {
-            this.report.skipped.push(`Acteur : ${npc.name} (biographie)`);
+            this.report.skipped.push(L("Report.Skipped", { kind: kindLabel("actor"), name: npc.name, page: L("Report.Biography") }));
           }
         }
         if (Object.keys(update).length) {
@@ -744,7 +778,7 @@ class MazeImporter {
           this.report.unchanged += 1;
         }
       } catch (err) {
-        this.report.errors.push(`Acteur ${npc.name} : ${err.message ?? err}`);
+        this.report.errors.push(L("Error.Actor", { name: npc.name, error: err.message ?? err }));
       }
     }
     // Empreinte de la biographie telle qu'enregistrée, pour les seuls acteurs écrits par cet import.
@@ -758,7 +792,7 @@ class MazeImporter {
   async retireMissing() {
     for (const [type, docs] of Object.entries(this.stale)) {
       if (!docs.length) continue;
-      const folder = await this.folder(type, "removed", "Retirés de Maze");
+      const folder = await this.folder(type, "removed", L("Folder.Removed"));
       for (const doc of docs) {
         await doc.update({ folder: folder.id, [`flags.${MODULE_ID}.removed`]: true });
         this.report.removed += 1;
@@ -778,7 +812,8 @@ class MazeImportApp extends ApplicationV2 {
     id: APP_ID,
     tag: "div",
     classes: ["maze-sync"],
-    window: { title: "Importer depuis Maze", icon: "fa-solid fa-dungeon", resizable: true },
+    // Titre traduit par ApplicationV2 (game.i18n.localize).
+    window: { title: "MAZE_SYNC.App.Title", icon: "fa-solid fa-dungeon", resizable: true },
     position: { width: 560, height: "auto" }
   };
 
@@ -810,38 +845,39 @@ class MazeImportApp extends ApplicationV2 {
     const last = lastUrl === url ? Number(lastId) : null;
     const campaigns = s.campaigns ?? [];
     const current = campaigns.find((c) => c.id === (s.campaignId ?? last)) ?? campaigns[0];
+    const T = (key, data) => escapeHtml(L(key, data));
     const campaignOptions = campaigns.map((c) =>
-      `<option value="${c.id}"${c === current ? " selected" : ""}>${escapeHtml(c.name)} (${c.npcs} PNJ, ${c.factions} factions, ${c.places} lieux, ${c.maps} cartes)</option>`).join("");
+      `<option value="${c.id}"${c === current ? " selected" : ""}>${T("App.CampaignOption", { name: c.name, npcs: c.npcs, factions: c.factions, places: c.places, maps: c.maps })}</option>`).join("");
     const scenarioOptions = this.scenarioOptions(current);
     div.innerHTML = `
       <fieldset>
-        <legend>Connexion à Maze</legend>
-        <div class="form-group"><label>Adresse de Maze</label>
+        <legend>${T("App.Connection")}</legend>
+        <div class="form-group"><label>${T("App.Url")}</label>
           <input type="url" name="url" value="${escapeHtml(url)}" placeholder="https://maze.example.org"></div>
-        <div class="form-group"><label>Jeton</label>
-          <input type="password" name="token" autocomplete="off" placeholder="${hasToken ? "enregistré (laisser vide pour le garder)" : "mzf_…"}"></div>
-        <p class="hint">Jeton créé dans Maze, Administration > Foundry VTT. Il reste dans ce navigateur.</p>
-        <button type="button" data-do="connect" ${s.busy ? "disabled" : ""}><i class="fa-solid fa-plug"></i> Se connecter</button>
+        <div class="form-group"><label>${T("App.Token")}</label>
+          <input type="password" name="token" autocomplete="off" placeholder="${hasToken ? T("App.TokenSaved") : "mzf_…"}"></div>
+        <p class="hint">${T("App.TokenHint")}</p>
+        <button type="button" data-do="connect" ${s.busy ? "disabled" : ""}><i class="fa-solid fa-plug"></i> ${T("App.Connect")}</button>
       </fieldset>
       ${s.campaigns ? `
       <fieldset>
-        <legend>Import</legend>
+        <legend>${T("App.Import")}</legend>
         ${s.campaigns.length ? `
-        <div class="form-group"><label>Campagne</label><select name="campaign">${campaignOptions}</select></div>
-        <div class="form-group"><label>Scénario</label><select name="scenario">${scenarioOptions}</select></div>
-        <p class="hint">Un scénario : seulement les fiches qu'il cite (@), lui et ses pages, avec les ajouts et retraits de sa carte, et les cartes de ses lieux. Les autres fiches déjà importées ne sont pas touchées.</p>
+        <div class="form-group"><label>${T("App.Campaign")}</label><select name="campaign">${campaignOptions}</select></div>
+        <div class="form-group"><label>${T("App.Scenario")}</label><select name="scenario">${scenarioOptions}</select></div>
+        <p class="hint">${T("App.ScenarioHint")}</p>
         <div class="maze-sync__checks">
-          <label class="maze-sync__related"><input type="checkbox" name="related" ${s.related ? "checked" : ""}> Avec les fiches voisines : factions des PNJ, lieux où ils se trouvent, présents des lieux cités</label>
-          <label><input type="checkbox" name="npc" checked> Journaux des PNJ</label>
-          <label><input type="checkbox" name="faction" checked> Journaux des factions</label>
-          <label><input type="checkbox" name="place" checked> Journaux des lieux</label>
-          <label><input type="checkbox" name="maps" checked> Cartes interactives en scènes</label>
-          <label><input type="checkbox" name="actors" ${actorSystem ? "checked" : "disabled"}> Acteurs des PNJ${actorSystem ? "" : ` (système « ${escapeHtml(game.system.id)} » non pris en charge)`}</label>
-          <label><input type="checkbox" name="fullMaps"> Fonds de carte en pleine définition (plus lourds)</label>
-          <label><input type="checkbox" name="overwrite"> Remplacer aussi ce qui a été modifié dans Foundry</label>
+          <label class="maze-sync__related"><input type="checkbox" name="related" ${s.related ? "checked" : ""}> ${T("App.Related")}</label>
+          <label><input type="checkbox" name="npc" checked> ${T("App.Npcs")}</label>
+          <label><input type="checkbox" name="faction" checked> ${T("App.Factions")}</label>
+          <label><input type="checkbox" name="place" checked> ${T("App.Places")}</label>
+          <label><input type="checkbox" name="maps" checked> ${T("App.Maps")}</label>
+          <label><input type="checkbox" name="actors" ${actorSystem ? "checked" : "disabled"}> ${actorSystem ? T("App.Actors") : T("App.ActorsUnsupported", { system: game.system.id })}</label>
+          <label><input type="checkbox" name="fullMaps"> ${T("App.FullMaps")}</label>
+          <label><input type="checkbox" name="overwrite"> ${T("App.Overwrite")}</label>
         </div>
-        <button type="button" data-do="import" ${s.busy ? "disabled" : ""}><i class="fa-solid fa-file-import"></i> Importer</button>`
-        : `<p>Aucune campagne n'est ouverte à ce jeton.</p>`}
+        <button type="button" data-do="import" ${s.busy ? "disabled" : ""}><i class="fa-solid fa-file-import"></i> ${T("App.Start")}</button>`
+        : `<p>${T("App.NoCampaign")}</p>`}
       </fieldset>` : ""}
       ${s.error ? `<p class="maze-sync__error">${escapeHtml(s.error)}</p>` : ""}
       ${s.lines.length ? `<pre class="maze-sync__log">${s.lines.map(escapeHtml).join("\n")}</pre>` : ""}
@@ -860,9 +896,10 @@ class MazeImportApp extends ApplicationV2 {
     const wanted = this.view.scenarioId !== undefined && this.view.scenarioCampaign === campaign?.id ? this.view.scenarioId
       : lastUrl === url && Number(lastCid) === campaign?.id ? Number(lastSid) || null : null;
     const scenarios = campaign?.scenarios ?? [];
-    return `<option value="">Toute la campagne</option>` + scenarios.map((sc) => {
-      const status = SCENARIO_STATUS[sc.status] ? ` (${SCENARIO_STATUS[sc.status]})` : "";
-      return `<option value="${sc.id}"${sc.id === wanted ? " selected" : ""}>${escapeHtml(sc.title || "Sans titre")}${status}</option>`;
+    return `<option value="">${escapeHtml(L("App.WholeCampaign"))}</option>` + scenarios.map((sc) => {
+      const title = sc.title || L("App.Untitled");
+      const label = SCENARIO_STATUS.includes(sc.status) ? L("App.ScenarioOption", { title, status: L(`Status.${sc.status}`) }) : title;
+      return `<option value="${sc.id}"${sc.id === wanted ? " selected" : ""}>${escapeHtml(label)}</option>`;
     }).join("");
   }
 
@@ -896,12 +933,15 @@ class MazeImportApp extends ApplicationV2 {
 
   reportHtml(r) {
     const list = (title, items) => items.length
-      ? `<details><summary>${title} (${items.length})</summary><ul>${items.map((i) => `<li>${escapeHtml(i)}</li>`).join("")}</ul></details>` : "";
+      ? `<details><summary>${escapeHtml(title)} (${items.length})</summary><ul>${items.map((i) => `<li>${escapeHtml(i)}</li>`).join("")}</ul></details>` : "";
+    const counts = { created: Ln("Report.Created", r.created), updated: Ln("Report.Updated", r.updated),
+      unchanged: Ln("Report.Unchanged", r.unchanged), removed: Ln("Report.Removed", r.removed) };
+    const summary = L(r.removed ? "Report.SummaryRemoved" : "Report.Summary", counts);
     return `<div class="maze-sync__report">
-      <p><strong>Terminé :</strong> ${r.created} créé(s), ${r.updated} mis à jour, ${r.unchanged} inchangé(s)${r.removed ? `, ${r.removed} retiré(s) de Maze` : ""}.</p>
-      ${list("Modifiés dans Foundry, laissés tels quels", r.skipped)}
-      ${list("Copies faites dans Foundry, ignorées", r.duplicates)}
-      ${list("Erreurs", r.errors)}
+      <p><strong>${escapeHtml(L("Report.Done"))}</strong> ${escapeHtml(summary)}</p>
+      ${list(L("Report.SkippedTitle"), r.skipped)}
+      ${list(L("Report.DuplicatesTitle"), r.duplicates)}
+      ${list(L("Report.ErrorsTitle"), r.errors)}
     </div>`;
   }
 
@@ -946,7 +986,7 @@ class MazeImportApp extends ApplicationV2 {
     };
     try {
       this.view.report = await new MazeImporter(this.client, campaignId, options, log).run();
-      ui.notifications.info("Import depuis Maze terminé.");
+      ui.notifications.info(L("Report.Notify"));
     } catch (err) {
       console.error(`${MODULE_ID} |`, err);
       this.view.error = err.message ?? String(err);
@@ -969,10 +1009,11 @@ Hooks.once("init", () => {
   game.settings.register(MODULE_ID, "lastCampaign", { scope: "client", config: false, type: String, default: "" });
   // Dernier scénario importé : « adresse|campagne|scénario » (scénario vide : toute la campagne).
   game.settings.register(MODULE_ID, "lastScenario", { scope: "client", config: false, type: String, default: "" });
+  // Clés de traduction : Foundry les traduit à l'affichage (les traductions ne sont pas encore chargées à « init »).
   game.settings.registerMenu(MODULE_ID, "import", {
-    name: "Maze",
-    label: "Importer depuis Maze",
-    hint: "PNJ, factions, lieux et cartes d'une campagne de Maze en journaux, scènes et acteurs.",
+    name: "MAZE_SYNC.Menu.Name",
+    label: "MAZE_SYNC.Menu.Label",
+    hint: "MAZE_SYNC.Menu.Hint",
     icon: "fa-solid fa-dungeon",
     type: MazeImportApp,
     restricted: true
@@ -996,10 +1037,10 @@ Hooks.on("renderJournalDirectory", (app, html) => {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "maze-sync-open";
-    button.innerHTML = '<i class="fa-solid fa-dungeon"></i> Maze';
+    button.innerHTML = `<i class="fa-solid fa-dungeon"></i> ${escapeHtml(L("App.Button"))}`;
     button.addEventListener("click", () => MazeImportApp.open());
     actions.append(button);
   } catch (err) {
-    console.warn(`${MODULE_ID} | bouton du répertoire des journaux`, err);
+    console.warn(`${MODULE_ID} | renderJournalDirectory`, err);
   }
 });

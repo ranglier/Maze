@@ -83,7 +83,7 @@ It is used once, to create the `admin` account; `secrets/` is ignored by git.
     docker compose up -d --build
     docker compose logs -f maze
 
-Optionally, load a demo campaign: `docker compose exec maze python -m maze.demo`.
+Optionally, load a demo campaign: `docker compose exec maze python -m maze.demo` (add `--lang en` for an English one; default: `MAZE_DEFAULT_LOCALE`).
 
 **5. Reverse proxy**
 

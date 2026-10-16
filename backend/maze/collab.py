@@ -37,7 +37,7 @@ import anyio
 import anyio.from_thread
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
-from . import auth, backup, db, versions
+from . import auth, backup, db, i18n, versions
 from .documents import link_images, sync_mentions
 
 log = logging.getLogger("maze.collab")
@@ -101,6 +101,7 @@ class Peer:
     writer: asyncio.Task | None = None
     aborted: bool = False
     on_abort: Any = None   # retrait de la salle (Hub._leave), appelé hors de toute boucle sur les pairs
+    locale: str = i18n.SOURCE_LOCALE   # langue des messages de fermeture (compte, sinon navigateur, maze.i18n)
 
     @property
     def name(self) -> str:
@@ -131,7 +132,7 @@ class Peer:
         if self.closing:
             return
         if detail:
-            self.send({"t": "error", "code": code, "detail": detail})
+            self.send({"t": "error", "code": code, "detail": i18n.translate(detail, self.locale)})
         self.queue.put_nowait(("close", code))
         self.closing = True
         try:
@@ -264,9 +265,12 @@ class Hub:
     async def endpoint(self, ws: WebSocket) -> None:
         doc_id = int(ws.path_params["id"])
         await ws.accept()
+        # Langue des messages affichés par l'éditeur : en-tête Accept-Language du navigateur (ou MAZE_DEFAULT_LOCALE)
+        # jusqu'à la lecture du compte, puis celle du compte si elle est choisie.
+        locale = i18n.request_locale(ws.scope)
 
         def refuse(code: int, detail: str, **extra: Any):
-            return self._refuse(ws, code, detail, **extra)
+            return self._refuse(ws, code, detail, locale, **extra)
 
         # Une page d'un autre site ne doit pas pouvoir ouvrir de connexion avec le cookie de session.
         origin = ws.headers.get("origin")
@@ -281,6 +285,7 @@ class Hub:
         user = auth.load_session_user(self.db_path, ws.scope.get("session") or {})
         if user is None:
             return await refuse(CLOSE_AUTH, "Authentification requise")
+        locale = user.get("locale") or locale
         if self.restoring():
             await ws.close(CLOSE_RETRY)  # nouvel essai du navigateur après la restauration
             return
@@ -292,22 +297,23 @@ class Hub:
             return await refuse(CLOSE_FORBIDDEN, "Identifiant de client invalide")
         # Nombre de connexions borné (audit PERF-9) ; compté jusqu'à la fin de celle-ci, quelle qu'en soit l'issue.
         if self.connections[user["id"]] >= self.max_per_user:
-            await ws.close(CLOSE_BUSY, "Trop de fiches ouvertes en temps réel par ce compte")
+            await ws.close(CLOSE_BUSY, i18n.translate("Trop de fiches ouvertes en temps réel par ce compte", locale))
             return
         if sum(self.connections.values()) >= self.max_total:
-            await ws.close(CLOSE_BUSY, "Trop de connexions temps réel sur ce serveur")
+            await ws.close(CLOSE_BUSY, i18n.translate("Trop de connexions temps réel sur ce serveur", locale))
             return
         self.connections[user["id"]] += 1
         try:
-            await self._serve(ws, doc_id, user, client_id)
+            await self._serve(ws, doc_id, user, client_id, locale)
         finally:
             self.connections[user["id"]] -= 1
             if self.connections[user["id"]] <= 0:
                 del self.connections[user["id"]]
 
-    async def _serve(self, ws: WebSocket, doc_id: int, user: dict[str, Any], client_id: int) -> None:
+    async def _serve(self, ws: WebSocket, doc_id: int, user: dict[str, Any], client_id: int,
+                     locale: str = i18n.SOURCE_LOCALE) -> None:
         def refuse(code: int, detail: str, **extra: Any):
-            return self._refuse(ws, code, detail, **extra)
+            return self._refuse(ws, code, detail, locale, **extra)
 
         # Lecture du journal dans la boucle (lecture seule en WAL : elle n'attend pas les écritures), puis aucune
         # attente jusqu'à l'inscription dans la salle. Une modification en cours d'écriture dans un fil peut être
@@ -328,7 +334,8 @@ class Hub:
             return await refuse(CLOSE_GONE, "Fiche introuvable")
 
         self._next_id += 1
-        peer = Peer(id=self._next_id, user=user, ws=ws, client_id=client_id, joined_seq=rows[-1]["id"] if rows else 0)
+        peer = Peer(id=self._next_id, user=user, ws=ws, client_id=client_id, joined_seq=rows[-1]["id"] if rows else 0,
+                    locale=locale)
         room = self.rooms.get(doc_id)
         if room is None:
             # Compteur de compaction parti de la taille réelle du journal (audit PERF-12 = DATA-17) : sinon, une fiche
@@ -445,7 +452,9 @@ class Hub:
                 peer.close(CLOSE_RETRY)
             return None
 
-    async def _refuse(self, ws: WebSocket, code: int, detail: str, **extra: Any) -> None:
+    async def _refuse(self, ws: WebSocket, code: int, detail: str, locale: str = i18n.SOURCE_LOCALE,
+                      **extra: Any) -> None:
+        detail = i18n.translate(detail, locale)
         await ws.send_text(json.dumps({"t": "error", "code": code, "detail": detail, **extra}))
         await ws.close(code)
 

@@ -13,7 +13,8 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 
-from . import auth, db, imaging, scenemap, versions
+from . import auth, db, i18n, imaging, scenemap, versions
+from .i18n import msg
 from .api import in_tx, parse_body, path_id, scoped, settings, threaded, touch_campaign, tx
 from .schemas import DocumentCreate, DocumentMove, DocumentOrder, DocumentUpdate
 
@@ -22,13 +23,14 @@ MENTION = re.compile(r'data-mention="(npc|faction|place|doc):(\d+)"')
 DOC_IMAGE = re.compile(r'data-doc-image="(\d+)"')
 COMMENT_ANCHOR = re.compile(r'\sdata-comment="\d+"')
 TREE_FIELDS = "id, parent_id, kind, title, status, sort_order, updated_at"
+# Titre d'une fiche créée sans titre, dans la langue de celui qui la crée (maze.i18n, seeds.json).
 TITLES = {"campaign": "Fiche de campagne", "scenario": "Nouveau scénario", "page": "Nouvelle page"}
 # Profondeur maximale de l'arbre des fiches (audit DATA-10) : nombre de fiches au-dessus d'une fiche (scénario : 1),
 # 32 au plus. Une chaîne de milliers de niveaux rendait la campagne impossible à supprimer (récursion des
 # déclencheurs de SQLite). Création, déplacement et import la respectent ; un arbre déjà plus profond reste
 # utilisable, et la suppression ne dépend plus de la profondeur (delete_tree).
 MAX_DEPTH = 32
-TOO_DEEP = f"Trop de niveaux de sous-pages ({MAX_DEPTH} au plus)"
+TOO_DEEP = msg("Trop de niveaux de sous-pages ({max} au plus)", max=MAX_DEPTH)
 
 
 def ensure_root(conn: sqlite3.Connection, campaign_id: int) -> int:
@@ -103,8 +105,7 @@ def strip_comments(html: str) -> str:
     return COMMENT_ANCHOR.sub("", html)
 
 
-UNSAVED_EDITS = ("Des modifications récentes de cette fiche ne sont pas encore enregistrées. "
-                 "Elles le seront dès qu'elle sera ouverte dans Maze ; il faudra ensuite la relire.")
+UNSAVED_EDITS = msg("Des modifications récentes de cette fiche ne sont pas encore enregistrées. Elles le seront dès qu'elle sera ouverte dans Maze ; il faudra ensuite la relire.")  # noqa: E501
 
 
 def has_unsaved_edits(conn: sqlite3.Connection, document_id: int) -> bool:
@@ -184,7 +185,8 @@ def create_document(request: Request) -> Response:
         content = strip_comments(data.content)
         new_id = db.insert(conn, "documents", {
             "campaign_id": cid, "parent_id": parent_id, "kind": kind,
-            "title": data.title.strip() or TITLES[kind], "sort_order": order, "content": content,
+            "title": data.title.strip() or i18n.translate(TITLES[kind], i18n.request_locale(request.scope)),
+            "sort_order": order, "content": content,
             "updated_by": auth.current_user(request)["id"],
         })
         if content:
@@ -218,8 +220,7 @@ def update_document(request: Request) -> Response:
     with tx(request) as conn:
         current = scoped(conn, request, "documents", did, "Fiche")
         if data.base_revision is not None and data.base_revision != current["revision"]:
-            raise HTTPException(409, "Cette fiche a été modifiée ailleurs entre-temps. "
-                                     "Rechargez-la pour récupérer la dernière version.")
+            raise HTTPException(409, "Cette fiche a été modifiée ailleurs entre-temps. Rechargez-la pour récupérer la dernière version.")  # noqa: E501
         if current["kind"] == "campaign":
             values.pop("status", None)
         if "title" in values:
@@ -324,7 +325,8 @@ def duplicate_document(request: Request) -> Response:
                              WHERE document_id = ?""", (new_id, row["id"]))
             return new_id
 
-        title = f"{source['title'] or 'Sans titre'} (copie)"[:200]
+        locale = i18n.request_locale(request.scope)
+        title = i18n.tr("{title} (copie)", locale, title=source["title"] or i18n.tr("Sans titre", locale))[:200]
         new_id = copy(source, source["parent_id"], title, source["sort_order"] + 1)
         # Sous-pages copiées niveau par niveau, sans récursion (arbre très profond, audit DATA-10).
         pending = [(source["id"], new_id)]
@@ -411,11 +413,11 @@ async def upload_document_image(request: Request) -> Response:
             raise HTTPException(400, "Aucun fichier reçu (champ 'file')")
         raw = await upload.read(limit + 1)
         if len(raw) > limit:
-            raise HTTPException(413, f"Image trop volumineuse (max {cfg.max_upload_mb} Mo)")
+            raise HTTPException(413, msg("Image trop volumineuse (max {size} Mo)", size=cfg.max_upload_mb))
         try:
             img = await run_in_threadpool(imaging.process_upload, raw, cfg.media_dir, doc["campaign_id"])
         except imaging.ImageError as exc:
-            raise HTTPException(400, str(exc)) from exc
+            raise HTTPException(400, i18n.message(exc)) from exc
     finally:
         await form.close()
 

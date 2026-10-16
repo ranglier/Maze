@@ -1,11 +1,15 @@
 """Crée une campagne de démonstration.
 
-Usage (dans le conteneur) : python -m maze.demo
+Usage (dans le conteneur) : python -m maze.demo [--lang en]
+Langue de la campagne (textes, natures de lien et types de lieux) : --lang, sinon MAZE_DEFAULT_LOCALE ; traductions
+dans maze/i18n/<langue>/demo.json (français : textes ci-dessous). Les noms des personnages restent les mêmes.
 """
 
 from __future__ import annotations
 
-from . import db, defaults
+import argparse
+
+from . import db, defaults, i18n
 from .config import load_settings
 
 FACTIONS = [
@@ -151,54 +155,69 @@ PLACE_LINKS = [
 ]
 
 
-def create_demo(db_path) -> int:
+def create_demo(db_path, locale: str = i18n.SOURCE_LOCALE) -> int:
+    def t(text: str) -> str:
+        return i18n.tr(text, locale) if text else ""
+
     with db.transaction(db_path) as conn:
         cid = db.insert(conn, "campaigns", {
-            "name": "Les Brumes d'Ys (démo)",
-            "description": "Port marchand rongé par la contrebande, une maison noble ruinée et un culte qui attend la grande marée.",
+            "name": t("Les Brumes d'Ys (démo)"),
+            "description": t("Port marchand rongé par la contrebande, une maison noble ruinée et un culte qui attend la grande marée."),
         })
-        defaults.seed_relation_types(conn, cid)
-        defaults.seed_place_kinds(conn, cid)  # types des lieux ci-dessous (ville, quartier, bâtiment…)
+        defaults.seed_relation_types(conn, cid, locale)
+        defaults.seed_place_kinds(conn, cid, locale)  # types des lieux ci-dessous (ville, quartier, bâtiment…)
         fids, nids = {}, {}
         for key, name, kind, color, summary, description, goals in FACTIONS:
             fids[key] = db.insert(conn, "factions", {
-                "campaign_id": cid, "name": name, "kind": kind, "color": color,
-                "summary": summary, "description": description, "goals": goals,
+                "campaign_id": cid, "name": t(name), "kind": t(kind), "color": color,
+                "summary": t(summary), "description": t(description), "goals": t(goals),
             })
         for key, name, title, status, _people, _age, _location, summary, appearance, personality, motivations, secrets in NPCS:
             nids[key] = db.insert(conn, "npcs", {
-                "campaign_id": cid, "name": name, "title": title, "status": status, "summary": summary, "appearance": appearance,
-                "personality": personality, "motivations": motivations, "secrets": secrets,
+                "campaign_id": cid, "name": t(name), "title": t(title), "status": status, "summary": t(summary),
+                "appearance": t(appearance), "personality": t(personality), "motivations": t(motivations),
+                "secrets": t(secrets),
             })
         for npc, fac, role, leader in MEMBERSHIPS:
-            db.insert(conn, "memberships", {"npc_id": nids[npc], "faction_id": fids[fac], "role": role, "is_leader": leader})
+            db.insert(conn, "memberships", {"npc_id": nids[npc], "faction_id": fids[fac], "role": t(role),
+                                            "is_leader": leader})
         ids = {"npc": nids, "faction": fids}
-        for sk, s, tk, t, rtype, label, directed, secret in RELATIONS:
+        for sk, s, tk, target, rtype, label, directed, secret in RELATIONS:
             db.insert(conn, "relations", {
                 "campaign_id": cid, "source_kind": sk, "source_id": ids[sk][s], "target_kind": tk,
-                "target_id": ids[tk][t], "type": rtype, "label": label, "directed": directed, "secret": secret,
+                "target_id": ids[tk][target], "type": rtype, "label": t(label), "directed": directed, "secret": secret,
             })
         pids: dict[str, int] = {}
         for order, (key, parent, name, kind, summary, ambiance, description, secrets) in enumerate(PLACES):
             pids[key] = db.insert(conn, "places", {
-                "campaign_id": cid, "parent_id": pids.get(parent) if parent else None, "name": name, "kind": kind,
-                "summary": summary, "ambiance": ambiance, "description": description, "secrets": secrets,
+                "campaign_id": cid, "parent_id": pids.get(parent) if parent else None, "name": t(name), "kind": kind,
+                "summary": t(summary), "ambiance": t(ambiance), "description": t(description), "secrets": t(secrets),
                 "sort_order": order,
             })
         for place, kind, key, role in PLACE_LINKS:
             db.insert(conn, "place_links", {"place_id": pids[place], "entity_kind": kind,
-                                            "entity_id": ids[kind][key], "role": role})
+                                            "entity_id": ids[kind][key], "role": t(role)})
     return cid
 
 
-def main() -> int:
-    """Base de MAZE_DATA_DIR migrée (créée si besoin), puis campagne de démonstration (tests.test_demo)."""
+def main(argv: list[str] | None = None) -> int:
+    """Base de MAZE_DATA_DIR migrée (créée si besoin), puis campagne de démonstration (tests.test_demo). `argv` :
+    arguments de la ligne de commande (--lang) ; None (appel depuis Python) : MAZE_DEFAULT_LOCALE."""
     settings = load_settings()
+    parser = argparse.ArgumentParser(prog="python -m maze.demo", description="Crée une campagne de démonstration.")
+    parser.add_argument("--lang", default=settings.default_locale,
+                        help=f"langue de la campagne : {', '.join(i18n.available_locales())} (défaut : MAZE_DEFAULT_LOCALE, "
+                             f"ici {settings.default_locale})")
+    args = parser.parse_args([] if argv is None else argv)
+    locale = i18n.normalize(args.lang)
+    if locale not in i18n.available_locales():
+        parser.error(f"langue inconnue : {args.lang} (connues : {', '.join(i18n.available_locales())})")
     db.migrate(settings.db_path)
-    campaign_id = create_demo(settings.db_path)
+    campaign_id = create_demo(settings.db_path, locale)
     print(f"Campagne de démonstration créée (id {campaign_id}).")
     return campaign_id
 
 
 if __name__ == "__main__":
-    main()
+    import sys
+    main(sys.argv[1:])

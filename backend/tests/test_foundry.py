@@ -404,7 +404,7 @@ class FoundryApiTest(unittest.TestCase):
             names = set(zf.namelist())
             inner = json.loads(zf.read("module.json"))
             license_text = zf.read("LICENSE").decode("utf-8")
-        self.assertEqual(names, {"module.json", "scripts/maze-sync.mjs", "styles/maze-sync.css", "LICENSE"})
+        self.assertEqual(names, {"module.json", "scripts/maze-sync.mjs", "styles/maze-sync.css", "lang/fr.json", "lang/en.json", "LICENSE"})
         # Licence : chemin relatif au module (format du manifeste de Foundry), texte de l'AGPL joint à l'archive.
         self.assertEqual((manifest["license"], inner["license"]), ("LICENSE", "LICENSE"))
         self.assertIn("GNU AFFERO GENERAL PUBLIC LICENSE", license_text)

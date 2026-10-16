@@ -17,7 +17,8 @@ from starlette.requests import Request
 from starlette.responses import FileResponse, JSONResponse, Response
 from starlette.routing import Route
 
-from . import auth, backup, db, throttle
+from . import auth, backup, db, i18n, throttle
+from .i18n import msg
 from .api import _open_session, get_or_404, in_tx, parse, parse_body, path_id, settings, threaded, tx
 from .schemas import MembersUpdate, UserCreate, UserUpdate
 
@@ -81,7 +82,7 @@ async def create_user(request: Request) -> Response:
 
     def work(conn: sqlite3.Connection) -> dict[str, Any]:
         if conn.execute("SELECT 1 FROM users WHERE username = ?", (data.username,)).fetchone():
-            raise HTTPException(409, f"L'identifiant « {data.username} » est déjà utilisé")
+            raise HTTPException(409, msg("L'identifiant « {username} » est déjà utilisé", username=data.username))
         uid = db.insert(conn, "users", {
             "username": data.username, "display_name": data.display_name or data.username,
             "password_hash": password_hash, "role": data.role,
@@ -245,7 +246,7 @@ async def create_backup(request: Request) -> Response:
     try:
         path = await run_in_threadpool(backup.backup, None, settings(request), "manuelle")
     except backup.SpaceError as exc:
-        raise HTTPException(507, str(exc)) from exc
+        raise HTTPException(507, i18n.message(exc)) from exc
     return JSONResponse(_backup_entry(path), status_code=201)
 
 
@@ -273,14 +274,14 @@ async def import_backup(request: Request) -> Response:
             async for chunk in request.stream():
                 size += len(chunk)
                 if size > limit:
-                    raise HTTPException(413, f"Archive trop volumineuse (max {MAX_IMPORT_MB} Mo)")
+                    raise HTTPException(413, msg("Archive trop volumineuse (max {size} Mo)", size=MAX_IMPORT_MB))
                 await run_in_threadpool(out.write, chunk)
         if size == 0:
             raise HTTPException(400, "Aucun fichier reçu")
         try:
             info = await run_in_threadpool(backup.inspect_archive, partial)
         except backup.ArchiveError as exc:
-            raise HTTPException(400, str(exc)) from exc
+            raise HTTPException(400, i18n.message(exc)) from exc
         final = backup.new_archive_path(target, "import")
         partial.rename(final)
     finally:
@@ -300,7 +301,7 @@ async def restore_backup(request: Request) -> Response:
         result = await run_in_threadpool(backup.restore, path, settings(request), me["username"])
     except backup.ArchiveError as exc:
         log.error("Restauration de %s refusée ou annulée : %s", path.name, exc)
-        raise HTTPException(507 if isinstance(exc, backup.SpaceError) else 400, str(exc)) from exc
+        raise HTTPException(507 if isinstance(exc, backup.SpaceError) else 400, i18n.message(exc)) from exc
     finally:
         if hub is not None:
             hub.resume()
@@ -396,8 +397,7 @@ def _updater_status(control: Path | None, status_dir: Path | None = None) -> dic
     message = info.get("message")
     if state in BUSY_STATES and not _operation_alive(source):
         state = "interrupted"
-        message = ("L'opération précédente s'est arrêtée sans pouvoir enregistrer son résultat "
-                   "(disque plein, redémarrage du serveur…). Consultez le journal, puis relancez.")
+        message = "L'opération précédente s'est arrêtée sans pouvoir enregistrer son résultat (disque plein, redémarrage du serveur…). Consultez le journal, puis relancez."  # noqa: E501
     return {
         "installed": state is not None or bool(info),
         "state": state or "idle",
@@ -415,10 +415,37 @@ def _updater_status(control: Path | None, status_dir: Path | None = None) -> dic
     }
 
 
+# Messages écrits par le service maze-updater de l'hôte (deploy/maze-updater.sh, en français) : reconnus et traduits
+# à la réponse (i18n.translate_text, clé exacte ou modèle) ; un message inconnu est rendu tel quel.
+UPDATER_MESSAGES = (
+    "Demande refusée : control/request n'était pas un fichier ordinaire.",
+    "Demande inconnue ignorée.",
+    "La mise à jour s'est arrêtée avant la fin : voir le journal.",
+    "Échec de la vérification : {error}",
+    "Maze est à jour.",
+    "{count} modification(s) disponible(s).",
+    "Mise à jour lancée par {user}…",
+    "Mise à jour terminée (version {version}).",
+    "La nouvelle version ne répondait pas : retour automatique à la version précédente ({version}), de nouveau en service. Voir le journal.",
+    "La mise à jour a échoué et le retour automatique à la version précédente n'a pas abouti : Maze est peut-être arrêté. Intervention nécessaire sur le serveur : voir le journal.",
+    "Échec, intervention requise : la nouvelle version avait migré la base, qui n'a pas pu être remise en l'état ; Maze est laissé arrêté (l'ancien code ne connaît pas le nouveau schéma). Marche à suivre à la fin de {log} (docs/fr/guide.md, Mises à jour).",
+    "La mise à jour a échoué avant le redémarrage : la version précédente est toujours en service. Voir le journal.",
+)
+
+
 async def system_status(request: Request) -> Response:
     auth.require_admin(request)
     cfg = settings(request)
-    return JSONResponse({"version": cfg.version, "updater": _updater_status(cfg.control_dir, cfg.status_dir),
+    updater = _updater_status(cfg.control_dir, cfg.status_dir)
+    # Échec de la dernière vérification, lu sur le message français du service (« Échec de la vérification : … »),
+    # avant sa traduction : repère stable pour l'interface, quelle que soit la langue (scripts de l'hôte inchangés).
+    if updater.get("installed"):
+        updater["check_failed"] = str(updater.get("check_message") or "").startswith("Échec")
+    locale = i18n.request_locale(request.scope)
+    for key in ("message", "check_message"):
+        if isinstance(updater.get(key), str):
+            updater[key] = i18n.translate_text(updater[key], locale)
+    return JSONResponse({"version": cfg.version, "updater": updater,
                          "untrusted_proxy": getattr(request.app.state, "untrusted_proxy", None)})
 
 
@@ -438,7 +465,8 @@ def _request_action(action: str):
             tmp.write_text(f"{action}\n{user['username']}\n{stamp}\n", encoding="utf-8")
             os.replace(tmp, control / "request")  # écriture atomique : le service voit un fichier complet
         except OSError as exc:
-            raise HTTPException(503, f"Dossier de contrôle non accessible en écriture : {exc.strerror}") from exc
+            raise HTTPException(503, msg("Dossier de contrôle non accessible en écriture : {error}",
+                                         error=exc.strerror or "")) from exc
         return JSONResponse({"requested": action}, status_code=202)
     return handler
 
