@@ -4,6 +4,10 @@
 
 Maze is a web application for game masters who prepare their campaigns alone or with co-GMs. NPCs and factions live on a relationship graph, places in a tree with interactive maps, and scenarios in a collaborative editor that links to all of them. It runs as a single Docker container with a SQLite database, on your own server.
 
+Website, with screenshots: https://ranglier.github.io/Maze/
+
+![The scenario editor of Maze: a read-aloud box, a GM secret box, a co-GM's live selection and a comment thread](site/img/editor.webp)
+
 > **Note:** the interface is available in **French and English** (see [Languages](#languages)). The detailed guide is in French: [docs/fr/guide.md](docs/fr/guide.md).
 
 ## Features
@@ -58,7 +62,7 @@ Requirements: a Linux server with Docker and the Compose plugin, at least 10 GB 
 **1. Get the code**
 
     sudo mkdir -p /opt/maze && sudo chown "$USER": /opt/maze
-    git clone https://github.com/ranglier/maze.git /opt/maze
+    git clone https://github.com/ranglier/Maze.git /opt/maze
     cd /opt/maze
     cp .env.example .env
     install -d -m 2775 control
@@ -272,6 +276,7 @@ GitHub Actions (`.github/workflows/ci.yml`) runs all of this on every push and p
     frontend/e2e/             browser journeys (Playwright)
     deploy/                   update.sh, maze-updater.sh, systemd units, Caddy example
     docs/                     ARCHITECTURE.md, fr/guide.md
+    site/                     presentation website (GitHub Pages) and its screenshot script, see site/README.md
 
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (French) is the reference for how things work and why.
 

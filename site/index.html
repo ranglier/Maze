@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Maze, a workshop for game masters</title>
+  <meta name="description" content="Maze is a self-hosted web application for tabletop RPG game masters: NPCs, factions, places, interactive maps and scenarios, written together in real time. Free and open source (MIT).">
+  <meta name="color-scheme" content="dark light">
+  <meta name="theme-color" content="#161d29" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#e7eaef" media="(prefers-color-scheme: light)">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Maze, a workshop for game masters">
+  <meta property="og:description" content="Self-hosted campaign preparation for tabletop RPG game masters: characters, factions, places, maps and scenarios, written together in real time.">
+  <meta property="og:url" content="https://ranglier.github.io/Maze/">
+  <meta property="og:image" content="https://ranglier.github.io/Maze/img/editor.webp">
+  <link rel="canonical" href="https://ranglier.github.io/Maze/">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="wrap site-head">
+    <a class="wordmark" href="./" aria-label="Maze, home">Maze</a>
+    <nav class="site-nav" aria-label="Main">
+      <a href="#features" class="hide-sm">Features</a>
+      <a href="#get-started">Get started</a>
+      <a href="https://github.com/ranglier/Maze">GitHub</a>
+    </nav>
+  </header>
+
+  <main id="main">
+    <section class="wrap hero" aria-labelledby="hero-title">
+      <div class="hero__grid">
+        <div class="hero__main">
+          <h1 id="hero-title">A workshop for game masters, on your own server.</h1>
+          <div class="actions">
+            <a class="btn btn--brass" href="#get-started">Get started</a>
+            <a class="btn" href="https://github.com/ranglier/Maze">
+              <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5a11.5 11.5 0 0 0-3.64 22.41c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.53-1.33-1.28-1.69-1.28-1.69-1.05-.71.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.68 0-1.26.45-2.28 1.19-3.09-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.83 1.19 3.09 0 4.41-2.69 5.38-5.26 5.67.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .5Z"/></svg>
+              Source on GitHub
+            </a>
+          </div>
+        </div>
+        <div class="hero__side">
+          <div class="callout callout--read">
+            <div class="callout__label">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h16v16H4z"/><path d="M8 9h8M8 13h8M8 17h5"/></svg>
+              Read-aloud
+            </div>
+            <p>Maze is a self-hosted web application where you prepare your tabletop RPG campaigns, alone or with co-GMs: characters, factions, places, maps and scenarios, written together in real time.</p>
+          </div>
+          <div class="hero__facts">
+            <p>NPCs and factions live on a relationship graph, places in a tree with interactive maps, and scenarios in a collaborative editor that links to all of them.</p>
+            <p>Self-hosted, free and open source (MIT). One Docker container, one SQLite database. Interface in English and French.</p>
+          </div>
+        </div>
+      </div>
+      <figure class="shot hero__shot">
+        <a href="img/editor.webp">
+          <img src="img/editor.webp" width="2160" height="1350" fetchpriority="high"
+            alt="The scenario editor in Maze: a page titled The empty boat with a read-aloud box, a dashed GM secret box and mentions of NPCs. A co-GM named Alex has a phrase selected, and the side panel shows a comment thread between Alex and Morgane.">
+        </a>
+        <figcaption>A scenario page of the demo campaign, open in two browsers: Alex's selection appears live in Morgane's editor, next to their comment thread.</figcaption>
+      </figure>
+    </section>
+
+    <section class="wrap features" id="features" aria-label="Features">
+      <article class="plate">
+        <div class="plate__text">
+          <h2>Scenarios you write together</h2>
+          <p>A campaign page, scenarios and nested sub-pages for acts, scenes and handouts, each with a status: draft, ready, in progress or played.</p>
+          <ul>
+            <li><strong>Read-aloud and GM secret boxes</strong>, tables, images, templates, a reading mode and clean printing.</li>
+            <li><strong>@ mentions</strong> of NPCs, factions and places, which link the page to their sheets.</li>
+            <li><strong>Real-time collaboration</strong>: several GMs edit the same page and see each other's cursors. Offline edits are merged on reconnection; what cannot be merged is kept in the page history.</li>
+            <li><strong>Comment threads</strong> anchored to passages, and a version history with named versions and one-click restore.</li>
+          </ul>
+        </div>
+        <figure class="shot">
+          <a href="img/campaign.webp">
+            <img src="img/campaign.webp" width="2160" height="1350" loading="lazy"
+              alt="The campaign page of the demo, The Mists of Ys: an introduction with mentions of factions, and below it the list of scenarios with their status, Played and Ready. The sidebar shows the scenarios and their sub-pages.">
+          </a>
+          <figcaption>The campaign page: introduction, threads, and the scenarios with their sub-pages.</figcaption>
+        </figure>
+      </article>
+
+      <article class="plate plate--stack">
+        <div class="plate__text">
+          <h2>NPCs, factions and places</h2>
+          <p>Every character, faction and place has its own sheet, with what you need at the table and what the players must not see.</p>
+          <ul>
+            <li><strong>NPC sheets</strong>: portrait, status, hook, personality, motivations, GM secrets, gallery.</li>
+            <li><strong>Faction sheets</strong>: colour, emblem, goals, resources, members and their role.</li>
+            <li><strong>Places</strong> in a free hierarchy (region, city, building, room), with the NPCs and factions present.</li>
+            <li><strong>Search</strong> across the whole campaign with Ctrl+K.</li>
+          </ul>
+        </div>
+        <div class="pair">
+          <figure class="shot">
+            <a href="img/npc.webp">
+              <img src="img/npc.webp" width="2160" height="1350" loading="lazy"
+                alt="The sheet of the NPC Maëlis Corvin, a fence: her faction and role, the tavern where she works, appearance, personality, motivations, a GM secret box and her relationships.">
+            </a>
+            <figcaption>An NPC sheet, with its GM secret.</figcaption>
+          </figure>
+          <figure class="shot">
+            <a href="img/faction.webp">
+              <img src="img/faction.webp" width="2160" height="1350" loading="lazy"
+                alt="The sheet of the faction House Valcourt, a noble house: the places it owns, its two members with their role, description, goals, an ally relationship and the pages it appears in.">
+            </a>
+            <figcaption>A faction sheet: members, places, relationships.</figcaption>
+          </figure>
+        </div>
+      </article>
+
+      <article class="plate">
+        <div class="plate__text">
+          <h2>A relationship graph</h2>
+          <p>NPCs and factions on one board: who owes whom, who spies for whom, who wants whose job.</p>
+          <ul>
+            <li><strong>Typed relations</strong> (ally, enemy, family, rival, mentor, debt and your own), one-way or mutual, optionally secret.</li>
+            <li><strong>Views</strong> for a scenario's cast, for the factions, or for a place.</li>
+            <li>Free placement, zoom, PNG export, and an automatic layout that keeps the most readable of several arrangements.</li>
+          </ul>
+        </div>
+        <figure class="shot">
+          <a href="img/graph.webp">
+            <img src="img/graph.webp" width="2160" height="1350" loading="lazy"
+              alt="The relationship graph for the cast of the scenario The empty boat: round NPC nodes and hexagonal faction nodes linked by labelled lines such as Informant, Rival, Mentor, Debt and Funds the cult.">
+          </a>
+          <figcaption>The cast of one scenario, drawn from the NPCs and factions its pages mention.</figcaption>
+        </figure>
+      </article>
+
+      <article class="plate plate--flip">
+        <div class="plate__text">
+          <h2>Interactive maps</h2>
+          <p>Upload a map of up to 8192 pixels and pin your places on it.</p>
+          <ul>
+            <li><strong>Rings of sub-places</strong> open around a pin, and a place with its own map can be entered.</li>
+            <li>The place's sheet opens beside the map, with who is there.</li>
+            <li>Custom icons per place type.</li>
+          </ul>
+        </div>
+        <figure class="shot">
+          <a href="img/map.webp">
+            <img src="img/map.webp" width="2160" height="1350" loading="lazy"
+              alt="An interactive map of a harbour town on a drowned bay, with pins named The Harbour, Lower town, Upper town, Sunken bay and Cave of Sighs. The cave is open: its sub-place appears in a ring and its sheet is shown on the side.">
+          </a>
+          <figcaption>A pinned place open on the map: its sub-places in a ring, its sheet on the side.</figcaption>
+        </figure>
+      </article>
+
+      <article class="plate">
+        <div class="plate__text">
+          <h2>Your server, your data</h2>
+          <p>Maze runs as a single Docker container with a SQLite database. Everything stays on your machine.</p>
+          <ul>
+            <li><strong>Backups and restore</strong> from the web interface, plus a daily timer.</li>
+            <li><strong>One-click updates</strong> from the administration, with automatic rollback if the new version is not healthy.</li>
+            <li>Two roles: administrator, and GM who sees only the campaigns assigned to them.</li>
+            <li>Campaign export and import as a .zip file.</li>
+          </ul>
+        </div>
+        <figure class="shot">
+          <a href="img/backups.webp">
+            <img src="img/backups.webp" width="2160" height="1350" loading="lazy"
+              alt="The Backups page of the administration: a list of archives with their date, file, origin and size, buttons to download or restore each one, and Import, Export and Back up now buttons.">
+          </a>
+          <figcaption>Administration, Backups: download, restore, back up now.</figcaption>
+        </figure>
+      </article>
+
+      <div class="columns">
+        <section aria-labelledby="claude-title">
+          <h2 id="claude-title">Claude connector (MCP)</h2>
+          <p>Maze includes a remote MCP server with its own OAuth 2.1 authorisation. Claude can search and read your campaigns and, if you allow it, edit sheets, relations and scenario pages, comment, add images and pin places on maps.</p>
+          <p>Each authorisation needs an administrator's password, actions are logged, and pages keep their version from before Claude's change.</p>
+        </section>
+        <section aria-labelledby="foundry-title">
+          <h2 id="foundry-title">Foundry VTT import</h2>
+          <p>Your instance serves a module for Foundry 13 and 14. It imports a campaign, or what one scenario needs: a journal per NPC, faction and place, with secrets on a GM-only page, and a scene per interactive map with a note per pin.</p>
+          <p>The import is one-way and repeatable. Actors are filled in for the Dark Heresy systems only.</p>
+        </section>
+        <section aria-labelledby="lang-title">
+          <h2 id="lang-title">English and French</h2>
+          <p>Every screen, every server message, the data created with a campaign and the Foundry module are available in both languages. Each GM chooses theirs in the account menu.</p>
+          <p>The detailed guide is in French. Other languages are welcome: the translation guide explains how.</p>
+        </section>
+      </div>
+
+      <aside class="honest" aria-labelledby="honest-title">
+        <div class="callout callout--secret">
+          <div class="callout__label">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+            GM secret
+          </div>
+          <h2 id="honest-title">What to know before you install</h2>
+          <ul>
+            <li>Maze is used in production by its author and has been through a thorough audit, but it is young as a community project, with one maintainer: reviews and answers may take a while.</li>
+            <li>It is developed with substantial help from Claude (Anthropic), under the direction and review of its author.</li>
+            <li>You need your own server: Docker, a domain name and a reverse proxy for HTTPS. There is no hosted version and no online demo; the repository includes a demo campaign you can load into your instance.</li>
+            <li>The core is system-agnostic. The detailed guide and the architecture notes are in French.</li>
+          </ul>
+        </div>
+      </aside>
+    </section>
+
+    <section class="wrap start" id="get-started" aria-labelledby="start-title">
+      <div class="start__head">
+        <h2 id="start-title">Get started</h2>
+        <p>Requirements: a Linux server with Docker and the Compose plugin, at least 10 GB of disk (the update script rebuilds the image next to the running one), a domain name, and a reverse proxy that terminates HTTPS. The examples use <code>/opt/maze</code>, <code>maze.example.org</code> and Caddy.</p>
+      </div>
+      <ol class="steps">
+        <li>
+          <h3>Get the code</h3>
+          <div class="code"><pre tabindex="0"><code>sudo mkdir -p /opt/maze &amp;&amp; sudo chown "$USER": /opt/maze
+git clone https://github.com/ranglier/Maze.git /opt/maze
+cd /opt/maze
+cp .env.example .env
+install -d -m 2775 control</code></pre></div>
+          <p><code>control/</code> receives the container's requests to the update service. The container runs as UID/GID 1000: if <code>id -u</code> is not 1000, also run <code>sudo chgrp 1000 control</code>.</p>
+        </li>
+        <li>
+          <h3>Administrator password (Docker secret)</h3>
+          <p>Masked input, run on its own (the length is shown to confirm):</p>
+          <div class="code"><pre tabindex="0"><code>read -rs -p "Maze admin password: " MAZE_PW &amp;&amp; echo " - entered (${#MAZE_PW} characters)"</code></pre></div>
+          <p>Then:</p>
+          <div class="code"><pre tabindex="0"><code>mkdir -p secrets
+printf '%s' "$MAZE_PW" &gt; secrets/maze_password.txt
+unset MAZE_PW
+chmod 600 secrets/maze_password.txt
+sudo chown 1000:1000 secrets/maze_password.txt</code></pre></div>
+          <p>It is used once, to create the <code>admin</code> account; <code>secrets/</code> is ignored by git.</p>
+        </li>
+        <li>
+          <h3>Edit <code>.env</code></h3>
+          <div class="code"><pre tabindex="0"><code>MAZE_BIND=127.0.0.1
+MAZE_PUBLIC_URL=https://maze.example.org
+FORWARDED_ALLOW_IPS=</code></pre></div>
+          <p><code>MAZE_BIND</code> is <code>127.0.0.1</code> if the reverse proxy runs on the same machine, otherwise this machine's private IP; never <code>0.0.0.0</code> (Docker's published ports bypass firewalls such as ufw). For <code>FORWARDED_ALLOW_IPS</code>, see <a href="https://github.com/ranglier/Maze#configuration">Configuration</a>.</p>
+        </li>
+        <li>
+          <h3>Start</h3>
+          <div class="code"><pre tabindex="0"><code>docker compose up -d --build
+docker compose logs -f maze</code></pre></div>
+          <p>Optionally, load a demo campaign: <code>docker compose exec maze python -m maze.demo</code> (add <code>--lang en</code> for an English one; default: <code>MAZE_DEFAULT_LOCALE</code>).</p>
+        </li>
+      </ol>
+      <p class="start__more">Then point your reverse proxy to Maze and sign in as <code>admin</code>: the README has the <a href="https://github.com/ranglier/Maze#quick-start-docker-compose">Caddy configuration and first login</a>, the daily backup timer and the update service. A step-by-step installation on a fresh Debian server, in French: <a href="https://github.com/ranglier/Maze/blob/main/deploy/installation-debian.md">deploy/installation-debian.md</a>.</p>
+    </section>
+  </main>
+
+  <footer class="wrap site-foot">
+    <div class="site-foot__row">
+      <div>
+        <p><a class="wordmark" href="./">Maze</a></p>
+        <p>Released under the MIT License. This page uses no cookies, analytics or trackers.</p>
+      </div>
+      <nav aria-label="Project">
+        <ul>
+          <li><a href="https://github.com/ranglier/Maze">GitHub</a></li>
+          <li><a href="https://github.com/ranglier/Maze/blob/main/CONTRIBUTING.md">Contributing</a></li>
+          <li><a href="https://github.com/ranglier/Maze/blob/main/LICENSE">License (MIT)</a></li>
+          <li><a href="https://github.com/ranglier/Maze/blob/main/docs/fr/guide.md" hreflang="fr">Guide (French)</a></li>
+        </ul>
+      </nav>
+    </div>
+  </footer>
+
+  <p class="visually-hidden" id="copy-status" aria-live="polite"></p>
+  <script>
+    // Copy buttons on the command blocks (the page works without them).
+    (function () {
+      if (!navigator.clipboard) return;
+      var status = document.getElementById('copy-status');
+      document.querySelectorAll('.code').forEach(function (block) {
+        var button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'copy';
+        button.textContent = 'Copy';
+        button.addEventListener('click', function () {
+          navigator.clipboard.writeText(block.querySelector('pre').textContent).then(function () {
+            button.textContent = 'Copied';
+            status.textContent = 'Commands copied to the clipboard.';
+            setTimeout(function () { button.textContent = 'Copy'; }, 1800);
+          });
+        });
+        block.appendChild(button);
+      });
+    })();
+  </script>
+</body>
+</html>
