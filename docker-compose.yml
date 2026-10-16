@@ -34,7 +34,7 @@ services:
       FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,::1,fc00::/7}
       # Adresse publique (connecteur Claude : adresses OAuth et URL du serveur MCP), dans .env.
       MAZE_PUBLIC_URL: ${MAZE_PUBLIC_URL:-}
-      # Code source proposé aux utilisateurs (AGPL, section 13), dans .env ; vide : https://github.com/ranglier/Maze.
+      # Code source proposé aux utilisateurs, dans .env ; vide : https://github.com/ranglier/Maze.
       MAZE_SOURCE_URL: ${MAZE_SOURCE_URL:-}
       # Archives de sauvegarde conservées par nature (vide : valeurs par défaut), dans .env.
       MAZE_BACKUP_KEEP: ${MAZE_BACKUP_KEEP:-}

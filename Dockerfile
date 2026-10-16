@@ -33,7 +33,7 @@ COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY backend/maze ./maze
-# Texte de la licence (AGPL-3.0-or-later), joint aussi à l'archive du module Foundry (foundry.LICENSE_FILES).
+# Texte de la licence (MIT), joint aussi à l'archive du module Foundry (foundry.LICENSE_FILES).
 COPY LICENSE ./LICENSE
 COPY --from=frontend /build/dist ./static
 

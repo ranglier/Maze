@@ -211,7 +211,7 @@ def auth_status(request: Request) -> Response:
         "user": auth.public_user(user) if user else None,
         "instance": instance_id(request) if user else None,
         "version": cfg.version,
-        # Public, même sans session (écran de connexion) : code source et licence (AGPL, section 13).
+        # Public, même sans session (écran de connexion) : code source et licence.
         "source_url": cfg.source_url,
         "license": LICENSE,
     })

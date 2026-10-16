@@ -1,7 +1,7 @@
-// Parcours navigateur de la licence (AGPL-3.0-or-later, section 13) : le lien « Code source (AGPL-3.0) » est offert à
-// tout utilisateur de l'instance, à l'adresse donnée par le serveur (MAZE_SOURCE_URL, /api/auth/status).
+// Parcours navigateur du code source : le lien « Code source » est offert à tout utilisateur de l'instance, à
+// l'adresse donnée par le serveur (MAZE_SOURCE_URL, /api/auth/status).
 //   1. Écran de premier lancement puis écran de connexion : lien en pied de formulaire, avant toute connexion.
-//   2. Menu du compte, une fois connecté : élément « Code source (AGPL-3.0) », qui ouvre l'adresse dans un nouvel
+//   2. Menu du compte, une fois connecté : élément « Code source », qui ouvre l'adresse dans un nouvel
 //      onglet sans lien vers l'onglet de Maze (rel="noopener noreferrer" : window.opener nul).
 //   3. Adresse d'un fork (réponse de /api/auth/status modifiée) : l'interface suit l'adresse du serveur, aucune
 //      adresse écrite en dur.
@@ -30,7 +30,7 @@ const BASE = (process.argv[2] || process.env.MAZE_URL || 'http://127.0.0.1:8765'
 const USER = process.env.MAZE_E2E_USER || 'admin';
 const PASSWORD = process.env.MAZE_E2E_PASSWORD || `e2e-${randomBytes(9).toString('base64url')}`;
 const SHOTS = process.env.MAZE_E2E_SHOTS || path.join(tmpdir(), 'maze-e2e-shots');
-const LABEL = 'Code source (AGPL-3.0)';
+const LABEL = 'Code source';
 const FORK = 'https://git.example.org/fork/maze';
 mkdirSync(SHOTS, { recursive: true });
 
@@ -53,7 +53,7 @@ const browser = await chromium.launch({ headless: !process.env.HEADED });
 let ok = false;
 try {
   const status = await (await fetch(`${BASE}/api/auth/status`)).json();
-  check(status.license === 'AGPL-3.0-or-later', `licence annoncée par /api/auth/status : ${status.license}`);
+  check(status.license === 'MIT', `licence annoncée par /api/auth/status : ${status.license}`);
   const SOURCE = status.source_url;
   check(/^https?:\/\//.test(SOURCE || ''), `adresse du code source annoncée sans connexion : ${SOURCE}`);
 

@@ -44,7 +44,7 @@ PREFIX = "/api/foundry/v1/"
 FORMAT = "maze-foundry/1"
 TOKEN_PREFIX = "mzf_"
 MODULE_DIR = Path(__file__).resolve().parent / "foundry_module"
-# Texte de la licence (AGPL-3.0-or-later), joint à l'archive du module, que « license » de module.json désigne
+# Texte de la licence (MIT), joint à l'archive du module, que « license » de module.json désigne
 # (chemin relatif au module, format du manifeste de Foundry) : /app/LICENSE dans l'image (Dockerfile), racine du
 # dépôt hors de l'image.
 LICENSE_FILES = (MODULE_DIR.parents[1] / "LICENSE", MODULE_DIR.parents[2] / "LICENSE")
