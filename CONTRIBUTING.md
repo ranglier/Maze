@@ -25,12 +25,19 @@ The codebase currently follows this convention: identifiers (modules, functions,
    - interface logic: `node --test`, in `frontend/test/`;
    - user-visible behaviour: a Playwright journey, in `frontend/e2e/` (a standalone script that takes the server URL; see the existing ones and `run-all.sh`).
 4. **Keep pull requests small and focused.** One topic per pull request. Refactoring, formatting and behaviour changes go in separate pull requests.
-5. **Run the checks** before pushing:
+5. **Run the checks**: targeted while you work, complete before the pull request. `scripts/check.sh` runs the same commands as CI (after `cd frontend && npm ci`):
 
-       cd backend && python -m unittest discover -s tests
-       cd backend && ruff check --isolated --select F,E9,B --line-length 120 maze tests
-       cd frontend && npm ci && npm run build && npm test
-       NODE_PATH="$(npm root -g)" frontend/e2e/run-all.sh      # if you changed the interface
+       scripts/check.sh quick                         # while developing: only what your changes touch
+       scripts/check.sh quick --e2e langue,scenarios  # same, plus these browser journeys
+       NODE_PATH="$(npm root -g)" scripts/check.sh full   # before opening the pull request: everything
+
+   `quick [ref]` compares your branch with `ref` (default `origin/main`, uncommitted and new files included), prints which checks it runs and why, and runs them: the server test module of each changed `backend/maze/X.py` (`tests/test_X.py`) and the test modules that import it, ruff on changed Python files, the build and all `node --test` tests for any change under `frontend/src/`, `test_i18n` and `i18n.test.mjs` for translation catalogs, `test_foundry` and `foundry-module.test.mjs` for the Foundry module, `test_migrations` for migrations, the journey `frontend/e2e/X.mjs` you changed. The full rule list is at the top of the script.
+
+   `full` runs ruff, the whole server suite (test modules in parallel, `MAZE_TEST_JOBS`, default two per CPU up to 4), the build, the `node --test` tests in Chromium (`MAZE_TEST_BROWSER=1`) and every browser journey in parallel. Both exit non-zero on any failure and end with a summary.
+
+   Browser journeys run in parallel: `MAZE_E2E_JOBS` journeys at a time (default: number of CPUs, up to 4; `1` runs them one after the other), each on its own Maze instance on ports `MAZE_E2E_PORT` (default 8790) to `MAZE_E2E_PORT + MAZE_E2E_JOBS - 1`, with its own data folder and logs. Each journey's output is printed as one block when it finishes. Single journeys: `frontend/e2e/run-all.sh langue scenarios`.
+
+   Variables: `PYTHON` (server interpreter), `RUFF`, `NODE_PATH` (folder containing the global `playwright` module), `MAZE_NODE_PATHS` (extra `node_modules` folders for esbuild), `MAZE_STATIC_DIR` (built interface, default `frontend/dist`), `MAZE_BUILD_CMD` (build command, default `node build.mjs` in `frontend/`), `MAZE_E2E_KEEP=1` (keep journey data and screenshots).
 
 6. **Open the pull request** against `main`, every commit signed off (see [Developer Certificate of Origin](#developer-certificate-of-origin)): explain what changes and why, how you tested it, and anything a server administrator must know when updating (migration, new variable, manual step). GitHub Actions runs the whole suite; it must be green before review.
 
