@@ -8,6 +8,7 @@
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { i18nCatalogsPlugin } from '../i18n-catalogs.mjs';
 
 const require = createRequire(import.meta.url);
 export const FRONTEND = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -31,6 +32,7 @@ export async function bundle(source, { platform = 'node' } = {}) {
     write: false, format: 'esm', platform, nodePaths: NODE_DIRS, logLevel: 'silent', jsx: 'automatic',
     outdir: path.join(FRONTEND, 'test-bundle'),
     define: { 'process.env.NODE_ENV': '"production"' },
+    plugins: [i18nCatalogsPlugin()],   // catalogues de traduction dans le bundle, comme build.mjs
   });
   const code = result.outputFiles[0].text;
   if (platform === 'browser') return code;
@@ -45,7 +47,8 @@ export async function browserPage() {
     return { skip: 'Playwright introuvable (NODE_PATH) : tests du DOM sautés' };
   }
   const browser = await playwright.chromium.launch();
-  const page = await browser.newPage();
+  // Navigateur en français : l'interface suit la langue du navigateur (src/i18n), les attentes sont en français.
+  const page = await browser.newPage({ locale: 'fr-FR' });
   return { browser, page };
 }
 

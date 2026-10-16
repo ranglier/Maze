@@ -13,10 +13,12 @@ import Workspace from './components/Workspace.jsx';
 import { Icon, useConfirm } from './components/ui.jsx';
 import { confirmDiscard, hasUnsaved, localEdits, setSessionUser } from './session.js';
 import { LogoutDialog } from './components/SessionNotices.jsx';
+import { N_, applyPreferences, pt, t, useLocale } from './i18n/index.js';
 import { storage } from './util.js';
 
+// Textes de module traduits à l'affichage (t(TREE_LABEL[…])) : N_ les signale seulement à l'extraction.
 const TREE_LABEL = {
-  scenarios: 'Liste des fiches', personnages: 'Liste des personnages', lieux: 'Liste des lieux',
+  scenarios: N_('Liste des fiches'), personnages: N_('Liste des personnages'), lieux: N_('Liste des lieux'),
 };
 
 /**
@@ -82,6 +84,8 @@ let historyIndex = entryRank() ?? 0;
 stampHistory(historyIndex);
 
 export default function App() {
+  // Langue courante : App est redessinée quand elle change, et toute l'interface avec elle.
+  const locale = useLocale();
   const [auth, setAuth] = useState(null);
   const [campaigns, setCampaigns] = useState(null);
   const [route, setRoute] = useState(parseHash);
@@ -109,6 +113,16 @@ export default function App() {
 
   const checkAuth = useCallback(() => {
     api.authStatus().then(setAuth).catch((e) => setError(e.message));
+  }, []);
+
+  // Langue : réglage du compte, puis choix de l'écran de connexion (ce navigateur), langue du navigateur, langue par
+  // défaut de l'instance (MAZE_DEFAULT_LOCALE).
+  const accountLocale = auth?.authenticated ? auth.user?.locale || '' : '';
+  useEffect(() => {
+    if (auth) applyPreferences({ account: accountLocale, fallback: auth.default_locale });
+  }, [auth, accountLocale]);
+  const onLocale = useCallback((locale) => {
+    setAuth((a) => (a?.user ? { ...a, user: { ...a.user, locale } } : a));
   }, []);
 
   useEffect(() => {
@@ -194,8 +208,8 @@ export default function App() {
   }, [current, route]);
 
   useEffect(() => {
-    if (route.view === 'admin') document.title = 'Administration | Maze';
-  }, [route.view]);
+    if (route.view === 'admin') document.title = `${t('Administration')} | Maze`;
+  }, [route.view, locale]);
 
   // Met à jour les compteurs du menu sans recharger toute la liste.
   const onGraphLoaded = useCallback((g) => {
@@ -227,7 +241,10 @@ export default function App() {
   }
 
   const user = auth.user;
-  const userMenu = <UserMenu user={user} onLogout={logout} onAdmin={() => navigate('#/admin')} sourceUrl={auth.source_url} />;
+  const userMenu = (
+    <UserMenu user={user} onLogout={logout} onAdmin={() => navigate('#/admin')} sourceUrl={auth.source_url}
+      onLocale={onLocale} />
+  );
   const palette = (
     <>
       {searchOpen && (
@@ -248,10 +265,10 @@ export default function App() {
     const header = (
       <>
         <span className="wordmark wordmark--small">Maze</span>
-        <span className="topbar__title">Administration</span>
+        <span className="topbar__title">{t('Administration')}</span>
         <div className="toolbar">
           <button type="button" className="btn btn--ghost" onClick={() => navigate(current ? `#/c/${current.id}` : '#/')}>
-            <Icon name="back" size={16} /><span className="btn__label">Retour aux campagnes</span>
+            <Icon name="back" size={16} /><span className="btn__label">{t('Retour aux campagnes')}</span>
           </button>
           {userMenu}
         </div>
@@ -276,8 +293,8 @@ export default function App() {
           <h1 className="wordmark">Maze</h1>
           <p className="splash__lead">
             {user.role === 'admin'
-              ? 'Commencez par créer une campagne : elle rassemblera vos PNJ, factions et intrigues.'
-              : 'Aucune campagne ne vous est attribuée pour l’instant. Créez-en une, ou demandez à un administrateur de vous en ouvrir l’accès.'}
+              ? t('Commencez par créer une campagne : elle rassemblera vos PNJ, factions et intrigues.')
+              : t('Aucune campagne ne vous est attribuée pour l’instant. Créez-en une, ou demandez à un administrateur de vous en ouvrir l’accès.')}
           </p>
           <CampaignDialogInline onSaved={(c) => { setCampaigns([{ npc_count: 0, faction_count: 0, ...c }]); navigate(`#/c/${c.id}`); }} />
         </div>
@@ -300,12 +317,12 @@ export default function App() {
           setRoute(parseHash());
         }}
       />
-      <nav className="module-tabs" aria-label="Modules">
+      <nav className="module-tabs" aria-label={t('Modules')}>
         {[
-          ['scenarios', `#/c/${current.id}`, 'book', 'Scénarios'],
-          ['carte', `#/c/${current.id}/carte`, 'graph', 'Carte'],
-          ['personnages', `#/c/${current.id}/personnages`, 'person', 'Personnages'],
-          ['lieux', `#/c/${current.id}/lieux`, 'pin', 'Lieux'],
+          ['scenarios', `#/c/${current.id}`, 'book', t('Scénarios')],
+          ['carte', `#/c/${current.id}/carte`, 'graph', pt('nav', 'Carte')],
+          ['personnages', `#/c/${current.id}/personnages`, 'person', t('Personnages')],
+          ['lieux', `#/c/${current.id}/lieux`, 'pin', t('Lieux')],
         ].map(([tab, href, icon, label]) => (
           <a key={tab} href={href} className={route.tab === tab ? 'is-active' : ''} title={label}
             aria-current={route.tab === tab ? 'page' : undefined}>
@@ -316,15 +333,15 @@ export default function App() {
       {route.tab !== 'carte' && (
         <button type="button" className={`icon-btn tree-toggle${drawerOpen ? ' is-active' : ''}`} aria-expanded={drawerOpen}
           aria-haspopup="true"
-          title={TREE_LABEL[route.tab]} aria-label={TREE_LABEL[route.tab]}
+          title={t(TREE_LABEL[route.tab])} aria-label={t(TREE_LABEL[route.tab])}
           onClick={() => setDrawerOpen((v) => !v)}>
           <Icon name="list" size={19} />
         </button>
       )}
       <button type="button" className="search-trigger" onClick={() => setSearchOpen(true)}
-        title="Rechercher dans les PNJ, factions, lieux, scénarios et commentaires (Ctrl+K)">
+        title={t('Rechercher dans les PNJ, factions, lieux, scénarios et commentaires (Ctrl+K)')}>
         <Icon name="search" size={16} />
-        <span className="search-trigger__label">Rechercher</span>
+        <span className="search-trigger__label">{t('Rechercher')}</span>
         <kbd>Ctrl K</kbd>
       </button>
     </>
@@ -403,7 +420,9 @@ function CampaignDialogInline({ onSaved }) {
   const importer = useCampaignImport(onSaved);
   return (
     <>
-      <button type="button" className="btn btn--primary btn--block" onClick={() => setOpen(true)}>Créer une campagne</button>
+      <button type="button" className="btn btn--primary btn--block" onClick={() => setOpen(true)}>
+        {t('Créer une campagne')}
+      </button>
       <button type="button" className="btn btn--ghost btn--block" onClick={importer.pick} disabled={importer.progress !== null}>
         {importLabel(importer.progress)}
       </button>
@@ -413,11 +432,12 @@ function CampaignDialogInline({ onSaved }) {
   );
 }
 
+// Libellés traduits à l'affichage (fonctions appelées au rendu, pas au chargement du module).
 const NAV = [
-  ['scenarios', '', 'book', 'Scénarios'],
-  ['carte', '/carte', 'graph', 'Carte'],
-  ['personnages', '/personnages', 'person', 'Personnages'],
-  ['lieux', '/lieux', 'pin', 'Lieux'],
+  ['scenarios', '', 'book', () => t('Scénarios')],
+  ['carte', '/carte', 'graph', () => pt('nav', 'Carte')],
+  ['personnages', '/personnages', 'person', () => t('Personnages')],
+  ['lieux', '/lieux', 'pin', () => t('Lieux')],
 ];
 
 /** Téléphone : onglets des modules et recherche en bas de l'écran, à portée du pouce. */
@@ -427,15 +447,15 @@ function BottomNav({ campaignId, tab, onSearch }) {
     return () => document.documentElement.classList.remove('has-nav');
   }, []);
   return (
-    <nav className="bottom-nav" aria-label="Modules">
+    <nav className="bottom-nav" aria-label={t('Modules')}>
       {NAV.map(([key, path, icon, label]) => (
         <a key={key} href={`#/c/${campaignId}${path}`} className={tab === key ? 'is-active' : ''}
           aria-current={tab === key ? 'page' : undefined}>
-          <Icon name={icon} size={21} /><span>{label}</span>
+          <Icon name={icon} size={21} /><span>{label()}</span>
         </a>
       ))}
       <button type="button" onClick={onSearch}>
-        <Icon name="search" size={21} /><span>Rechercher</span>
+        <Icon name="search" size={21} /><span>{t('Rechercher')}</span>
       </button>
     </nav>
   );

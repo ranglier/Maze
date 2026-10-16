@@ -1,6 +1,8 @@
 // Natures de lien de la campagne (graph.relation_types), indexées par clé.
+import { t } from './i18n/core.js';
 
-const FALLBACK = { label: 'Autre', color: '#8a93a3', directed: false, hint: '' };
+// Libellé traduit à la lecture (nature inconnue de la campagne) ; les natures de la campagne sont des données.
+const FALLBACK = { get label() { return t('Autre'); }, color: '#8a93a3', directed: false, hint: '' };
 
 // Palette proposée pour les nouvelles natures (reprend les couleurs par défaut).
 export const RELATION_PALETTE = [
@@ -10,9 +12,9 @@ export const RELATION_PALETTE = [
 ];
 
 export function typeIndex(graph) {
-  return new Map((graph?.relation_types || []).map((t) => [t.key, t]));
+  return new Map((graph?.relation_types || []).map((type) => [type.key, type]));
 }
 
 export function typeOf(index, key) {
-  return index.get(key) || { ...FALLBACK, key, label: key || FALLBACK.label };
+  return index.get(key) || { ...FALLBACK, key, label: key || FALLBACK.label };   // copie faite à l'affichage
 }

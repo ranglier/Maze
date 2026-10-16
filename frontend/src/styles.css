@@ -180,6 +180,14 @@ input[type="checkbox"] { accent-color: var(--brass); width: 16px; height: 16px; 
 .splash__footer { margin-top: 6px; text-align: center; font-size: 12.5px; }
 .splash__footer a { color: var(--mist); text-decoration: none; }
 .splash__footer a:hover, .splash__footer a:focus-visible { color: var(--brass); text-decoration: underline; }
+/* Langue avant connexion (écran de connexion, premier lancement) : petit sélecteur discret. */
+.splash__lang { display: flex; align-items: center; justify-content: center; gap: 6px; color: var(--mist); margin-top: 2px; }
+.splash__lang select {
+  width: auto; min-height: 0; padding: 2px 6px; border: 1px solid transparent; border-radius: var(--r-sm);
+  background-color: transparent; color: var(--mist); font: inherit; cursor: pointer;
+}
+.splash__lang select:hover, .splash__lang select:focus-visible { border-color: var(--line); color: var(--bone); }
+.splash__lang + .splash__footer { margin-top: 0; }
 
 /* ---------- Espace de travail ---------- */
 .workspace { height: 100%; display: grid; grid-template-rows: var(--topbar) 1fr; }
@@ -895,6 +903,11 @@ input[type="checkbox"] { accent-color: var(--brass); width: 16px; height: 16px; 
 .user-menu__who { display: grid; padding: 4px 10px 8px; }
 .user-menu__who span { font-size: 12.5px; color: var(--mist); }
 .user-menu__about a { color: var(--mist); font-size: 13px; }
+/* Langue du compte : Automatique / Français / English. */
+.user-menu__lang { gap: 6px; }
+.user-menu__lang .popover__title { display: flex; align-items: center; gap: 6px; }
+.user-menu__lang .segmented { display: flex; justify-self: stretch; }
+.user-menu__lang .segmented button { flex: 1; padding: 4px 6px; }
 .splash__corner { position: fixed; top: 12px; right: 14px; }
 .topbar__title { font-family: var(--serif); font-size: 17px; color: var(--mist); }
 

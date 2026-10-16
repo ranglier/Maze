@@ -71,7 +71,7 @@ try {
     await a.locator('#login-username').waitFor({ state: 'detached', timeout: 15000 });
   }
   // « Claude » : une autre session (le connecteur appelle les mêmes routes, sans révision de départ).
-  const claudeCtx = await browser.newContext();
+  const claudeCtx = await browser.newContext({ locale: 'fr-FR' });
   const claude = await claudeCtx.newPage();
   await claude.request.post(BASE + '/api/auth/login', { data: { username: USER, password: PASSWORD } });
 

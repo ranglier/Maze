@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useId, useRef, useSt
 import { createPortal } from 'react-dom';
 import { isRichHtml, renderMarkdown } from '../markdown.js';
 import { renderDocInto } from '../editor/schema.js';
+import { t } from '../i18n/index.js';
 
 // --- Icônes (traits 1.75, 20 px) --------------------------------------------
 const PATHS = {
@@ -99,7 +100,7 @@ export function SourceLink({ url, className, role, onClick, children }) {
   if (!url) return null;
   return (
     <a href={url} target="_blank" rel="noopener noreferrer" className={className} role={role} onClick={onClick}>
-      {children}Code source (AGPL-3.0)
+      {children}{t('Code source (AGPL-3.0)')}
     </a>
   );
 }
@@ -129,15 +130,15 @@ export function ToastProvider({ children }) {
   const [toasts, setToasts] = useState([]);
   const push = useCallback((message, tone = 'info') => {
     const id = Math.random().toString(36).slice(2);
-    setToasts((t) => [...t, { id, message, tone }]);
-    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), tone === 'error' ? 6000 : 2800);
+    setToasts((list) => [...list, { id, message, tone }]);
+    setTimeout(() => setToasts((list) => list.filter((x) => x.id !== id)), tone === 'error' ? 6000 : 2800);
   }, []);
   return (
     <ToastContext.Provider value={push}>
       {children}
       <div className="toasts" role="status" aria-live="polite">
-        {toasts.map((t) => (
-          <div key={t.id} className={`toast toast--${t.tone}`}>{t.message}</div>
+        {toasts.map((toast) => (
+          <div key={toast.id} className={`toast toast--${toast.tone}`}>{toast.message}</div>
         ))}
       </div>
     </ToastContext.Provider>
@@ -208,7 +209,7 @@ export function Modal({ title, onClose, children, footer, wide }) {
         aria-labelledby={titleId} ref={ref}>
         <header className="modal__head">
           <h2 id={titleId}>{title}</h2>
-          <button type="button" className="icon-btn modal__close" onClick={onClose} aria-label="Fermer">
+          <button type="button" className="icon-btn modal__close" onClick={onClose} aria-label={t('Fermer')}>
             <Icon name="close" />
           </button>
         </header>
@@ -224,7 +225,7 @@ export function ConfirmDialog({ title, message, confirmLabel, onConfirm, onCance
   return (
     <Modal title={title} onClose={onCancel} footer={(
       <>
-        <button type="button" className="btn btn--ghost" onClick={onCancel}>Annuler</button>
+        <button type="button" className="btn btn--ghost" onClick={onCancel}>{t('Annuler')}</button>
         <button type="button" className="btn btn--danger" onClick={onConfirm}>{confirmLabel}</button>
       </>
     )}>
@@ -247,7 +248,7 @@ export function ConfirmProvider({ children }) {
       {children}
       {state && (
         <ConfirmDialog title={state.title} message={state.message}
-          confirmLabel={state.confirmLabel || 'Supprimer'}
+          confirmLabel={state.confirmLabel || t('Supprimer')}
           onConfirm={() => close(true)} onCancel={() => close(false)} />
       )}
     </ConfirmContext.Provider>
@@ -269,20 +270,21 @@ export function TagInput({ id, value, onChange }) {
   const [draft, setDraft] = useState('');
   const add = () => {
     const tag = draft.trim().replace(/,$/, '');
-    if (tag && !value.some((t) => t.toLowerCase() === tag.toLowerCase())) onChange([...value, tag]);
+    if (tag && !value.some((v) => v.toLowerCase() === tag.toLowerCase())) onChange([...value, tag]);
     setDraft('');
   };
   return (
     <div className="tag-input">
-      {value.map((t) => (
-        <span key={t} className="tag">
-          {t}
-          <button type="button" aria-label={`Retirer ${t}`} onClick={() => onChange(value.filter((x) => x !== t))}>
+      {value.map((tag) => (
+        <span key={tag} className="tag">
+          {tag}
+          <button type="button" aria-label={t('Retirer {tag}', { tag })}
+            onClick={() => onChange(value.filter((x) => x !== tag))}>
             <Icon name="close" size={12} />
           </button>
         </span>
       ))}
-      <input id={id} value={draft} placeholder={value.length ? '' : 'Ajouter puis Entrée'}
+      <input id={id} value={draft} placeholder={value.length ? '' : t('Ajouter puis Entrée')}
         onChange={(e) => setDraft(e.target.value)}
         onBlur={add}
         onKeyDown={(e) => {
