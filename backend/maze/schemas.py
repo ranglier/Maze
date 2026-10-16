@@ -171,7 +171,9 @@ class PlaceLinkUpdate(_Strict):
 # --- Appartenances ---------------------------------------------------------
 
 class MembershipCreate(_Strict):
-    npc_id: int
+    """Membre : un PNJ (npc_id) ou une autre faction (member_faction_id), l'un ou l'autre (vérifié par la route)."""
+    npc_id: int | None = None
+    member_faction_id: int | None = None
     faction_id: int
     role: Short = ""
     is_leader: bool = False

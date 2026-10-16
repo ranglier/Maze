@@ -148,6 +148,22 @@ def undo_user_locale(conn: sqlite3.Connection) -> None:
     conn.execute("ALTER TABLE users DROP COLUMN locale")
 
 
+def undo_nested_factions(conn: sqlite3.Connection) -> None:
+    """Défait la migration 031 (factions imbriquées : sous-factions retirées, table d'avant), pour rejouer les
+    migrations depuis une base plus ancienne."""
+    conn.executescript("""
+        DELETE FROM memberships WHERE member_faction_id IS NOT NULL;
+        CREATE TABLE memberships__old (
+            id INTEGER PRIMARY KEY, npc_id INTEGER NOT NULL REFERENCES npcs(id) ON DELETE CASCADE,
+            faction_id INTEGER NOT NULL REFERENCES factions(id) ON DELETE CASCADE, role TEXT NOT NULL DEFAULT '',
+            is_leader INTEGER NOT NULL DEFAULT 0, UNIQUE (npc_id, faction_id));
+        INSERT INTO memberships__old SELECT id, npc_id, faction_id, role, is_leader FROM memberships;
+        DROP TABLE memberships;
+        ALTER TABLE memberships__old RENAME TO memberships;
+        CREATE INDEX ix_memberships_faction ON memberships (faction_id);
+    """)
+
+
 def rewind_schema(conn: sqlite3.Connection, version: int) -> None:
     """Ramène l'enregistrement des migrations à `version` (user_version et schema_migrations), une fois le schéma
     lui-même défait par le test : les migrations suivantes seront rejouées par db.migrate."""
