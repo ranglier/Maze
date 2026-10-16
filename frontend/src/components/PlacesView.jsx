@@ -1,6 +1,7 @@
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api.js';
 import { NPC_STATUS, PLACE_COLOR, PLACE_ICONS, PLACE_ROLES, placeKind } from '../constants.js';
+import { compareText, formatDate, pt, relativeTime, t, tn } from '../i18n/index.js';
 import { ancestorsOf, childrenOf, recentPlaces, rememberPlace, subtreeIds } from '../places.js';
 import { PLACE_EDITABLE, PLACE_SECTIONS, fieldLabels } from '../fields.js';
 import { initialsAvatar, nodeId, normalize, parseNodeId, storage } from '../util.js';
@@ -24,14 +25,14 @@ export { KindsContext, PlaceIcon, subtreeIds };
 /** Sous-onglets de Lieux : index (arborescence et fiches) et cartes interactives. */
 export function PlacesTabs({ campaignId, active }) {
   return (
-    <nav className="segmented segmented--compact places-tabs" aria-label="Lieux">
-      <a href={`#/c/${campaignId}/lieux`} className={active === 'index' ? 'is-active' : ''} title="Index des lieux"
+    <nav className="segmented segmented--compact places-tabs" aria-label={t('Lieux')}>
+      <a href={`#/c/${campaignId}/lieux`} className={active === 'index' ? 'is-active' : ''} title={t('Index des lieux')}
         aria-current={active === 'index' ? 'page' : undefined}>
-        <Icon name="list" size={15} /><span className="places-tabs__long">Index des lieux</span><span className="places-tabs__short">Index</span>
+        <Icon name="list" size={15} /><span className="places-tabs__long">{t('Index des lieux')}</span><span className="places-tabs__short">{t('Index')}</span>
       </a>
-      <a href={`#/c/${campaignId}/cartes`} className={active === 'cartes' ? 'is-active' : ''} title="Carte interactive"
+      <a href={`#/c/${campaignId}/cartes`} className={active === 'cartes' ? 'is-active' : ''} title={t('Carte interactive')}
         aria-current={active === 'cartes' ? 'page' : undefined}>
-        <Icon name="map" size={15} /><span className="places-tabs__long">Carte interactive</span><span className="places-tabs__short">Carte</span>
+        <Icon name="map" size={15} /><span className="places-tabs__long">{t('Carte interactive')}</span><span className="places-tabs__short">{pt('maps', 'Carte')}</span>
       </a>
     </nav>
   );
@@ -141,20 +142,22 @@ export default function PlacesView({
   };
 
   const pin = async (item, pinned) => {
-    if (await run(() => api.pinPlace(item.id, pinned), pinned ? `« ${item.name} » épinglé sur l’accueil` : 'Retiré des épinglés')
+    if (await run(() => api.pinPlace(item.id, pinned), pinned ? t('« {name} » épinglé sur l’accueil', { name: item.name }) : t('Retiré des épinglés'))
       !== undefined) loadTree();
   };
 
   const remove = async (item) => {
     const kids = childrenOf(data.places, item.id).length;
     const yes = await confirm({
-      title: `Supprimer « ${item.name} »`,
-      message: `Le lieu et ses images seront supprimés.${kids ? ` Ses ${kids} sous-lieu(x) remonteront d’un niveau.` : ''}`
-        + ' Les PNJ et factions qui y étaient reliés ne sont pas touchés.',
-      confirmLabel: 'Supprimer',
+      title: t('Supprimer « {name} »', { name: item.name }),
+      message: kids
+        ? tn('Le lieu et ses images seront supprimés. Son sous-lieu remontera d’un niveau. Les PNJ et factions qui y étaient reliés ne sont pas touchés.',
+          'Le lieu et ses images seront supprimés. Ses {n} sous-lieux remonteront d’un niveau. Les PNJ et factions qui y étaient reliés ne sont pas touchés.', kids)
+        : t('Le lieu et ses images seront supprimés. Les PNJ et factions qui y étaient reliés ne sont pas touchés.'),
+      confirmLabel: t('Supprimer'),
     });
     if (!yes) return;
-    if (await run(() => api.deleteEntity('place', item.id), 'Lieu supprimé') === undefined) return;
+    if (await run(() => api.deleteEntity('place', item.id), t('Lieu supprimé')) === undefined) return;
     // Les sous-lieux remontent d'un niveau : seul le lieu supprimé lui-même disparaît.
     if (item.id === placeId) {
       await loadTree();
@@ -173,11 +176,11 @@ export default function PlacesView({
         <div className="topbar__right">
         <div className="toolbar">
           <button type="button" className="btn btn--ghost" onClick={() => setCreating({ parentId: placeId || null })}>
-            <Icon name="pin" size={16} /><span className="btn__label">Lieu</span>
+            <Icon name="pin" size={16} /><span className="btn__label">{t('Lieu')}</span>
           </button>
           <button type="button" className="btn btn--ghost" onClick={() => setManagingKinds(true)} disabled={!data}
-            title="Créer, renommer, supprimer les types de lieux et choisir leurs icônes">
-            <Icon name="list" size={16} /><span className="btn__label"><span className="places-tabs__long">Types de lieux</span><span className="places-tabs__short">Types</span></span>
+            title={t('Créer, renommer, supprimer les types de lieux et choisir leurs icônes')}>
+            <Icon name="list" size={16} /><span className="btn__label"><span className="places-tabs__long">{t('Types de lieux')}</span><span className="places-tabs__short">{t('Types')}</span></span>
           </button>
           <span className="toolbar__sep" />
         </div>
@@ -207,11 +210,11 @@ export default function PlacesView({
           </EntryShell>
         ) : (
           <main className="doc-main">
-            {!data ? <div className="doc-loading" aria-busy="true">Chargement…</div>
+            {!data ? <div className="doc-loading" aria-busy="true">{t('Chargement…')}</div>
               : !placeId ? (
                 <PlacesHome data={data} campaignId={cid} campaignName={campaign.name} onOpen={go}
                   onCreate={() => setCreating({ parentId: null })} />
-              ) : !detail || detail.id !== placeId ? <div className="doc-loading" aria-busy="true">Chargement…</div>
+              ) : !detail || detail.id !== placeId ? <div className="doc-loading" aria-busy="true">{t('Chargement…')}</div>
                 : <p className="panel__error doc">{detail.error}</p>}
           </main>
         )}
@@ -233,15 +236,14 @@ export default function PlacesView({
 
 const scenarioKey = (cid) => `maze:scenario:${cid}`;
 
-/** Date courte d'une modification : « aujourd'hui », « hier », sinon jour et mois. */
+/** Date courte d'une modification : « aujourd'hui », « hier » (dans la langue de l'interface), sinon jour et mois. */
 function shortDate(iso) {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '';
   const day = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
   const diff = Math.round((day(new Date()) - day(d)) / 86400000);
-  if (diff === 0) return 'aujourd’hui';
-  if (diff === 1) return 'hier';
-  return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+  if (diff === 0 || diff === 1) return relativeTime(-diff, 'day');
+  return formatDate(d, { day: 'numeric', month: 'short' });
 }
 
 /**
@@ -278,11 +280,11 @@ function PlacesHome({ data, campaignId, campaignName, onOpen, onCreate }) {
     };
     visit(scenario.id);
     return [...ids].map((id) => byId.get(id))
-      .sort((a, b) => `${pathName(a)} / ${a.name}`.localeCompare(`${pathName(b)} / ${b.name}`, 'fr'));
+      .sort((a, b) => compareText(`${pathName(a)} / ${a.name}`, `${pathName(b)} / ${b.name}`));
   }, [scenario, mentions, byId]);
   const pickScenario = (id) => { setPicked(id); storage.set(scenarioKey(campaignId), String(id)); };
 
-  const pinned = data.places.filter((p) => p.pinned).sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+  const pinned = data.places.filter((p) => p.pinned).sort((a, b) => compareText(a.name, b.name));
   const recent = recentPlaces(campaignId).map((id) => byId.get(id)).filter(Boolean).slice(0, 6);
   const modified = [...data.places].sort((a, b) => (b.updated_at || '').localeCompare(a.updated_at || '')).slice(0, 6);
 
@@ -306,52 +308,51 @@ function PlacesHome({ data, campaignId, campaignName, onOpen, onCreate }) {
   return (
     <article className="doc place place-home">
       <header className="doc__head">
-        <p className="place__kind"><Icon name="pin" size={15} /> Lieux de la campagne</p>
+        <p className="place__kind"><Icon name="pin" size={15} /> {t('Lieux de la campagne')}</p>
         <h1 className="doc__title">{campaignName}</h1>
       </header>
       {roots.length === 0 ? (
         <div className="place-empty">
-          <p>Rangez ici les lieux qui reviennent d’une séance à l’autre : régions, villes, quartiers, tavernes, repaires…
-            Chaque lieu peut contenir des sous-lieux, accueillir des PNJ et des factions, et être cité dans les scénarios avec @.</p>
-          <button type="button" className="btn btn--primary" onClick={onCreate}><Icon name="plus" size={16} /> Créer un lieu</button>
+          <p>{t('Rangez ici les lieux qui reviennent d’une séance à l’autre : régions, villes, quartiers, tavernes, repaires… Chaque lieu peut contenir des sous-lieux, accueillir des PNJ et des factions, et être cité dans les scénarios avec @.')}</p>
+          <button type="button" className="btn btn--primary" onClick={onCreate}><Icon name="plus" size={16} /> {t('Créer un lieu')}</button>
         </div>
       ) : (
         <>
           <div className="place-home__grid">
             <section className="panel-section">
-              <div className="panel-section__head"><h3><Icon name="star" size={14} /> Épinglés</h3><span className="count">{pinned.length}</span></div>
-              {list(pinned, 'Épinglez les lieux où vous revenez souvent : étoile sur leur fiche, ou menu ⋯ de l’arbre.')}
+              <div className="panel-section__head"><h3><Icon name="star" size={14} /> {t('Épinglés')}</h3><span className="count">{pinned.length}</span></div>
+              {list(pinned, t('Épinglez les lieux où vous revenez souvent : étoile sur leur fiche, ou menu ⋯ de l’arbre.'))}
             </section>
             <section className="panel-section">
-              <div className="panel-section__head"><h3><Icon name="history" size={14} /> Consultés récemment</h3></div>
-              {list(recent, 'Les derniers lieux ouverts sur cet appareil apparaîtront ici.')}
+              <div className="panel-section__head"><h3><Icon name="history" size={14} /> {t('Consultés récemment')}</h3></div>
+              {list(recent, t('Les derniers lieux ouverts sur cet appareil apparaîtront ici.'))}
             </section>
             <section className="panel-section">
               <div className="panel-section__head place-home__scenario">
-                <h3><Icon name="book" size={14} /> Dans le scénario</h3>
+                <h3><Icon name="book" size={14} /> {t('Dans le scénario')}</h3>
                 {scenarios.length > 1 && (
-                  <select className="place-home__select" value={scenario?.id ?? ''} aria-label="Scénario"
+                  <select className="place-home__select" value={scenario?.id ?? ''} aria-label={t('Scénario')}
                     onChange={(e) => pickScenario(Number(e.target.value))}>
-                    {scenarios.map((d) => <option key={d.id} value={d.id}>{d.title || 'Sans titre'}</option>)}
+                    {scenarios.map((d) => <option key={d.id} value={d.id}>{d.title || t('Sans titre')}</option>)}
                   </select>
                 )}
               </div>
-              {!mentions ? <p className="muted place-home__empty">Chargement…</p>
-                : !scenario ? <p className="muted place-home__empty">Aucun scénario dans cette campagne.</p>
+              {!mentions ? <p className="muted place-home__empty">{t('Chargement…')}</p>
+                : !scenario ? <p className="muted place-home__empty">{t('Aucun scénario dans cette campagne.')}</p>
                   : (
                     <>
-                      {scenarios.length === 1 && <p className="place-home__sub">{scenario.title || 'Sans titre'}</p>}
-                      {list(cited, 'Aucun lieu cité avec @ dans ce scénario ni dans ses pages.')}
+                      {scenarios.length === 1 && <p className="place-home__sub">{scenario.title || t('Sans titre')}</p>}
+                      {list(cited, t('Aucun lieu cité avec @ dans ce scénario ni dans ses pages.'))}
                     </>
                   )}
             </section>
             <section className="panel-section">
-              <div className="panel-section__head"><h3><Icon name="edit" size={14} /> Modifiés récemment</h3></div>
-              {list(modified, 'Aucun lieu.', (p) => shortDate(p.updated_at))}
+              <div className="panel-section__head"><h3><Icon name="edit" size={14} /> {t('Modifiés récemment')}</h3></div>
+              {list(modified, t('Aucun lieu.'), (p) => shortDate(p.updated_at))}
             </section>
           </div>
           <section className="panel-section">
-            <div className="panel-section__head"><h3>Premier niveau</h3><span className="count">{roots.length}</span></div>
+            <div className="panel-section__head"><h3>{t('Premier niveau')}</h3><span className="count">{roots.length}</span></div>
             <PlaceCards places={roots} all={data.places} counts={counts} onOpen={onOpen} />
           </section>
         </>
@@ -366,8 +367,8 @@ function PlaceCards({ places, all, counts, onOpen }) {
     <ul className="doc-cards place-cards">
       {places.map((p) => {
         const kids = childrenOf(all, p.id).length;
-        const meta = [placeKind(p.kind, kinds).label, kids && `${kids} sous-lieu${kids > 1 ? 'x' : ''}`,
-          counts?.get(p.id) && `${counts.get(p.id)} fiche${counts.get(p.id) > 1 ? 's' : ''}`].filter(Boolean).join(' · ');
+        const meta = [placeKind(p.kind, kinds).label, kids && tn('{n} sous-lieu', '{n} sous-lieux', kids),
+          counts?.get(p.id) && tn('{n} fiche', '{n} fiches', counts.get(p.id))].filter(Boolean).join(' · ');
         return (
           <li key={p.id}>
             <button type="button" onClick={() => onOpen(p.id)}>
@@ -410,29 +411,30 @@ function PlaceSheet({ place, data, campaignId, resolveRef, onOpen, onOpenNode, o
       <div className="doc__bar">
         <PlaceCrumbs place={place} places={data.places} onOpen={onOpen} />
         <button type="button" className={`icon-btn icon-btn--small place-pin${pinned ? ' is-active' : ''}`} aria-pressed={pinned}
-          title={pinned ? 'Retirer des épinglés' : 'Épingler sur l’accueil des lieux'}
-          aria-label={pinned ? 'Retirer des épinglés' : 'Épingler sur l’accueil des lieux'} onClick={() => onPin(place, !pinned)}>
+          title={pinned ? t('Retirer des épinglés') : t('Épingler sur l’accueil des lieux')}
+          aria-label={pinned ? t('Retirer des épinglés') : t('Épingler sur l’accueil des lieux')} onClick={() => onPin(place, !pinned)}>
           <Icon name="star" size={15} />
         </button>
         {onMap && (
           <a className="btn btn--small btn--ghost" href={`#/c/${campaignId}/carte?place=${place.id}`}
-            title="Afficher sur la carte les PNJ et factions de ce lieu et de ses sous-lieux">
-            <Icon name="graph" size={15} /><span className="btn__label">Sur la carte</span>
+            title={t('Afficher sur la carte les PNJ et factions de ce lieu et de ses sous-lieux')}>
+            <Icon name="graph" size={15} /><span className="btn__label">{pt('graph', 'Sur la carte')}</span>
           </a>
         )}
         {(place.maps?.length > 0 || place.own_maps?.length > 0) && (
           <a className="btn btn--small btn--ghost"
             href={place.maps?.length ? `#/c/${campaignId}/cartes/${place.maps[0].id}?place=${place.id}` : `#/c/${campaignId}/cartes/${place.own_maps[0].id}`}
-            title={place.maps?.length ? `Voir ce lieu sur la carte « ${place.maps[0].name} »` : `Ouvrir la carte « ${place.own_maps[0].name} »`}>
-            <Icon name="map" size={15} /><span className="btn__label">Carte interactive</span>
+            title={place.maps?.length ? t('Voir ce lieu sur la carte « {name} »', { name: place.maps[0].name })
+              : t('Ouvrir la carte « {name} »', { name: place.own_maps[0].name })}>
+            <Icon name="map" size={15} /><span className="btn__label">{t('Carte interactive')}</span>
           </a>
         )}
         <EntrySideButton />
         <button type="button" className="btn btn--small btn--primary" onClick={onEdit}>
-          <Icon name="edit" size={15} /> Modifier
+          <Icon name="edit" size={15} /> {t('Modifier')}
         </button>
         <button type="button" className="icon-btn icon-btn--small icon-btn--danger" onClick={onDelete}
-          title="Supprimer le lieu" aria-label={`Supprimer ${place.name}`}>
+          title={t('Supprimer le lieu')} aria-label={t('Supprimer {name}', { name: place.name })}>
           <Icon name="trash" size={15} />
         </button>
       </div>
@@ -447,10 +449,10 @@ function PlaceSheet({ place, data, campaignId, resolveRef, onOpen, onOpenNode, o
       </header>
 
       {place.ambiance?.trim() && (
-        <section className="place-ambiance" aria-label="Accroche : texte à lire aux joueurs"
-          data-entry-section="ambiance" data-entry-label="Accroche">
-          <p className="place-ambiance__label"><Icon name="scroll" size={14} /> Accroche
-            <SectionComment field="ambiance" label="Accroche" /></p>
+        <section className="place-ambiance" aria-label={t('Accroche : texte à lire aux joueurs')}
+          data-entry-section="ambiance" data-entry-label={t(L.ambiance)}>
+          <p className="place-ambiance__label"><Icon name="scroll" size={14} /> {t(L.ambiance)}
+            <SectionComment field="ambiance" label={t(L.ambiance)} /></p>
           <div data-entry-field="ambiance">
             <Markdown text={place.ambiance} resolve={resolveRef} onOpenNode={onOpenNode} />
           </div>
@@ -458,8 +460,8 @@ function PlaceSheet({ place, data, campaignId, resolveRef, onOpen, onOpenNode, o
       )}
 
       {place.description?.trim() && (
-        <section className="panel-section" data-entry-section="description" data-entry-label="Description">
-          <div className="panel-section__head"><h3>Description</h3><SectionComment field="description" label="Description" /></div>
+        <section className="panel-section" data-entry-section="description" data-entry-label={t(L.description)}>
+          <div className="panel-section__head"><h3>{t(L.description)}</h3><SectionComment field="description" label={t(L.description)} /></div>
           <div data-entry-field="description">
             <Markdown text={place.description} resolve={resolveRef} onOpenNode={onOpenNode} />
           </div>
@@ -467,10 +469,10 @@ function PlaceSheet({ place, data, campaignId, resolveRef, onOpen, onOpenNode, o
       )}
 
       {(place.links.length > 0 || nested.size === 0) && (
-      <section className="panel-section" data-entry-section="links" data-entry-label="Présents ici">
-        <div className="panel-section__head"><h3>Présents ici</h3><span className="count">{place.links.length}</span></div>
+      <section className="panel-section" data-entry-section="links" data-entry-label={t('Présents ici')}>
+        <div className="panel-section__head"><h3>{t('Présents ici')}</h3><span className="count">{place.links.length}</span></div>
         {place.links.length === 0 ? (
-          <p className="muted">Aucun PNJ ni faction relié à ce lieu. Modifiez la fiche pour en ajouter.</p>
+          <p className="muted">{t('Aucun PNJ ni faction relié à ce lieu. Modifiez la fiche pour en ajouter.')}</p>
         ) : (
           <ul className="member-list place-links">
             {place.links.map((l) => (
@@ -480,7 +482,7 @@ function PlaceSheet({ place, data, campaignId, resolveRef, onOpen, onOpenNode, o
                     : <span className="place-links__seal" style={{ background: l.color }} />}
                   <span className="member-list__name">{l.status === 'mort' ? `† ${l.name}` : l.name}</span>
                   <span className="member-list__role">
-                    {[l.role, l.sub || (l.entity_kind === 'faction' ? 'Faction' : 'PNJ'), l.entity_kind === 'npc' && l.status !== 'vivant' && NPC_STATUS[l.status]?.label]
+                    {[l.role, l.sub || (l.entity_kind === 'faction' ? t('Faction') : t('PNJ')), l.entity_kind === 'npc' && l.status !== 'vivant' && NPC_STATUS[l.status]?.label]
                       .filter(Boolean).join(' · ')}
                   </span>
                 </a>
@@ -491,21 +493,21 @@ function PlaceSheet({ place, data, campaignId, resolveRef, onOpen, onOpenNode, o
       </section>
       )}
 
-      <section className="panel-section" data-entry-section="children" data-entry-label="Sous-lieux">
+      <section className="panel-section" data-entry-section="children" data-entry-label={t('Sous-lieux')}>
         <div className="panel-section__head">
-          <h3>Sous-lieux</h3><span className="count">{place.children.length}</span>
+          <h3>{t('Sous-lieux')}</h3><span className="count">{place.children.length}</span>
           <button type="button" className="btn btn--small btn--ghost panel-section__action" onClick={onCreateChild}>
-            <Icon name="plus" size={14} /> Ajouter
+            <Icon name="plus" size={14} /> {t('Ajouter')}
           </button>
         </div>
         {place.children.length === 0
-          ? <p className="muted">Aucun sous-lieu. Découpez une ville en quartiers, un bâtiment en salles…</p>
+          ? <p className="muted">{t('Aucun sous-lieu. Découpez une ville en quartiers, un bâtiment en salles…')}</p>
           : <PlaceCards places={place.children} all={data.places} counts={counts} onOpen={onOpen} />}
       </section>
 
       {nested.size > 0 && (
-        <section className="panel-section" data-entry-section="nested" data-entry-label="Dans les sous-lieux">
-          <div className="panel-section__head"><h3>Dans les sous-lieux</h3><span className="count">{nested.size}</span></div>
+        <section className="panel-section" data-entry-section="nested" data-entry-label={t('Dans les sous-lieux')}>
+          <div className="panel-section__head"><h3>{t('Dans les sous-lieux')}</h3><span className="count">{nested.size}</span></div>
           <ul className="member-list place-links">
             {[...nested.values()].map((l) => (
               <li key={`${l.entity_kind}-${l.entity_id}`}>
@@ -524,16 +526,16 @@ function PlaceSheet({ place, data, campaignId, resolveRef, onOpen, onOpenNode, o
       )}
 
       {place.secrets?.trim() && (
-        <section className="panel-section panel-section--secret" data-entry-section="secrets" data-entry-label="Secret">
-          <div className="panel-section__head"><h3><Icon name="lock" size={14} /> Secret</h3><SectionComment field="secrets" label="Secret" /></div>
+        <section className="panel-section panel-section--secret" data-entry-section="secrets" data-entry-label={t(L.secrets)}>
+          <div className="panel-section__head"><h3><Icon name="lock" size={14} /> {t(L.secrets)}</h3><SectionComment field="secrets" label={t(L.secrets)} /></div>
           <div data-entry-field="secrets">
             <Markdown text={place.secrets} resolve={resolveRef} onOpenNode={onOpenNode} />
           </div>
         </section>
       )}
       {place.notes?.trim() && (
-        <section className="panel-section" data-entry-section="notes" data-entry-label="Notes">
-          <div className="panel-section__head"><h3>Notes</h3><SectionComment field="notes" label="Notes" /></div>
+        <section className="panel-section" data-entry-section="notes" data-entry-label={t(L.notes)}>
+          <div className="panel-section__head"><h3>{t(L.notes)}</h3><SectionComment field="notes" label={t(L.notes)} /></div>
           <div data-entry-field="notes">
             <Markdown text={place.notes} resolve={resolveRef} onOpenNode={onOpenNode} />
           </div>
@@ -541,14 +543,14 @@ function PlaceSheet({ place, data, campaignId, resolveRef, onOpen, onOpenNode, o
       )}
 
       {place.mentioned_in.length > 0 && (
-        <section className="panel-section" data-entry-section="mentioned" data-entry-label="Apparaît dans">
-          <div className="panel-section__head"><h3>Apparaît dans</h3><span className="count">{place.mentioned_in.length}</span></div>
+        <section className="panel-section" data-entry-section="mentioned" data-entry-label={t('Apparaît dans')}>
+          <div className="panel-section__head"><h3>{t('Apparaît dans')}</h3><span className="count">{place.mentioned_in.length}</span></div>
           <ul className="backlinks">
             {place.mentioned_in.map((d) => (
               <li key={d.id}>
                 <a href={d.kind === 'campaign' ? `#/c/${campaignId}/scenarios` : `#/c/${campaignId}/scenarios/${d.id}`}>
                   <Icon name={d.kind === 'campaign' ? 'book' : 'page'} size={15} />
-                  <span>{d.kind === 'campaign' ? 'Fiche de campagne' : (d.title || 'Sans titre')}</span>
+                  <span>{d.kind === 'campaign' ? t('Fiche de campagne') : (d.title || t('Sans titre'))}</span>
                   {d.kind !== 'campaign' && <span className={`status-dot status--${d.status}`} />}
                 </a>
               </li>
@@ -558,10 +560,10 @@ function PlaceSheet({ place, data, campaignId, resolveRef, onOpen, onOpenNode, o
       )}
 
       {place.tags.length > 0 && (
-        <div className="tags" aria-label="Étiquettes">{place.tags.map((t) => <span key={t} className="tag">{t}</span>)}</div>
+        <div className="tags" aria-label={t('Étiquettes')}>{place.tags.map((tag) => <span key={tag} className="tag">{tag}</span>)}</div>
       )}
 
-      <section className="panel-section" data-entry-section="gallery" data-entry-label="Images">
+      <section className="panel-section" data-entry-section="gallery" data-entry-label={t('Images')}>
         <Gallery kind="place" entity={place} onChanged={onChanged} />
       </section>
     </article>
@@ -588,7 +590,9 @@ function parentOptions(places, excludeId) {
   return out;
 }
 
+// Libellés du registre (texte français, traduit à l'affichage : catalogue de la zone characters).
 const PLACE_LABELS = fieldLabels('place');
+const L = PLACE_LABELS;
 const PLACE_RICH = new Set(FIELDS.map((f) => f.key));
 
 function PlaceForm({ place, data, graph, resolveRef, onCancel, onSaved, onLinksChanged }) {
@@ -599,6 +603,8 @@ function PlaceForm({ place, data, graph, resolveRef, onCancel, onSaved, onLinksC
   const [saving, setSaving] = useState(false);
   const toast = useToast();
   const parents = useMemo(() => parentOptions(data.places, place.id), [data.places, place.id]);
+  // Libellés des champs en conflit, dans la langue de l'interface (traduits à chaque rendu).
+  const labels = Object.fromEntries(Object.entries(PLACE_LABELS).map(([k, v]) => [k, t(v)]));
 
   const save = async (e) => {
     e.preventDefault();
@@ -617,53 +623,53 @@ function PlaceForm({ place, data, graph, resolveRef, onCancel, onSaved, onLinksC
     }
     setSaving(false);
     if (result === 'unchanged') onCancel();
-    else if (result === 'saved') { toast('Lieu enregistré', 'success'); onSaved(); }
+    else if (result === 'saved') { toast(t('Lieu enregistré'), 'success'); onSaved(); }
   };
 
   return (
     <form className="sheet-form place-form" onSubmit={save}
       onKeyDown={(e) => { if (e.key === 's' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); save(e); } }}>
-      <h2 className="sheet-form__title">Modifier le lieu</h2>
-      <ConflictPanel conflict={conflict} labels={PLACE_LABELS} rich={PLACE_RICH} resolveRef={resolveRef}
+      <h2 className="sheet-form__title">{t('Modifier le lieu')}</h2>
+      <ConflictPanel conflict={conflict} labels={labels} rich={PLACE_RICH} resolveRef={resolveRef}
         onResolve={resolve} onKeepAll={keepAll} />
       <div className="form-grid">
-        <Field label="Nom" htmlFor="pl-name">
+        <Field label={t('Nom')} htmlFor="pl-name">
           <input id="pl-name" value={draft.name} required maxLength={200} onChange={(e) => set('name')(e.target.value)} />
         </Field>
-        <Field label="Type" htmlFor="pl-kind">
+        <Field label={t(L.kind)} htmlFor="pl-kind">
           <select id="pl-kind" value={draft.kind} onChange={(e) => set('kind')(e.target.value)}>
             <KindOptions />
           </select>
         </Field>
-        <Field label="Rangé dans" htmlFor="pl-parent">
+        <Field label={t(L.parent_id)} htmlFor="pl-parent">
           <select id="pl-parent" value={draft.parent_id ?? ''} onChange={(e) => set('parent_id')(e.target.value ? Number(e.target.value) : null)}>
-            <option value="">(aucun : lieu principal)</option>
+            <option value="">{t('(aucun : lieu principal)')}</option>
             {parents.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
           </select>
         </Field>
       </div>
-      <Field label="Résumé" hint="Une phrase, affichée dans les listes et aperçus." htmlFor="pl-summary">
+      <Field label={t('Résumé')} hint={t('Une phrase, affichée dans les listes et aperçus.')} htmlFor="pl-summary">
         <textarea id="pl-summary" rows={2} maxLength={500} value={draft.summary} onChange={(e) => set('summary')(e.target.value)} />
       </Field>
 
       <LinksEditor place={place} graph={graph} onChanged={onLinksChanged} />
 
       {FIELDS.map((f) => (
-        <Field key={f.key} hint={f.hint} label={<>{f.secret && <Icon name="lock" size={13} />} {f.label}</>}>
+        <Field key={f.key} hint={f.hint && t(f.hint)} label={<>{f.secret && <Icon name="lock" size={13} />} {t(f.label)}</>}>
           <RichField key={fieldKey(f.key)} value={draft[f.key]} onChange={set(f.key)} entities={mentions}
-            resolve={resolveRef} secret={f.secret} label={f.label} />
+            resolve={resolveRef} secret={f.secret} label={t(f.label)} />
         </Field>
       ))}
-      <Field label="Étiquettes" htmlFor="pl-tags">
+      <Field label={t('Étiquettes')} htmlFor="pl-tags">
         <TagInput id="pl-tags" value={draft.tags} onChange={set('tags')} />
       </Field>
       <Gallery kind="place" entity={place} onChanged={onLinksChanged} />
-      <p className="field__hint">Les ajouts d’images et les changements de PNJ et factions sont enregistrés immédiatement.</p>
+      <p className="field__hint">{t('Les ajouts d’images et les changements de PNJ et factions sont enregistrés immédiatement.')}</p>
       <div className="sheet-form__actions">
-        <button type="button" className="btn btn--ghost" onClick={onCancel}>Annuler</button>
+        <button type="button" className="btn btn--ghost" onClick={onCancel}>{t('Annuler')}</button>
         <button type="submit" className="btn btn--primary" disabled={saving || Boolean(conflict)}
-          title={conflict ? 'Choisissez d’abord pour chaque champ en conflit' : undefined}>
-          {saving ? 'Enregistrement…' : 'Enregistrer'}
+          title={conflict ? t('Choisissez d’abord pour chaque champ en conflit') : undefined}>
+          {saving ? t('Enregistrement…') : t('Enregistrer')}
         </button>
       </div>
     </form>
@@ -691,13 +697,13 @@ function LinksEditor({ place, graph, onChanged }) {
 
   return (
     <fieldset className="memberships place-links-editor">
-      <legend>PNJ et factions présents</legend>
-      {place.links.length === 0 && <p className="muted">Personne n’est encore relié à ce lieu.</p>}
+      <legend>{t('PNJ et factions présents')}</legend>
+      {place.links.length === 0 && <p className="muted">{t('Personne n’est encore relié à ce lieu.')}</p>}
       {place.links.map((l) => (
         <div key={l.id} className="memberships__row" style={{ '--chip': l.entity_kind === 'faction' ? l.color : PLACE_COLOR }}>
           <span className="chip__dot" />
           <span className="memberships__name">{l.name}</span>
-          <input aria-label={`Rôle de ${l.name}`} placeholder="Rôle" defaultValue={l.role} maxLength={80}
+          <input aria-label={t('Rôle de {name}', { name: l.name })} placeholder={t('Rôle')} defaultValue={l.role} maxLength={80}
             list={`roles-${l.entity_kind}`}
             onBlur={async (e) => {
               if (e.target.value.trim() !== l.role) {
@@ -705,7 +711,7 @@ function LinksEditor({ place, graph, onChanged }) {
                 onChanged();
               }
             }} />
-          <button type="button" className="icon-btn icon-btn--small" aria-label={`Retirer ${l.name}`}
+          <button type="button" className="icon-btn icon-btn--small" aria-label={t('Retirer {name}', { name: l.name })}
             onClick={async () => { await run(() => api.deletePlaceLink(l.id)); onChanged(); }}>
             <Icon name="close" size={14} />
           </button>
@@ -713,18 +719,18 @@ function LinksEditor({ place, graph, onChanged }) {
       ))}
       {(npcs.length > 0 || factions.length > 0) && (
         <div className="memberships__add place-links-editor__add">
-          <select value={adding} onChange={(e) => setAdding(e.target.value)} aria-label="PNJ ou faction à ajouter">
-            <option value="">Ajouter un PNJ ou une faction…</option>
+          <select value={adding} onChange={(e) => setAdding(e.target.value)} aria-label={t('PNJ ou faction à ajouter')}>
+            <option value="">{t('Ajouter un PNJ ou une faction…')}</option>
             {npcs.length > 0 && (
-              <optgroup label="PNJ">{npcs.map((n) => <option key={n.id} value={`npc-${n.id}`}>{n.name}</option>)}</optgroup>
+              <optgroup label={t('PNJ')}>{npcs.map((n) => <option key={n.id} value={`npc-${n.id}`}>{n.name}</option>)}</optgroup>
             )}
             {factions.length > 0 && (
-              <optgroup label="Factions">{factions.map((f) => <option key={f.id} value={`faction-${f.id}`}>{f.name}</option>)}</optgroup>
+              <optgroup label={t('Factions')}>{factions.map((f) => <option key={f.id} value={`faction-${f.id}`}>{f.name}</option>)}</optgroup>
             )}
           </select>
-          <input value={role} onChange={(e) => setRole(e.target.value)} placeholder="Rôle (facultatif)" maxLength={80}
-            list={`roles-${addingKind}`} aria-label="Rôle" />
-          <button type="button" className="btn btn--small btn--ghost" onClick={add} disabled={!adding}>Ajouter</button>
+          <input value={role} onChange={(e) => setRole(e.target.value)} placeholder={t('Rôle (facultatif)')} maxLength={80}
+            list={`roles-${addingKind}`} aria-label={t('Rôle')} />
+          <button type="button" className="btn btn--small btn--ghost" onClick={add} disabled={!adding}>{t('Ajouter')}</button>
         </div>
       )}
       <datalist id="roles-npc">{PLACE_ROLES.npc.map((r) => <option key={r} value={r} />)}</datalist>
@@ -758,29 +764,29 @@ function CreatePlaceDialog({ places, parentId, onClose, onCreate, onManageKinds 
   };
 
   return (
-    <Modal title="Nouveau lieu" onClose={onClose} footer={(
+    <Modal title={t('Nouveau lieu')} onClose={onClose} footer={(
       <>
-        <button type="button" className="btn btn--ghost" onClick={onClose}>Annuler</button>
-        <button type="submit" form="new-place" className="btn btn--primary" disabled={!name.trim() || busy}>Créer</button>
+        <button type="button" className="btn btn--ghost" onClick={onClose}>{t('Annuler')}</button>
+        <button type="submit" form="new-place" className="btn btn--primary" disabled={!name.trim() || busy}>{t('Créer')}</button>
       </>
     )}>
       <form id="new-place" onSubmit={submit}>
-        <Field label="Nom" htmlFor="np-name">
+        <Field label={t('Nom')} htmlFor="np-name">
           <input id="np-name" value={name} maxLength={200} onChange={(e) => setName(e.target.value)}
-            placeholder="Taverne du Hareng Saur, Haute ville…" autoComplete="off" />
+            placeholder={t('Taverne du Hareng Saur, Haute ville…')} autoComplete="off" />
         </Field>
         <div className="form-grid">
-          <Field label="Type" htmlFor="np-kind">
+          <Field label={t(L.kind)} htmlFor="np-kind">
             <select id="np-kind" value={kind} onChange={(e) => { setKind(e.target.value); setKindTouched(true); }}>
               <KindOptions />
             </select>
             {onManageKinds && (
-              <button type="button" className="link-btn field__action" onClick={onManageKinds}>Gérer les types de lieux</button>
+              <button type="button" className="link-btn field__action" onClick={onManageKinds}>{t('Gérer les types de lieux')}</button>
             )}
           </Field>
-          <Field label="Rangé dans" htmlFor="np-parent">
+          <Field label={t(L.parent_id)} htmlFor="np-parent">
             <select id="np-parent" value={parent ?? ''} onChange={(e) => setParent(e.target.value ? Number(e.target.value) : null)}>
-              <option value="">(aucun : lieu principal)</option>
+              <option value="">{t('(aucun : lieu principal)')}</option>
               {options.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
             </select>
           </Field>
@@ -818,6 +824,8 @@ function KindsManager({ campaignId, kinds, places, onClose, onChanged }) {
     return () => document.removeEventListener('mousedown', onDown);
   }, [picker]);
   const used = (key) => places.filter((p) => p.kind === key).length;
+  // Type par défaut (« lieu ») : nom donné par la campagne (donnée, non traduite), à défaut le libellé fourni.
+  const fallbackKind = kinds.find((k) => k.key === 'lieu')?.label || t('Lieu');
 
   const save = async (k, changes) => {
     if (await run(() => api.updatePlaceKind(k.id, changes)) !== undefined) onChanged();
@@ -830,11 +838,12 @@ function KindsManager({ campaignId, kinds, places, onClose, onChanged }) {
   const remove = async (k) => {
     const n = used(k.key);
     const yes = await confirm({
-      title: `Supprimer le type « ${k.label} »`,
-      message: n ? `${n} lieu${n > 1 ? 'x' : ''} de ce type passer${n > 1 ? 'ont' : 'a'} au type « Lieu ».` : 'Aucun lieu n’utilise ce type.',
-      confirmLabel: 'Supprimer',
+      title: t('Supprimer le type « {name} »', { name: k.label }),
+      message: n ? tn('{n} lieu de ce type passera au type « {kind} ».', '{n} lieux de ce type passeront au type « {kind} ».', n,
+        { kind: fallbackKind }) : t('Aucun lieu n’utilise ce type.'),
+      confirmLabel: t('Supprimer'),
     });
-    if (yes && await run(() => api.deletePlaceKind(k.id), 'Type supprimé') !== undefined) onChanged();
+    if (yes && await run(() => api.deletePlaceKind(k.id), t('Type supprimé')) !== undefined) onChanged();
   };
   const shift = async (i, dir) => {
     const ids = kinds.map((k) => k.id);
@@ -847,7 +856,7 @@ function KindsManager({ campaignId, kinds, places, onClose, onChanged }) {
     e.preventDefault();
     const label = newLabel.trim();
     if (!label) return;
-    const created = await run(() => api.createPlaceKind(campaignId, { label, icon: newIcon }), `Type « ${label} » créé`);
+    const created = await run(() => api.createPlaceKind(campaignId, { label, icon: newIcon }), t('Type « {name} » créé', { name: label }));
     if (created) { setNewLabel(''); setNewIcon('pin'); onChanged(); }
   };
 
@@ -856,7 +865,7 @@ function KindsManager({ campaignId, kinds, places, onClose, onChanged }) {
   const setImage = async (file) => {
     const k = imageFor.current;
     if (!file || !k) return;
-    if (await run(() => api.setPlaceKindImage(k.id, file), `Icône de « ${k.label} » importée`) !== undefined) onChanged();
+    if (await run(() => api.setPlaceKindImage(k.id, file), t('Icône de « {name} » importée', { name: k.label })) !== undefined) onChanged();
   };
   const clearImage = async (k) => {
     setPicker(null);
@@ -871,7 +880,7 @@ function KindsManager({ campaignId, kinds, places, onClose, onChanged }) {
     for (const file of files) {
       setImporting(`${done + failed + 1} / ${files.length}`);
       const name = file.name.replace(/\.[^.]+$/, '').replace(/[_]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 40);
-      const label = name ? name[0].toUpperCase() + name.slice(1) : 'Type';
+      const label = name ? name[0].toUpperCase() + name.slice(1) : t('Type');
       let kind = known.get(label.toLowerCase());
       if (!kind) {
         kind = await run(() => api.createPlaceKind(campaignId, { label, icon: 'pin' }));
@@ -881,7 +890,8 @@ function KindsManager({ campaignId, kinds, places, onClose, onChanged }) {
       else failed += 1;
     }
     setImporting(null);
-    toast(`${done} type${done > 1 ? 's' : ''} avec icône${failed ? ` (${failed} en échec)` : ''}`, failed ? 'error' : 'success');
+    toast(failed ? tn('{n} type avec icône ({failed} en échec)', '{n} types avec icône ({failed} en échec)', done, { failed })
+      : tn('{n} type avec icône', '{n} types avec icône', done), failed ? 'error' : 'success');
     onChanged();
   };
 
@@ -893,7 +903,7 @@ function KindsManager({ campaignId, kinds, places, onClose, onChanged }) {
   );
   // Choix de l'icône : déplié sous la ligne du type (dans la liste, sans recouvrir les autres types).
   const palette = (icon, key, onPick, kind) => picker === key && (
-    <div className="kinds__palette" role="listbox" aria-label="Choisir une icône">
+    <div className="kinds__palette" role="listbox" aria-label={t('Choisir une icône')}>
       {PLACE_ICONS.map((name) => (
         <button key={name} type="button" role="option" aria-selected={!kind?.image_url && name === icon} title={name} aria-label={name}
           className={`icon-btn${!kind?.image_url && name === icon ? ' is-active' : ''}`}
@@ -904,11 +914,11 @@ function KindsManager({ campaignId, kinds, places, onClose, onChanged }) {
       {kind && (
         <div className="kinds__palette-image">
           <button type="button" className="btn btn--small btn--ghost" onClick={() => pickImage(kind)}>
-            <Icon name="upload" size={14} /> {kind.image_url ? 'Autre image…' : 'Importer une image…'}
+            <Icon name="upload" size={14} /> {kind.image_url ? t('Autre image…') : t('Importer une image…')}
           </button>
           {kind.image_url && (
             <button type="button" className="btn btn--small btn--ghost" onClick={() => clearImage(kind)}>
-              <Icon name="close" size={14} /> Revenir à l’icône
+              <Icon name="close" size={14} /> {t('Revenir à l’icône')}
             </button>
           )}
         </div>
@@ -917,28 +927,26 @@ function KindsManager({ campaignId, kinds, places, onClose, onChanged }) {
   );
 
   return (
-    <Modal title="Types de lieux" onClose={onClose} footer={<button type="button" className="btn btn--primary" onClick={onClose}>Fermer</button>}>
-      <p className="muted kinds__intro">Les types servent à classer les lieux (menus, icônes de l’arbre, des fiches et des cartes).
-        Une icône peut être une image importée, par exemple un symbole de la légende de votre carte (fond blanc retiré
-        automatiquement). Supprimer un type fait passer ses lieux au type « Lieu ».</p>
+    <Modal title={t('Types de lieux')} onClose={onClose} footer={<button type="button" className="btn btn--primary" onClick={onClose}>{t('Fermer')}</button>}>
+      <p className="muted kinds__intro">{t('Les types servent à classer les lieux (menus, icônes de l’arbre, des fiches et des cartes). Une icône peut être une image importée, par exemple un symbole de la légende de votre carte (fond blanc retiré automatiquement). Supprimer un type fait passer ses lieux au type « {kind} ».', { kind: fallbackKind })}</p>
       <ul className="kinds">
         {kinds.map((k, i) => (
           <li key={k.id}>
             <div className="kinds__row">
-            {iconButton(k.icon, k.id, `Icône de « ${k.label} »`, k.image_url)}
+            {iconButton(k.icon, k.id, t('Icône de « {name} »', { name: k.label }), k.image_url)}
             <input className="input kinds__label" value={labels[k.id] ?? k.label} maxLength={40} data-kind={k.id}
-              aria-label={`Nom du type ${k.label}`}
+              aria-label={t('Nom du type {name}', { name: k.label })}
               onChange={(e) => setLabels((l) => ({ ...l, [k.id]: e.target.value }))}
               onBlur={() => rename(k)} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); } }} />
-            <span className="kinds__count" title="Lieux de ce type">{used(k.key) || ''}</span>
-            <button type="button" className="icon-btn icon-btn--small" aria-label="Monter" title="Monter" disabled={i === 0}
+            <span className="kinds__count" title={t('Lieux de ce type')}>{used(k.key) || ''}</span>
+            <button type="button" className="icon-btn icon-btn--small" aria-label={t('Monter')} title={t('Monter')} disabled={i === 0}
               onClick={() => shift(i, -1)}><Icon name="up" size={15} /></button>
-            <button type="button" className="icon-btn icon-btn--small" aria-label="Descendre" title="Descendre"
+            <button type="button" className="icon-btn icon-btn--small" aria-label={t('Descendre')} title={t('Descendre')}
               disabled={i === kinds.length - 1} onClick={() => shift(i, 1)}><Icon name="down" size={15} /></button>
             {k.key === 'lieu' ? (
-              <span className="icon-btn icon-btn--small kinds__locked" title="Type par défaut : ne se supprime pas"><Icon name="lock" size={14} /></span>
+              <span className="icon-btn icon-btn--small kinds__locked" title={t('Type par défaut : ne se supprime pas')}><Icon name="lock" size={14} /></span>
             ) : (
-              <button type="button" className="icon-btn icon-btn--small" aria-label={`Supprimer ${k.label}`} title="Supprimer"
+              <button type="button" className="icon-btn icon-btn--small" aria-label={t('Supprimer {name}', { name: k.label })} title={t('Supprimer')}
                 onClick={() => remove(k)}><Icon name="trash" size={15} /></button>
             )}
             </div>
@@ -948,19 +956,19 @@ function KindsManager({ campaignId, kinds, places, onClose, onChanged }) {
       </ul>
       <form className="kinds__new" onSubmit={add}>
         <div className="kinds__row">
-        {iconButton(newIcon, 'new', 'Icône du nouveau type')}
-        <input className="input kinds__label" value={newLabel} maxLength={40} placeholder="Nouveau type : Planète, Vaisseau…"
-          aria-label="Nom du nouveau type" onChange={(e) => setNewLabel(e.target.value)} />
+        {iconButton(newIcon, 'new', t('Icône du nouveau type'))}
+        <input className="input kinds__label" value={newLabel} maxLength={40} placeholder={t('Nouveau type : Planète, Vaisseau…')}
+          aria-label={t('Nom du nouveau type')} onChange={(e) => setNewLabel(e.target.value)} />
         <button type="submit" className="btn btn--small btn--primary" disabled={!newLabel.trim()}>
-          <Icon name="plus" size={14} /> Ajouter
+          <Icon name="plus" size={14} /> {t('Ajouter')}
         </button>
         </div>
         {palette(newIcon, 'new', setNewIcon)}
       </form>
       <div className="kinds__bulk">
         <button type="button" className="btn btn--small btn--ghost" disabled={importing !== null} onClick={() => bulkInput.current?.click()}
-          title="Un type par image, nommé d’après le fichier (« Cité-forteresse.png ») ; un type existant du même nom reçoit l’image">
-          <Icon name="upload" size={14} /> {importing ? `Import… ${importing}` : 'Créer des types depuis des images…'}
+          title={t('Un type par image, nommé d’après le fichier (« Cité-forteresse.png ») ; un type existant du même nom reçoit l’image')}>
+          <Icon name="upload" size={14} /> {importing ? t('Import… {progress}', { progress: importing }) : t('Créer des types depuis des images…')}
         </button>
       </div>
       <input ref={imageInput} type="file" accept="image/png,image/webp,image/jpeg,image/gif" hidden

@@ -1,3 +1,4 @@
+import { t, tn } from '../../i18n/index.js';
 import { Icon } from '../ui.jsx';
 import { PlaceIcon } from '../PlacesView.jsx';
 import { arcPath } from './rings.js';
@@ -50,7 +51,7 @@ export function RingChips({ rings, path, expanded, places, byId, ownMaps, onPath
             onExpand(it.expand, true);
             onPage(it.expand, it.page);   // la page du lieu choisi
           }}
-          title={`Afficher les autres sous-lieux de ${parentName}`}>+{it.count} autre{it.count > 1 ? 's' : ''}</button>
+          title={t('Afficher les autres sous-lieux de {name}', { name: parentName })}>{tn('+{n} autre', '+{n} autres', it.count)}</button>
       );
     }
     if (it.more) {
@@ -58,7 +59,7 @@ export function RingChips({ rings, path, expanded, places, byId, ownMaps, onPath
         <button key={`${r.placeId}-more`} type="button" className="map-chip map-chip--more" style={{ left: it.x, top: it.y }}
           onPointerDown={(e) => e.stopPropagation()} onPointerUp={(e) => e.stopPropagation()}
           onClick={(e) => { e.stopPropagation(); onPage(r.placeId, it.nextPage); }}
-          title="Afficher les autres sous-lieux">+{it.more}</button>
+          title={t('Afficher les autres sous-lieux')}>+{it.more}</button>
       );
     }
     const p = it.place;
@@ -77,11 +78,12 @@ export function RingChips({ rings, path, expanded, places, byId, ownMaps, onPath
           onPath(isSel && path[path.length - 1] === p.id ? base : [...base, p.id]);
         }}
         onDoubleClick={(e) => { e.stopPropagation(); if (own.length) onEnter(own[0]); }}
-        title={`${p.name}${kids ? ` · ${kids} sous-lieu${kids > 1 ? 'x' : ''}` : ''}${own.length ? ' · double-clic : entrer dans sa carte' : ''}`}>
+        title={[p.name, kids > 0 && tn('{n} sous-lieu', '{n} sous-lieux', kids),
+          own.length > 0 && t('double-clic : entrer dans sa carte')].filter(Boolean).join(' · ')}>
         <PlaceIcon kind={p.kind} size={14} />
         <span className="map-chip__name">{p.name}</span>
         {kids > 0 && <span className="map-chip__count">{kids}</span>}
-        {own.length > 0 && <Icon name="map" size={13} title="A sa propre carte" />}
+        {own.length > 0 && <Icon name="map" size={13} title={t('A sa propre carte')} />}
       </button>
     );
   });
