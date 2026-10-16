@@ -851,7 +851,11 @@ function UpdatesSection() {
             {(() => {
               // Le message enregistré peut dater d'avant la dernière mise à jour : l'état réel prime.
               const upToDate = up.current && up.available && up.current === up.available && up.commits.length === 0;
-              const failed = up.check_message?.startsWith('Échec'); // i18n-ignore (message du service de mise à jour)
+              // check_failed : repère posé par le serveur, quelle que soit la langue du message (traduit). Repli pour
+              // un serveur qui ne le fournit pas : message français du service (« Échec de la vérification : … »).
+              const failed = typeof up.check_failed === 'boolean'
+                ? up.check_failed
+                : Boolean(up.check_message?.startsWith('Échec')); // i18n-ignore (message du service de mise à jour)
               return (
                 <>
                   <h2>

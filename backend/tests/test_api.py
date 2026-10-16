@@ -864,6 +864,11 @@ class AdminSystemTest(unittest.TestCase):
             up = s.call("GET", "/api/admin/system")[1]["updater"]
             self.assertEqual((up["state"], up["log"]), ("rolledback", "Retour automatique"))
             self.assertIn("ne répondait pas", up["message"])
+            self.assertFalse(up["check_failed"])
+            # Échec de la vérification : repère stable check_failed, message traduit selon la langue de la requête.
+            Path(status.name, "info").write_text("current=abc1234\ncheck_message=Échec de la vérification : réseau\n")
+            up = s.call("GET", "/api/admin/system", headers={"Accept-Language": "en"})[1]["updater"]
+            self.assertEqual((up["check_failed"], up["check_message"]), (True, "Check failed: réseau"))
             # Verrou du service dans le dossier d'état : opération en cours ou interrompue.
             Path(status.name, "state").write_text("updating\n")
             Path(status.name, ".lock").touch()
