@@ -1852,7 +1852,11 @@ img.ProseMirror-separator { display: inline !important; border: none !important;
 .char-list__avatar { width: 22px; height: 22px; border-radius: 50%; object-fit: cover; flex: none; }
 .char-list__seal { width: 14px; height: 14px; border-radius: 4px; flex: none; transform: rotate(45deg); margin: 0 4px; }
 .char-list__faction { font-weight: 600; }
-.char-list__count { margin-left: auto; font-size: 12px; color: var(--mist); padding-right: 4px; }
+.char-list__count { margin-left: auto; font-size: 12px; color: var(--mist); padding-right: 4px; display: inline-flex; align-items: center; gap: 6px; flex: none; }
+.char-list__subs { display: inline-flex; align-items: center; gap: 2px; }
+/* Faction aussi membre d'autres factions (affichée sous chacun de ses parents) */
+.char-list__also { display: inline-grid; place-items: center; flex: none; margin-left: auto; color: var(--mist); opacity: 0.8; }
+.char-list__also + .char-list__count { margin-left: 4px; }
 .char-list__none { padding: 8px 12px; font-size: 13.5px; }
 .char-home__kind { color: var(--brass); }
 .characters__main { position: relative; }

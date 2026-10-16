@@ -42,7 +42,7 @@ const ZONE_RULES = {
     'components/EntryDraft.jsx', 'components/Workspace.jsx', 'components/Gallery.jsx', 'components/Lightbox.jsx',
     'components/ImagePicker.jsx', 'components/CreateDialog.jsx', 'components/RelationDialog.jsx',
     'components/RelationPanel.jsx', 'components/RelationTypePicker.jsx', 'components/Legend.jsx', 'graph/', 'fields.js',
-    'entry-fields.generated.js'],
+    'entry-fields.generated.js', 'factionTree.js'],
 };
 export const ZONE_PATTERNS = ZONE_RULES;
 

@@ -123,7 +123,7 @@ Catalogs are split by language **and** by zone so that several people can transl
 | admin | `components/AdminPage.jsx`, `components/ClaudeSection.jsx`, `components/ImagesSection.jsx`, `components/FoundrySection.jsx`, `components/CampaignMenu.jsx`, `components/SessionNotices.jsx`, `components/SearchPalette.jsx`, `session.js` |
 | scenarios | `components/ScenariosView.jsx`, `components/scenarios/`, `editor/`, `components/DocDialogs.jsx`, `components/HistoryPanel.jsx`, `components/CommentsPanel.jsx`, `components/ScenarioFilter.jsx` |
 | places | `components/PlacesView.jsx`, `components/PlaceTree.jsx`, `components/PlaceCrumbs.jsx`, `components/MapsView.jsx`, `components/maps/`, `places.js` |
-| characters | `components/CharactersView.jsx`, `components/EntityPanel.jsx`, `components/EntryNotes.jsx`, `components/EntryDraft.jsx`, `components/Workspace.jsx`, `components/Gallery.jsx`, `components/Lightbox.jsx`, `components/ImagePicker.jsx`, `components/CreateDialog.jsx`, `components/RelationDialog.jsx`, `components/RelationPanel.jsx`, `components/RelationTypePicker.jsx`, `components/Legend.jsx`, `graph/`, `fields.js`, `entry-fields.generated.js` |
+| characters | `components/CharactersView.jsx`, `components/EntityPanel.jsx`, `components/EntryNotes.jsx`, `components/EntryDraft.jsx`, `components/Workspace.jsx`, `components/Gallery.jsx`, `components/Lightbox.jsx`, `components/ImagePicker.jsx`, `components/CreateDialog.jsx`, `components/RelationDialog.jsx`, `components/RelationPanel.jsx`, `components/RelationTypePicker.jsx`, `components/Legend.jsx`, `graph/`, `fields.js`, `entry-fields.generated.js`, `factionTree.js` |
 
 Rules when translating a zone:
 

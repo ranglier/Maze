@@ -42,8 +42,8 @@ Order: database > server > interface > tests. Every REST call of the interface i
 **NPCs, factions, memberships, relations, relationship types**
 - DB: `001_initial.sql`, `002_relation_types.sql`, `013_order_place_kinds.sql` (sort order), `025_entry_revision.sql`, `031_nested_factions.sql` (sub-factions in `memberships`).
 - Server: `api.py` (`/api/npcs`, `/api/factions`, `/api/memberships`, `/api/relations`, `/api/relation-types`; `check_faction_member`, `faction_ancestors` for cycles), `schemas.py`, `defaults.py` (seeded relationship types and place kinds), `entry_history.py` (versions and comments of entries).
-- Interface: `components/CharactersView.jsx`, `EntityPanel.jsx` (sheet, `MembersSection`, `FactionParentsEditor`), `EntryDraft.jsx` (form, `base_revision`, conflicts), `EntryNotes.jsx` (outline, comments, history), `RelationDialog.jsx`, `RelationPanel.jsx`, `RelationTypePicker.jsx`, `relationTypes.js`, `CreateDialog.jsx`.
-- Tests: `test_api` (`RelationTypesTest`), `test_factions`, `test_entries`, `test_connector`; node `elements.test.mjs`; e2e `edition-fiches`, `factions-imbriquees`.
+- Interface: `components/CharactersView.jsx` (index as a faction tree, pure logic in `factionTree.js`), `EntityPanel.jsx` (sheet, `MembersSection`, `FactionParentsEditor`), `EntryDraft.jsx` (form, `base_revision`, conflicts), `EntryNotes.jsx` (outline, comments, history), `RelationDialog.jsx`, `RelationPanel.jsx`, `RelationTypePicker.jsx`, `relationTypes.js`, `CreateDialog.jsx`.
+- Tests: `test_api` (`RelationTypesTest`), `test_factions`, `test_entries`, `test_connector`; node `elements.test.mjs`, `factionTree.test.mjs`; e2e `edition-fiches`, `factions-imbriquees`.
 
 **Entry field registry (NPC, faction, place fields)**
 - `backend/maze/entries.py` is the single source: API models (`schemas.py`), history (`entry_history.FIELDS`), connector (`mcp.ENTRY_FIELDS`), Foundry pages, import (`transfer.py`), interface.
