@@ -31,6 +31,7 @@ TEXT_LIMIT = 16 * MIB
 PUBLIC_LIMIT = 64 * KIB
 GALLERY_FILES = 10      # images d'un envoi vers la galerie d'un PNJ, d'une faction ou d'un lieu (api._upload_images)
 LIBRARY_FILES = 20      # images d'un envoi vers la bibliothèque (media_admin.MAX_FILES)
+IMAGES_DELETE_MAX = 200  # images d'une suppression groupée (Administration > Images, media_admin.delete_images)
 
 IMPORT_ROUTES = {"/api/campaigns/import", "/api/admin/backups/import"}
 UPLOAD_ROUTES = [

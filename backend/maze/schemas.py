@@ -7,7 +7,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, create_model, field_validator
 
-from . import entries
+from . import entries, limits
 
 Kind = Literal["npc", "faction"]
 NpcStatus = Literal[entries.NPC_STATUSES]
@@ -441,6 +441,17 @@ class LibraryAssign(_Strict):
     entity_id: int
     set_cover: bool = False
     remove: bool = False      # retirer de la bibliothèque une fois copiée
+
+
+class ImageRef(_Strict):
+    """Une image de la campagne, quelle que soit sa sorte (Administration > Images)."""
+    source: Literal["library", "gallery", "document", "map"]
+    id: int
+
+
+class ImagesDelete(_Strict):
+    """Suppression groupée (Administration > Images) ; doublons ignorés."""
+    items: Annotated[list[ImageRef], Field(min_length=1, max_length=limits.IMAGES_DELETE_MAX)]
 
 
 class ImageCopy(_Strict):

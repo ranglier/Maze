@@ -918,23 +918,32 @@ def update_image(request: Request) -> Response:
     return JSONResponse(image_out(row))
 
 
+def delete_gallery_images(conn: sqlite3.Connection, rows: list[dict[str, Any]]) -> None:
+    """Supprime des images de galerie (lignes de la table images). Une fiche dont la couverture en faisait partie
+    prend pour portrait / emblème / illustration l'image suivante restante de sa galerie, choisie après toutes les
+    suppressions (aucune si la galerie est vide). Partagé avec Administration > Images (suppression groupée)."""
+    orphaned: set[tuple[str, int]] = set()
+    for row in rows:
+        kind, owner = row["owner_kind"], row["owner_id"]
+        if conn.execute(f"SELECT 1 FROM {TABLES[kind]} WHERE id = ? AND {IMAGE_FIELD[kind]} = ?",
+                        (owner, row["id"])).fetchone():
+            orphaned.add((kind, owner))
+    conn.executemany("DELETE FROM images WHERE id = ?", [(row["id"],) for row in rows])
+    for kind, owner in orphaned:
+        # L'image suivante de la galerie devient le portrait / l'emblème.
+        nxt = conn.execute(
+            "SELECT id FROM images WHERE owner_kind = ? AND owner_id = ? ORDER BY sort_order, id LIMIT 1",
+            (kind, owner)).fetchone()
+        conn.execute(f"UPDATE {TABLES[kind]} SET {IMAGE_FIELD[kind]} = ? WHERE id = ?",
+                     (nxt[0] if nxt else None, owner))
+
+
 @threaded
 def delete_image(request: Request) -> Response:
     iid = path_id(request)
     with tx(request) as conn:
         row = scoped(conn, request, "images", iid, "Image")
-        kind, owner = row["owner_kind"], row["owner_id"]
-        cover_field = IMAGE_FIELD[kind]
-        was_cover = conn.execute(
-            f"SELECT 1 FROM {TABLES[kind]} WHERE id = ? AND {cover_field} = ?", (owner, iid)).fetchone()
-        conn.execute("DELETE FROM images WHERE id = ?", (iid,))
-        if was_cover:
-            # L'image suivante de la galerie devient le portrait / l'emblème.
-            nxt = conn.execute(
-                "SELECT id FROM images WHERE owner_kind = ? AND owner_id = ? ORDER BY sort_order, id LIMIT 1",
-                (kind, owner)).fetchone()
-            conn.execute(f"UPDATE {TABLES[kind]} SET {cover_field} = ? WHERE id = ?",
-                         (nxt[0] if nxt else None, owner))
+        delete_gallery_images(conn, [row])
     imaging.delete_files(settings(request).media_dir, row["file"], row["thumb"])
     return Response(status_code=204)
 

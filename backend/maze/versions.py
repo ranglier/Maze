@@ -37,7 +37,8 @@ FIELDS = "id, kind, label, title, size, author_name, created_at"
 # par un MJ (repris par une version « restore »), ne l'est jamais.
 SYSTEM_LABELS = frozenset({
     "Avant remplacement", "Avant modification par Claude", "Modification par Claude", "Avant restauration",
-    "Avant restauration (navigateur)", "Avant suppression d'une image", "État initial", "État précédent",
+    "Avant restauration (navigateur)", "Avant suppression d'une image", "Avant suppression d'images",
+    "État initial", "État précédent",
 })
 
 
