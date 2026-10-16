@@ -422,6 +422,7 @@ class FoundryApiTest(unittest.TestCase):
         self.assertEqual(code, 200)
         manifest = json.loads(raw)
         self.assertEqual(manifest["id"], "maze-sync")
+        self.assertEqual(manifest["title"], "Maze Sync")   # titre neutre, affiché tel quel dans toutes les langues
         self.assertEqual(manifest["manifest"], f"{self.s.base}/foundry/module.json")
         self.assertEqual(manifest["download"], f"{self.s.base}/foundry/maze-sync.zip")
         code, headers, raw = self.fetch("/foundry/maze-sync.zip")

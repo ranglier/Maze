@@ -1,5 +1,5 @@
 /**
- * Maze - import des fiches (module Foundry VTT 13 et 14, servi par Maze sous /foundry/).
+ * Maze Sync (module Foundry VTT 13 et 14, servi par Maze sous /foundry/) : import des fiches d'une campagne de Maze.
  *
  * Lit l'export d'une campagne de Maze (GET /api/foundry/v1/campaigns/<id>/export, jeton de
  * Administration > Foundry VTT) et crée ou met à jour dans le monde :

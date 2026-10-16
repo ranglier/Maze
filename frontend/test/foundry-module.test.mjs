@@ -565,6 +565,7 @@ test('chargement : réglages du client, menu réservé au MJ, API du module', ()
   const manifest = JSON.parse(fs.readFileSync(path.join(MODULE_DIR, 'module.json'), 'utf8'));
   assert.deepEqual(manifest.esmodules, ['scripts/maze-sync.mjs']);
   assert.equal(manifest.id, MODULE_ID);
+  assert.equal(manifest.title, 'Maze Sync');   // titre neutre : Foundry l'affiche tel quel dans toutes les langues
   assert.deepEqual(manifest.languages.map((l) => [l.lang, l.path]), [['fr', 'lang/fr.json'], ['en', 'lang/en.json']]);
   for (const l of manifest.languages) assert.ok(fs.existsSync(path.join(MODULE_DIR, l.path)), l.path);
 });

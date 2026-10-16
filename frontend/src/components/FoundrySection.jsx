@@ -118,7 +118,7 @@ export default function FoundrySection({ campaigns }) {
   return (
     <>
       <SectionHead title="Foundry VTT"
-        description={t('Le module « Maze - import des fiches » importe dans un monde Foundry les PNJ, factions, lieux et cartes interactives d’une campagne : journaux, scènes avec notes, acteurs (Dark Heresy). Il lit Maze avec un jeton, en lecture seule ; rien ne repart de Foundry vers Maze.')}>
+        description={t('Le module « Maze Sync » importe dans un monde Foundry les PNJ, factions, lieux et cartes interactives d’une campagne : journaux, scènes avec notes, acteurs (Dark Heresy). Il lit Maze avec un jeton, en lecture seule ; rien ne repart de Foundry vers Maze.')}>
         <button type="button" className="btn btn--primary" onClick={() => setDialog({ type: 'create' })}>
           <Icon name="plus" size={16} /> {t('Nouveau jeton')}
         </button>
@@ -136,7 +136,7 @@ export default function FoundrySection({ campaigns }) {
             install: <strong>{t('Installer')}</strong>,
             version: state.module_version,
           })}</li>
-          <li>{t('Dans le monde : {manage}, activer « Maze - import des fiches ».', { manage: <strong>{t('Gérer les modules')}</strong> })}</li>
+          <li>{t('Dans le monde : {manage}, activer « Maze Sync ».', { manage: <strong>{t('Gérer les modules')}</strong> })}</li>
           <li>{t('Onglet {tab} (ou Paramètres > Maze) : saisir l’adresse de Maze et le jeton, {connect}, choisir la campagne, {import}. Un nouvel import met à jour ce qui a changé.', {
             tab: <strong>{t('Journaux > Maze')}</strong>,
             connect: <strong>{t('Se connecter')}</strong>,

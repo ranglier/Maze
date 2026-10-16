@@ -107,7 +107,7 @@
   "Créer le jeton": "Create token",
   "Créé le": "Created",
   "C’est le fond d’une carte interactive : la carte et ses épingles seront supprimées (les lieux restent).": "This is the background of an interactive map: the map and its pins will be deleted (the places remain).",
-  "Dans le monde : {manage}, activer « Maze - import des fiches ».": "In the world: {manage}, enable “Maze - import des fiches”.",
+  "Dans le monde : {manage}, activer « Maze Sync ».": "In the world: {manage}, enable “Maze Sync”.",
   "Dans une conversation, activez le connecteur Maze depuis le menu des outils quand vous voulez travailler avec Claude.": "In a conversation, enable the Maze connector from the tools menu whenever you want to work with Claude.",
   "Date": "Date",
   "Demande transmise au serveur…": "Request sent to the server…",
@@ -209,7 +209,7 @@
     "other": "The {media} folder is missing or empty, and {folder} ({n} files, {size}, {date}) holds the images from before an interrupted restore: they may be the only copy. Put it back before any backup or restore (empty folders in {media} are removed; nothing is moved if it contains a file): {command}."
   },
   "Le module Foundry qui utilise « {name} » ne pourra plus lire Maze. Ce qui a déjà été importé reste dans Foundry.": "The Foundry module that uses “{name}” will no longer be able to read Maze. What has already been imported stays in Foundry.",
-  "Le module « Maze - import des fiches » importe dans un monde Foundry les PNJ, factions, lieux et cartes interactives d’une campagne : journaux, scènes avec notes, acteurs (Dark Heresy). Il lit Maze avec un jeton, en lecture seule ; rien ne repart de Foundry vers Maze.": "The “Maze - import des fiches” module imports a campaign's NPCs, factions, places and interactive maps into a Foundry world: journals, scenes with notes, actors (Dark Heresy). It reads Maze with a token, read-only; nothing goes back from Foundry to Maze.",
+  "Le module « Maze Sync » importe dans un monde Foundry les PNJ, factions, lieux et cartes interactives d’une campagne : journaux, scènes avec notes, acteurs (Dark Heresy). Il lit Maze avec un jeton, en lecture seule ; rien ne repart de Foundry vers Maze.": "The “Maze Sync” module imports a campaign's NPCs, factions, places and interactive maps into a Foundry world: journals, scenes with notes, actors (Dark Heresy). It reads Maze with a token, read-only; nothing goes back from Foundry to Maze.",
   "Le serveur Foundry télécharge le module à cette adresse : s’il est sur le même réseau que Maze et que le nom public ne s’y résout pas, ajoutez-le au conteneur Foundry (extra_hosts de Docker Compose, vers l’adresse du reverse proxy).": "The Foundry server downloads the module from this URL: if it is on the same network as Maze and the public name does not resolve there, add it to the Foundry container (Docker Compose extra_hosts, pointing to the reverse proxy address).",
   "Le service de mise à jour n’est pas installé sur le serveur. Une fois installé (voir docs/fr/guide.md, section « Mise à jour depuis l’interface »), ces boutons deviennent actifs.": "The update service is not installed on the server. Once it is installed (see docs/fr/guide.md, section “Mise à jour depuis l’interface”, updating from the interface), these buttons become active.",
   "Lecture de la bibliothèque": "Read the library",
