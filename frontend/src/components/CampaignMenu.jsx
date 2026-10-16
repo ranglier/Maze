@@ -91,6 +91,29 @@ export default function CampaignMenu({ campaigns, current, onSwitch, onChanged, 
     return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey); };
   }, [open]);
 
+  // Chronologie (module facultatif) : activée ou désactivée pour toute la campagne ; la désactiver ne supprime rien.
+  const toggleTimeline = async () => {
+    setOpen(false);
+    const enable = !current.timeline_enabled;
+    if (!enable) {
+      const count = await api.events(current.id).then((d) => d.events.length).catch(() => 0);
+      const ok = await confirm({
+        title: t('Désactiver la chronologie'),
+        message: count
+          ? tn('L’onglet Chronologie et les sections des fiches seront masqués. Son événement est conservé : il réapparaîtra si vous réactivez la chronologie.',
+            'L’onglet Chronologie et les sections des fiches seront masqués. Ses {n} événements sont conservés : ils réapparaîtront si vous réactivez la chronologie.', count)
+          : t('L’onglet Chronologie et les sections des fiches seront masqués. Vous pourrez la réactiver à tout moment.'),
+        confirmLabel: t('Désactiver'),
+      });
+      if (!ok) return;
+    }
+    const saved = await run(() => api.updateCampaign(current.id, { timeline_enabled: enable }),
+      enable ? t('Chronologie activée') : t('Chronologie désactivée'));
+    if (!saved) return;
+    await onChanged(saved, false);
+    if (enable) window.location.hash = `#/c/${current.id}/chronologie`;
+  };
+
   const remove = async () => {
     setOpen(false);
     const ok = await confirm({
@@ -127,6 +150,12 @@ export default function CampaignMenu({ campaigns, current, onSwitch, onChanged, 
             ))}
           </ul>
           <div className="popover__group popover__group--actions">
+            {current?.timeline_enabled && (
+              <a role="menuitem" className="campaign-menu__phone" href={`#/c/${current.id}/chronologie`}
+                onClick={() => setOpen(false)}>
+                <Icon name="timeline" size={15} /> {t('Chronologie')}
+              </a>
+            )}
             <button type="button" role="menuitem" onClick={() => { setOpen(false); setDialog({}); }}>
               <Icon name="plus" size={15} /> {t('Nouvelle campagne')}
             </button>
@@ -141,6 +170,13 @@ export default function CampaignMenu({ campaigns, current, onSwitch, onChanged, 
                 title={t('Archive .zip : PNJ, factions, liens, scénarios et images, à importer dans un autre Maze')}>
                 <Icon name="download" size={15} /> {t('Exporter « {name} »', { name: current.name })}
               </a>
+            )}
+            {current && (
+              <button type="button" role="menuitem" onClick={toggleTimeline} data-timeline-toggle=""
+                title={t('Frise des événements de la campagne, dans l’ordre de votre choix (module facultatif)')}>
+                <Icon name="timeline" size={15} />
+                {' '}{current.timeline_enabled ? t('Désactiver la chronologie') : t('Activer la chronologie')}
+              </button>
             )}
             <button type="button" role="menuitem" disabled={importer.progress !== null}
               onClick={() => { setOpen(false); importer.pick(); }}>

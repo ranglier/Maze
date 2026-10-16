@@ -18,7 +18,9 @@ import { t } from '../i18n/index.js';
 
 const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 
-export function useEntryDraft({ kind, entry, keys, empty }) {
+/** `update(changes)` : enregistrement (défaut : PATCH de la fiche) ; `newVersion: false` quand la route ne connaît pas
+ * new_version (événements de la chronologie) ; `label` : nom montré dans l'avertissement de saisie en cours. */
+export function useEntryDraft({ kind, entry, keys, empty, update = null, newVersion = true, label = entry.name }) {
   const initial = useRef(null);
   if (initial.current === null) initial.current = Object.fromEntries(keys.map((k) => [k, entry[k] ?? empty(k)]));
   const [draft, setDraftState] = useState(() => ({ ...initial.current }));
@@ -38,7 +40,7 @@ export function useEntryDraft({ kind, entry, keys, empty }) {
   const dirty = changedKeys(draft).length > 0;
 
   const unsavedKey = `entry:${kind}:${entry.id}`;
-  useEffect(() => { setUnsaved(unsavedKey, dirty, entry.name); }, [unsavedKey, dirty, entry.name]);
+  useEffect(() => { setUnsaved(unsavedKey, dirty, label); }, [unsavedKey, dirty, label]);
   useEffect(() => () => setUnsaved(unsavedKey, false), [unsavedKey]);
 
   /** Reprend l'état actuel envoyé avec un 409 ; renvoie les champs en conflit (changés des deux côtés). */
@@ -76,8 +78,8 @@ export function useEntryDraft({ kind, entry, keys, empty }) {
       if (!Object.keys(changes).length) return attempt ? 'saved' : 'unchanged';
       try {
         const guard = base.current == null ? {}
-          : { base_revision: base.current, ...(afterConflict.current ? { new_version: true } : {}) };
-        await api.updateEntity(kind, entry.id, { ...changes, ...guard });
+          : { base_revision: base.current, ...(afterConflict.current && newVersion ? { new_version: true } : {}) };
+        await (update ? update({ ...changes, ...guard }) : api.updateEntity(kind, entry.id, { ...changes, ...guard }));
         setUnsaved(unsavedKey, false);
         return 'saved';
       } catch (err) {

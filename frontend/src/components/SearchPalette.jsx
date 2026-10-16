@@ -18,6 +18,7 @@ const GROUPS = [
   { kind: 'faction', title: () => t('Factions') },
   { kind: 'place', title: () => t('Lieux') },
   { kind: 'document', title: () => t('Fiches rédigées') },
+  { kind: 'event', title: () => t('Événements') },
   { kind: 'comment', title: () => t('Commentaires') },
 ];
 
@@ -51,6 +52,7 @@ const plain = (text) => (text || '').replace(/[\u0002\u0003]/g, '');
 export function resultHref(r, query) {
   if (r.kind === 'npc' || r.kind === 'faction') return `#/c/${r.campaign_id}/personnages/${r.kind}-${r.id}`;
   if (r.kind === 'place') return `#/c/${r.campaign_id}/lieux/${r.id}`;
+  if (r.kind === 'event') return `#/c/${r.campaign_id}/chronologie?event=${r.id}`;
   if (r.kind === 'comment') return `#/c/${r.campaign_id}/scenarios/${r.doc_id}?comment=${r.id}`;
   if (r.kind === 'entry_comment') {
     return r.entry_kind === 'place' ? `#/c/${r.campaign_id}/lieux/${r.entry_id}?comment=${r.id}`
@@ -63,7 +65,7 @@ function docLabel(r) {
   return r.doc_kind === 'campaign' ? t('Fiche de campagne') : (plain(r.doc_title) || t('Sans titre'));
 }
 
-export default function SearchPalette({ campaign, multiple, onClose, onNavigate }) {
+export default function SearchPalette({ campaign, campaigns, multiple, onClose, onNavigate }) {
   const [query, setQuery] = useState('');
   const [scope, setScope] = useState(() => storage.get('maze:search:scope') || 'campaign');
   const [results, setResults] = useState(null);
@@ -98,8 +100,12 @@ export default function SearchPalette({ campaign, multiple, onClose, onNavigate 
   }, [query, scope, campaign]);
 
   // Résultats regroupés par type, dans l'ordre d'affichage (pour la navigation au clavier).
-  const groups = useMemo(() => GROUPS.map((g) => ({ ...g, items: (results || []).filter((r) => r.kind === g.kind || (g.kind === 'comment' && r.kind === 'entry_comment')) }))
-    .filter((g) => g.items.length), [results]);
+  // Événements d'une campagne dont la chronologie est désactivée : rien n'en apparaît (module facultatif).
+  const timelineOn = useMemo(() => new Set((campaigns || [campaign]).filter((c) => c?.timeline_enabled).map((c) => c.id)),
+    [campaigns, campaign]);
+  const groups = useMemo(() => GROUPS.map((g) => ({ ...g, items: (results || []).filter((r) => (r.kind === g.kind
+    && (r.kind !== 'event' || timelineOn.has(r.campaign_id))) || (g.kind === 'comment' && r.kind === 'entry_comment')) }))
+    .filter((g) => g.items.length), [results, timelineOn]);
   const flat = useMemo(() => groups.flatMap((g) => g.items), [groups]);
 
   useEffect(() => {
@@ -175,7 +181,8 @@ export default function SearchPalette({ campaign, multiple, onClose, onNavigate 
                             : <span className="palette__icon palette__icon--place">{r.place_kind_image ? <KindImage src={r.place_kind_image} size={17} />
                               : <Icon name={r.place_kind_icon || placeKind(r.place_kind).icon} size={17} />}</span>
                         ) : (
-                          <span className="palette__icon"><Icon name={r.kind === 'comment' || r.kind === 'entry_comment' ? 'comment' : 'page'} size={17} /></span>
+                          <span className="palette__icon"><Icon name={r.kind === 'comment' || r.kind === 'entry_comment' ? 'comment'
+                            : r.kind === 'event' ? 'timeline' : 'page'} size={17} /></span>
                         )}
                         <span className="palette__text">
                           <span className="palette__title">
@@ -188,7 +195,8 @@ export default function SearchPalette({ campaign, multiple, onClose, onNavigate 
                             {r.kind === 'comment' ? t('sur « {name} »', { name: docLabel(r) })
                               : r.kind === 'entry_comment' ? (ENTRY_COMMENT[r.entry_kind] || ((name) => t('sur « {name} »', { name })))(r.entry_name || '?')
                               : r.kind === 'place' ? `${r.place_kind_label || placeKind(r.place_kind).label}${r.sub ? `, ${r.sub}` : ''}`
-                                : isEntity ? (r.sub || (r.kind === 'npc' ? t('PNJ') : t('Faction'))) : ''}
+                                : isEntity ? (r.sub || (r.kind === 'npc' ? t('PNJ') : t('Faction')))
+                                  : r.kind === 'event' ? (r.date_label ? t('Événement, {date}', { date: r.date_label }) : t('Événement')) : ''}
                             {scope === 'all' && multiple && <span className="palette__campaign">{r.campaign}</span>}
                           </span>
                           {r.snippet && plain(r.snippet).trim() && (
