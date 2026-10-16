@@ -150,7 +150,7 @@ class MessagesTest(unittest.TestCase):
     def test_plain_parameters_are_never_translated(self):
         """Valeur saisie par un MJ qui ressemble à une clé : recopiée telle quelle."""
         m = i18n.msg("La nature « {label} » existe déjà", label="Campagne")
-        self.assertEqual(i18n.translate(m, "en"), "The relation type “Campagne” already exists")
+        self.assertEqual(i18n.translate(m, "en"), "The relationship type “Campagne” already exists")
 
     def test_plain_strings(self):
         self.assertEqual(i18n.translate("Données invalides", "en"), "Invalid data")
@@ -492,7 +492,7 @@ class ServerMessagesTest(unittest.TestCase):
     def test_messages_follow_accept_language(self):
         cid = self.campaign()["id"]
         self.assertEqual(self.s.call("POST", f"/api/campaigns/{cid}/relation-types", {"label": "Allié"}, headers=EN),
-                         (409, {"detail": "The relation type “Allié” already exists"}))
+                         (409, {"detail": "The relationship type “Allié” already exists"}))
         _, kinds = self.s.call("GET", f"/api/campaigns/{cid}/places")
         lieu = next(k for k in kinds["kinds"] if k["key"] == "lieu")
         self.assertEqual(self.s.call("DELETE", f"/api/place-kinds/{lieu['id']}", headers=EN),

@@ -77,7 +77,7 @@ The same applies to `useMemo`, `useState` initialisers and non-React objects (Cy
 
 **Do not name a local variable `t`, `tn`, `pt` or `N_`** in a file that imports them (`list.map((t) => ...)`): it hides the function. The test reports it (esbuild renames such variables `t2`, which gives them away).
 
-**User data is never translated**: campaign, NPC and place names, relation types and place types of a campaign (stored in the database, created in French by older versions), roles typed by the GMs. Built-in fallbacks (`PLACE_KINDS`, the `Autre` relation type) are translated.
+**User data is never translated**: campaign, NPC and place names, relationship types and place types of a campaign (stored in the database, created in French by older versions), roles typed by the GMs. Built-in fallbacks (`PLACE_KINDS`, the `Autre` relationship type) are translated.
 
 **Server messages arrive translated.** `api.js` sends `Accept-Language` with the interface language, and the server translates `detail` (see below). Display `err.message` as it is; do not wrap server messages in `t()`.
 
@@ -101,11 +101,11 @@ Keep the terms consistent (British spelling, as in the README; sentence case: ca
 | type de lieu | place type |
 | faction, appartenance | faction, membership |
 | relation | relationship |
-| nature de lien | relation type |
+| nature de lien | relationship type |
 | carte des relations (onglet) | relationship graph, tab "Graph" (`pt('nav', 'Carte')`) |
 | carte interactive | interactive map |
 | épingle | pin |
-| encadré « Accroche » | "Read-aloud" box (toolbar label: "Aloud", to keep the toolbar on one line) |
+| encadré « Accroche » | "Read-aloud" box (toolbar label: "Aloud": "Read-aloud" wraps the toolbar onto two lines at 1400 px, and "Read" is already the reading mode button above it) |
 | encadré « Secret », champ secret | "GM secret" box / field |
 | version, historique | version, history |
 | sauvegarde | backup |
@@ -144,7 +144,7 @@ Order: account setting (account menu > Language: Automatic / Français / English
 | Catalog | Content |
 |---|---|
 | `server.json` | API error messages and responses, real-time refusals, names of automatic versions, messages of the host update service |
-| `seeds.json` | Data created with each campaign: relation types, place types, default titles, "(copy)" suffix… |
+| `seeds.json` | Data created with each campaign: relationship types, place types, default titles, "(copy)" suffix… |
 | `foundry.json` | Pages composed by Maze for the Foundry VTT module (headings, facts, statuses), names of folders and pages created in the world (keys `foundry\|…`) |
 | `oauth.json` | Authorisation page of the Claude connector |
 | `demo.json` | Demo campaign (`python -m maze.demo --lang en`) |
@@ -158,7 +158,7 @@ Language of a request (`i18n.request_locale`): the signed-in account, else the `
 - exceptions that carry a message (`ImageError`, `ArchiveError`, `TransferError`…) are given a `msg`; read it back with `i18n.message(exc)`, never `str(exc)`, which loses the template;
 - text composed directly in a given language (created data, Foundry pages, the OAuth page): `i18n.tr(template, locale, **params)`; same French text, different translations: `i18n.ptr(context, text, locale)`, catalog key `"context|text"` (like `pt()`); anything else (a JSON field other than `detail`): `i18n.translate(text, locale)` with `i18n.request_locale(scope)`.
 
-Data created by Maze (relation types, place types, default titles) is created in the language of the person who creates it and never translated afterwards; the keys (`allie`, `batiment`, `lieu`…) are the same in every language.
+Data created by Maze (relationship types, place types, default titles) is created in the language of the person who creates it and never translated afterwards; the keys (`allie`, `batiment`, `lieu`…) are the same in every language.
 
 Stay in French on purpose: server logs, the tools of the Claude connector (`mcp*.py`: names, descriptions and messages read by Claude) and its log, the detailed guide `docs/fr/guide.md`, internal values (keys, `status` values such as `vivant`, archive origins such as `quotidienne`).
 
