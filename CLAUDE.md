@@ -143,7 +143,7 @@ Order: database > server > interface > tests. Every REST call of the interface i
 1. New file `backend/maze/migrations/NNN_name.sql`, NNN = highest existing + 1 (currently 031). Never edit a released one (checksum recorded).
 2. No `BEGIN`/`COMMIT` in the file: `db.migrate` wraps it in one transaction with foreign keys suspended, then checked.
 3. New table whose id is cited elsewhere: `INTEGER PRIMARY KEY AUTOINCREMENT`. Rebuilt table: recreate all its indexes and triggers.
-4. Data that belongs to a campaign: add it to export / import (`transfer.SECTIONS`) and to campaign deletion; check restore (`backup.py`).
+4. Data that belongs to a campaign: give it a foreign key to its campaign (or parent row) with `ON DELETE CASCADE`, since deleting a campaign relies on cascades; add it to export / import (`transfer.SECTIONS`); restore needs nothing (whole database).
 5. Test the upgrade from an existing database: `cd backend && python -m unittest tests.test_migrations` plus the domain test.
 6. Mention the migration in the pull request and in `docs/ARCHITECTURE.md`.
 
@@ -187,7 +187,7 @@ Run from the repository root unless stated.
 - Claude connector tool descriptions and messages stay in French (read by Claude), as do server logs.
 - Foundry hashes: page HTML in French must stay byte-identical, or every imported page looks modified in Foundry; fixed hashes in `foundry-module.test.mjs`.
 - `maze-sync.mjs` has no `import` / `export`: the node test loads it as is in `node:vm`.
-- `base_revision`: PATCH of an entry and connector `update_document` / `update_entry` compare it; 409 returns the current state. Send only changed fields.
+- `base_revision`: PATCH of an entry compares it and returns 409 with the current state on conflict; required by connector `update_document`, optional for `update_entry`. Send only changed fields.
 - Every route that takes an object id checks its campaign (`api.scoped` / `auth.can_access`); request bodies are size-limited (`limits.py`).
 - Database work runs off the event loop: `@api.threaded` routes, or `await api.in_tx(request, work)`; GET is a read-only transaction.
 - Server tests wait with `test_api.wait_until`, not a fixed `sleep`.
