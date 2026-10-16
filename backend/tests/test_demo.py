@@ -42,11 +42,14 @@ class DemoTest(unittest.TestCase):
             with closing(sqlite3.connect(Path(tmp) / "maze.db")) as conn:
                 count = lambda sql: conn.execute(sql, (cid,)).fetchone()[0]  # noqa: E731
                 self.assertEqual(count("SELECT COUNT(*) FROM npcs WHERE campaign_id = ?"), 9)
-                self.assertEqual(count("SELECT COUNT(*) FROM factions WHERE campaign_id = ?"), 4)
+                self.assertEqual(count("SELECT COUNT(*) FROM factions WHERE campaign_id = ?"), 5)
                 self.assertEqual(count("SELECT COUNT(*) FROM places WHERE campaign_id = ?"), 13)
                 self.assertEqual(count("SELECT COUNT(*) FROM relations WHERE campaign_id = ?"), 12)
                 self.assertEqual(count("""SELECT COUNT(*) FROM memberships m JOIN npcs n ON n.id = m.npc_id
                                            WHERE n.campaign_id = ?"""), 9)
+                # Sous-factions (migration 031) : la Garde et la maison Valcourt membres du Conseil du Port.
+                self.assertEqual(count("""SELECT COUNT(*) FROM memberships m JOIN factions f ON f.id = m.faction_id
+                                           WHERE f.campaign_id = ? AND m.member_faction_id IS NOT NULL"""), 2)
                 self.assertEqual(count("""SELECT COUNT(*) FROM place_links l JOIN places p ON p.id = l.place_id
                                            WHERE p.campaign_id = ?"""), 14)
                 # Chaque lieu a un type connu de la campagne (sans quoi l'interface et le connecteur le
@@ -66,7 +69,10 @@ class DemoTest(unittest.TestCase):
             code, graph = s.call("GET", f"/api/campaigns/{cid}/graph")
             self.assertEqual(code, 200)
             self.assertEqual(len(graph["npcs"]), 9)
-            self.assertEqual(len(graph["factions"]), 4)
+            self.assertEqual(len(graph["factions"]), 5)
+            nested = [m for m in graph["memberships"] if m["member_faction_id"]]
+            self.assertEqual(len(nested), 2)
+            self.assertEqual({m["npc_id"] for m in nested}, {None})
             code, places = s.call("GET", f"/api/campaigns/{cid}/places")
             self.assertEqual(code, 200)
             code, found = s.call("GET", "/api/search?q=Corvin")
