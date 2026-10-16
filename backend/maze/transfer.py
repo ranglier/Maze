@@ -77,7 +77,9 @@ SECTIONS: tuple[tuple[str, str], ...] = (
     ("place_kinds", "SELECT * FROM place_kinds WHERE campaign_id = ? ORDER BY sort_order, id"),
     ("factions", "SELECT * FROM factions WHERE campaign_id = ?"),
     ("npcs", "SELECT * FROM npcs WHERE campaign_id = ?"),
-    ("memberships", "SELECT m.* FROM memberships m JOIN npcs n ON n.id = m.npc_id WHERE n.campaign_id = ?"),
+    # Membres PNJ et sous-factions (member_faction_id, migration 031) : campagne de la faction.
+    ("memberships", "SELECT m.* FROM memberships m JOIN factions f ON f.id = m.faction_id WHERE f.campaign_id = ? "
+                    "ORDER BY m.id"),
     ("relations", "SELECT * FROM relations WHERE campaign_id = ?"),
     ("images", "SELECT * FROM images WHERE campaign_id = ?"),
     ("documents", "SELECT * FROM documents WHERE campaign_id = ? ORDER BY id"),
@@ -382,12 +384,41 @@ def _import_rows(db_path: Path, data: dict[str, Any], valid: set[str], user_id: 
                 ids[kind][row.get("id")] = new_id
                 portraits.append((table, new_id, row.get(ref)))
 
+        # Appartenances : PNJ membres (toutes les versions), sous-factions (member_faction_id, archives depuis la
+        # migration 031). Une archive ancienne n'a que des PNJ ; une archive modifiée à la main ne peut pas créer
+        # d'appartenance à soi-même ni de cycle (ligne ignorée, comme une référence absente).
+        parents_of: dict[int, set[int]] = collections.defaultdict(set)
+
+        def reaches(start: int, goal: int) -> bool:
+            """goal est-elle start ou une faction dont start est membre, directement ou non ?"""
+            seen, stack = set(), [start]
+            while stack:
+                cur = stack.pop()
+                if cur == goal:
+                    return True
+                if cur not in seen:
+                    seen.add(cur)
+                    stack.extend(parents_of[cur])
+            return False
+
         for row in data.get("memberships", []):
-            npc, faction = ids["npc"].get(row.get("npc_id")), ids["faction"].get(row.get("faction_id"))
-            if npc and faction:
-                values = _clean(conn, "memberships", row, {"id", "npc_id", "faction_id"})
+            if not isinstance(row, dict):
+                raise TransferError(msg("Donnée invalide dans {table}", table="memberships"))
+            faction = ids["faction"].get(row.get("faction_id"))
+            npc = ids["npc"].get(row.get("npc_id")) if row.get("npc_id") is not None else None
+            sub = (ids["faction"].get(row.get("member_faction_id"))
+                   if row.get("member_faction_id") is not None and npc is None else None)
+            if not faction or not (npc or sub):
+                continue
+            values = _clean(conn, "memberships", row, {"id", "npc_id", "faction_id", "member_faction_id"})
+            role = values.get("role") if isinstance(values.get("role"), str) else ""
+            if npc:
                 conn.execute("INSERT OR IGNORE INTO memberships (npc_id, faction_id, role, is_leader) VALUES (?, ?, ?, ?)",
-                             (npc, faction, values.get("role", ""), int(bool(values.get("is_leader")))))
+                             (npc, faction, role, int(bool(values.get("is_leader")))))
+            elif not reaches(faction, sub):
+                conn.execute("INSERT OR IGNORE INTO memberships (member_faction_id, faction_id, role) VALUES (?, ?, ?)",
+                             (sub, faction, role))
+                parents_of[sub].add(faction)
 
         for row in data.get("relations", []):
             src = ids.get(row.get("source_kind"), {}).get(row.get("source_id"))

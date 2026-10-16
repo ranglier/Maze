@@ -185,7 +185,8 @@ class Context:
 
     def campaign_of(self, table: str, row_id: int) -> int | None:
         queries = {
-            "memberships": "SELECT n.campaign_id FROM memberships m JOIN npcs n ON n.id = m.npc_id WHERE m.id = ?",
+            "memberships": "SELECT f.campaign_id FROM memberships m JOIN factions f ON f.id = m.faction_id "
+                           "WHERE m.id = ?",
             "place_links": "SELECT p.campaign_id FROM place_links l JOIN places p ON p.id = l.place_id WHERE l.id = ?",
         }
         sql = queries.get(table, f"SELECT campaign_id FROM {table} WHERE id = ?")
@@ -352,23 +353,30 @@ async def get_campaign(ctx: Context, args: dict[str, Any]) -> Any:
                 "SELECT id, name, kind, summary, tags FROM factions WHERE campaign_id = ? "
                 "ORDER BY sort_order, name COLLATE NOCASE", (cid,)).fetchall())
             members: dict[int, list[dict[str, Any]]] = {}
-            for m in conn.execute("""SELECT m.npc_id, m.faction_id, m.role, m.is_leader FROM memberships m
-                                       JOIN npcs n ON n.id = m.npc_id WHERE n.campaign_id = ?""", (cid,)):
-                members.setdefault(m["npc_id"], []).append(
-                    {"faction_id": m["faction_id"], "role": m["role"], "leader": bool(m["is_leader"])})
+            parents: dict[int, list[dict[str, Any]]] = {}
+            for m in conn.execute("""SELECT m.npc_id, m.member_faction_id, m.faction_id, m.role, m.is_leader
+                                       FROM memberships m JOIN factions f ON f.id = m.faction_id
+                                      WHERE f.campaign_id = ? ORDER BY m.id""", (cid,)):
+                if m["npc_id"] is not None:
+                    members.setdefault(m["npc_id"], []).append(
+                        {"faction_id": m["faction_id"], "role": m["role"], "leader": bool(m["is_leader"])})
+                else:   # sous-faction (migration 031)
+                    parents.setdefault(m["member_faction_id"], []).append(
+                        {"faction_id": m["faction_id"], "role": m["role"]})
             relation_types = db.rows_to_dicts(conn.execute(
                 "SELECT key, label, directed, hint FROM relation_types WHERE campaign_id = ? ORDER BY sort_order, id",
                 (cid,)).fetchall())
             relation_count = conn.execute("SELECT COUNT(*) FROM relations WHERE campaign_id = ?", (cid,)).fetchone()[0]
-        return npcs, factions, members, relation_types, relation_count
+        return npcs, factions, members, parents, relation_types, relation_count
 
-    npcs, factions, members, relation_types, relation_count = await run_in_threadpool(load)
+    npcs, factions, members, parents, relation_types, relation_count = await run_in_threadpool(load)
     totals = {"npcs": len(npcs), "factions": len(factions), "places": len(places["places"])}
     for n in npcs:
         n["summary"] = _short(n["summary"])
         n["factions"] = members.get(n["id"], [])
     for f in factions:
         f["summary"] = _short(f["summary"])
+        f["member_of"] = parents.get(f["id"], [])
     lists = {
         "npcs": npcs, "factions": factions,
         "places": [{"id": p["id"], "parent_id": p["parent_id"], "name": p["name"], "kind": p["kind"],
@@ -399,7 +407,9 @@ def _fit_overview(out: dict[str, Any], lists: dict[str, list[dict[str, Any]]]) -
     compact = {
         "npcs": [{"id": n["id"], "name": n["name"], "title": n["title"], "status": n["status"],
                   "factions": [m["faction_id"] for m in n["factions"]]} for n in lists["npcs"]],
-        "factions": [{"id": f["id"], "name": f["name"], "kind": f["kind"]} for f in lists["factions"]],
+        "factions": [{"id": f["id"], "name": f["name"], "kind": f["kind"],
+                      **({"member_of": [m["faction_id"] for m in f["member_of"]]} if f.get("member_of") else {})}
+                     for f in lists["factions"]],
         "places": [{"id": p["id"], "parent_id": p["parent_id"], "name": p["name"], "kind": p["kind"]}
                    for p in lists["places"]],
     }
@@ -430,6 +440,7 @@ async def get_entry(ctx: Context, args: dict[str, Any]) -> Any:
         with ctx.transaction() as conn:
             row["relations"] = _relations(conn, row["campaign_id"], kind, eid)[0]
             column = "npc_id" if kind == "npc" else "faction_id"
+            # PNJ membres (d'un PNJ : ses factions), puis, pour une faction, ses sous-factions (migration 031).
             row["memberships"] = [
                 {"id": m["id"], "npc_id": m["npc_id"], "npc": m["npc"], "faction_id": m["faction_id"],
                  "faction": m["faction"], "role": m["role"], "leader": bool(m["is_leader"])}
@@ -437,6 +448,19 @@ async def get_entry(ctx: Context, args: dict[str, Any]) -> Any:
                     f"""SELECT m.*, n.name AS npc, f.name AS faction FROM memberships m
                           JOIN npcs n ON n.id = m.npc_id JOIN factions f ON f.id = m.faction_id
                          WHERE m.{column} = ? ORDER BY n.name COLLATE NOCASE""", (eid,))]
+            if kind == "faction":
+                row["memberships"] += [
+                    {"id": m["id"], "member_faction_id": m["member_faction_id"], "member_faction": m["sub"],
+                     "faction_id": m["faction_id"], "faction": m["faction"], "role": m["role"]}
+                    for m in conn.execute(
+                        """SELECT m.*, s.name AS sub, f.name AS faction FROM memberships m
+                             JOIN factions s ON s.id = m.member_faction_id JOIN factions f ON f.id = m.faction_id
+                            WHERE m.faction_id = ? ORDER BY s.name COLLATE NOCASE""", (eid,))]
+                row["member_of"] = [
+                    {"id": m["id"], "faction_id": m["faction_id"], "faction": m["faction"], "role": m["role"]}
+                    for m in conn.execute(
+                        """SELECT m.*, f.name AS faction FROM memberships m JOIN factions f ON f.id = m.faction_id
+                            WHERE m.member_faction_id = ? ORDER BY f.name COLLATE NOCASE""", (eid,))]
     if args.get("include_comments") in (True, "true", 1):
         row["comments"] = await ctx.api("GET", f"/api/{ENTRY_PATHS[kind]}/{eid}/comments")
     return row
@@ -548,30 +572,42 @@ async def delete_relation(ctx: Context, args: dict[str, Any]) -> Any:
     return {"deleted": rid}
 
 
+def _member(ctx: Context, args: dict[str, Any]) -> tuple[str, int, int]:
+    """Membre désigné par npc_id (PNJ) ou member_faction_id (sous-faction), et faction visée ; droits vérifiés."""
+    faction_id = _int(args, "faction_id")
+    npc_id, sub_id = _int(args, "npc_id", required=False), _int(args, "member_faction_id", required=False)
+    if (npc_id is None) == (sub_id is None):
+        raise ToolError("Indiquer un seul membre : npc_id (PNJ) ou member_faction_id (faction)")
+    column, member_id = ("npc_id", npc_id) if npc_id is not None else ("member_faction_id", sub_id)
+    ctx.target = f"{'npc' if npc_id is not None else 'faction'}:{member_id}>faction:{faction_id}"
+    if npc_id is not None:
+        ctx.check_write(ctx.campaign_of("npcs", npc_id), "PNJ")
+    else:
+        ctx.check_write(ctx.campaign_of("factions", sub_id), "Faction")
+    return column, member_id, faction_id
+
+
 async def set_membership(ctx: Context, args: dict[str, Any]) -> Any:
-    npc_id, faction_id = _int(args, "npc_id"), _int(args, "faction_id")
-    ctx.target = f"npc:{npc_id}>faction:{faction_id}"
-    ctx.check_write(ctx.campaign_of("npcs", npc_id), "PNJ")
+    column, member_id, faction_id = _member(ctx, args)
     body = {k: args[k] for k in ("role", "is_leader") if args.get(k) is not None}
     with ctx.transaction() as conn:
-        found = conn.execute("SELECT id FROM memberships WHERE npc_id = ? AND faction_id = ?",
-                             (npc_id, faction_id)).fetchone()
+        found = conn.execute(f"SELECT id FROM memberships WHERE {column} = ? AND faction_id = ?",
+                             (member_id, faction_id)).fetchone()
     if found:
         return await ctx.api("PATCH", f"/api/memberships/{found[0]}", body, write=True)
-    return await ctx.api("POST", "/api/memberships", {"npc_id": npc_id, "faction_id": faction_id, **body}, write=True)
+    return await ctx.api("POST", "/api/memberships", {column: member_id, "faction_id": faction_id, **body}, write=True)
 
 
 async def remove_membership(ctx: Context, args: dict[str, Any]) -> Any:
-    npc_id, faction_id = _int(args, "npc_id"), _int(args, "faction_id")
-    ctx.target = f"npc:{npc_id}>faction:{faction_id}"
-    ctx.check_write(ctx.campaign_of("npcs", npc_id), "PNJ")
+    column, member_id, faction_id = _member(ctx, args)
     with ctx.transaction() as conn:
-        found = conn.execute("SELECT id FROM memberships WHERE npc_id = ? AND faction_id = ?",
-                             (npc_id, faction_id)).fetchone()
+        found = conn.execute(f"SELECT id FROM memberships WHERE {column} = ? AND faction_id = ?",
+                             (member_id, faction_id)).fetchone()
     if not found:
-        raise ToolError("Ce PNJ n'est pas membre de cette faction")
+        raise ToolError("Ce PNJ n'est pas membre de cette faction" if column == "npc_id"
+                        else "Cette faction n'est pas membre de cette faction")
     await ctx.api("DELETE", f"/api/memberships/{found[0]}", write=True)
-    return {"removed": {"npc_id": npc_id, "faction_id": faction_id}}
+    return {"removed": {column: member_id, "faction_id": faction_id}}
 
 
 def _place_link(ctx: Context, args: dict[str, Any]) -> tuple[int, str, int, int | None]:
@@ -723,12 +759,14 @@ TOOLS = [
           {"query": {"type": "string"}, "campaign_id": {**ID, "description": "Limiter à une campagne"}},
           ["query"], search),
     _tool("get_campaign", "Vue d'ensemble d'une campagne",
-          "Arbre des fiches rédigées (fiche de campagne > scénarios > pages), PNJ (avec factions), factions, "
+          "Arbre des fiches rédigées (fiche de campagne > scénarios > pages), PNJ (avec factions), factions (avec "
+          "member_of : factions dont elle est membre), "
           "lieux (arbre), types de lieux et natures de lien. Résumés abrégés ; sur une grosse campagne, listes "
           "compactes ou tronquées (effectifs dans totals, voir note) : get_entry et search pour le détail.",
           {"campaign_id": ID}, ["campaign_id"], get_campaign),
-    _tool("get_entry", "Lire une fiche", "Fiche complète d'un PNJ, d'une faction ou d'un lieu (liens, appartenances, "
-          "lieux, fiches rédigées qui la citent, cartes de scénario ; commentaires sur demande).",
+    _tool("get_entry", "Lire une fiche", "Fiche complète d'un PNJ, d'une faction ou d'un lieu (liens, appartenances : "
+          "membres PNJ et sous-factions d'une faction, factions dont elle est membre dans member_of ; lieux, fiches "
+          "rédigées qui la citent, cartes de scénario ; commentaires sur demande).",
           {"kind": ENTRY_KIND, "id": ID, "include_comments": {"type": "boolean"}}, ["kind", "id"], get_entry),
     _tool("list_relations", "Liens de la campagne",
           f"Liens entre PNJ et factions (par pages : limit, {RELATIONS_DEFAULT} par défaut, au plus {RELATIONS_MAX} ; "
@@ -765,11 +803,17 @@ TOOLS = [
     _tool("delete_relation", "Supprimer un lien", "Supprime un lien entre deux fiches (les fiches restent).",
           {"relation_id": ID}, ["relation_id"], delete_relation, write=True, destructive=True),
     _tool("set_membership", "Appartenance à une faction",
-          "Rend un PNJ membre d'une faction, ou modifie son rôle (role) et s'il la dirige (is_leader).",
-          {"npc_id": ID, "faction_id": ID, "role": {"type": "string"}, "is_leader": {"type": "boolean"}},
-          ["npc_id", "faction_id"], set_membership, write=True),
-    _tool("remove_membership", "Retirer d'une faction", "Retire un PNJ d'une faction.",
-          {"npc_id": ID, "faction_id": ID}, ["npc_id", "faction_id"], remove_membership, write=True, destructive=True),
+          "Rend membre d'une faction (faction_id) un PNJ (npc_id) ou une autre faction (member_faction_id, qui en "
+          "devient une sous-faction ; une faction peut être membre de plusieurs factions, mais ni d'elle-même ni "
+          "d'une de ses propres sous-factions : pas de cycle), ou modifie son rôle (role). is_leader : le PNJ dirige "
+          "la faction (PNJ seulement).",
+          {"faction_id": ID, "npc_id": ID, "member_faction_id": ID, "role": {"type": "string"},
+           "is_leader": {"type": "boolean"}},
+          ["faction_id"], set_membership, write=True),
+    _tool("remove_membership", "Retirer d'une faction",
+          "Retire d'une faction (faction_id) un PNJ (npc_id) ou une sous-faction (member_faction_id).",
+          {"faction_id": ID, "npc_id": ID, "member_faction_id": ID}, ["faction_id"], remove_membership, write=True,
+          destructive=True),
     _tool("set_place_link", "Relier à un lieu",
           "Relie un PNJ ou une faction à un lieu avec un rôle libre (« tenancier », « repaire »…), ou change ce rôle.",
           {"place_id": ID, "entity_kind": LINK_KIND, "entity_id": ID, "role": {"type": "string"}},

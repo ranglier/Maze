@@ -130,7 +130,8 @@ def campaign_of(conn: sqlite3.Connection, table: str, row: dict[str, Any]) -> in
     if table == "campaigns":
         return row["id"]
     if table == "memberships":
-        found = conn.execute("SELECT campaign_id FROM npcs WHERE id = ?", (row["npc_id"],)).fetchone()
+        # Campagne de la faction (toujours renseignée), que le membre soit un PNJ ou une sous-faction.
+        found = conn.execute("SELECT campaign_id FROM factions WHERE id = ?", (row["faction_id"],)).fetchone()
         return found[0] if found else None
     if table == "place_links":
         found = conn.execute("SELECT campaign_id FROM places WHERE id = ?", (row["place_id"],)).fetchone()
@@ -422,8 +423,8 @@ def _load_graph(request: Request, cid: int) -> dict[str, Any]:
                  FROM factions f LEFT JOIN images i ON i.id = f.emblem_image_id
                 WHERE f.campaign_id = ? ORDER BY f.name COLLATE NOCASE""", (cid,)).fetchall())
         memberships = db.rows_to_dicts(conn.execute(
-            """SELECT m.* FROM memberships m JOIN npcs n ON n.id = m.npc_id
-                WHERE n.campaign_id = ?""", (cid,)).fetchall())
+            """SELECT m.* FROM memberships m JOIN factions f ON f.id = m.faction_id
+                WHERE f.campaign_id = ? ORDER BY m.id""", (cid,)).fetchall())
         # Colonnes utiles à la carte seulement : les liens sont l'essentiel du volume.
         relations = db.rows_to_dicts(conn.execute(
             """SELECT id, source_kind, source_id, target_kind, target_id, type, label,
@@ -616,18 +617,52 @@ def _delete_entity(kind: str):
 
 # --- Appartenances ---------------------------------------------------------
 
+def faction_ancestors(conn: sqlite3.Connection, faction_id: int) -> set[int]:
+    """La faction et toutes celles dont elle est membre, directement ou non (UNION : s'arrête même sur un cycle)."""
+    return {r[0] for r in conn.execute(
+        """WITH RECURSIVE up(id) AS (
+               SELECT ? UNION SELECT m.faction_id FROM memberships m JOIN up ON m.member_faction_id = up.id)
+           SELECT id FROM up""", (faction_id,))}
+
+
+def check_faction_member(conn: sqlite3.Connection, member: dict[str, Any], faction: dict[str, Any]) -> None:
+    """Règles d'une faction membre d'une autre : même campagne, pas elle-même, pas de cycle (A dans B dans A, ou
+    plus long). Le reste (une seule fois par paire, pas de chef) est aussi tenu par la base (migration 031)."""
+    if member["campaign_id"] != faction["campaign_id"]:
+        raise HTTPException(400, "Les deux factions ne sont pas dans la même campagne")
+    if member["id"] == faction["id"]:
+        raise HTTPException(400, "Une faction ne peut pas être membre d'elle-même")
+    if member["id"] in faction_ancestors(conn, faction["id"]):
+        raise HTTPException(400, msg("« {faction} » est déjà membre, directement ou non, de « {member} » : cette appartenance formerait un cycle",  # noqa: E501
+                                     faction=faction["name"], member=member["name"]))
+
+
 @threaded
 def create_membership(request: Request) -> Response:
+    """Membre d'une faction : un PNJ (npc_id) ou une autre faction (member_faction_id), qui en devient une
+    sous-faction."""
     data = parse_body(request, MembershipCreate)
+    if (data.npc_id is None) == (data.member_faction_id is None):
+        raise HTTPException(400, "Indiquez un seul membre : un PNJ (npc_id) ou une faction (member_faction_id)")
     with tx(request) as conn:
-        npc = scoped(conn, request, "npcs", data.npc_id, "PNJ")
-        faction = scoped(conn, request, "factions", data.faction_id, "Faction")
-        if npc["campaign_id"] != faction["campaign_id"]:
-            raise HTTPException(400, "Le PNJ et la faction ne sont pas dans la même campagne")
+        if data.npc_id is not None:
+            npc = scoped(conn, request, "npcs", data.npc_id, "PNJ")
+            faction = scoped(conn, request, "factions", data.faction_id, "Faction")
+            if npc["campaign_id"] != faction["campaign_id"]:
+                raise HTTPException(400, "Le PNJ et la faction ne sont pas dans la même campagne")
+        else:
+            member = scoped(conn, request, "factions", data.member_faction_id, "Faction")
+            faction = scoped(conn, request, "factions", data.faction_id, "Faction")
+            if data.is_leader:
+                raise HTTPException(400, "Seul un PNJ peut diriger une faction")
+            check_faction_member(conn, member, faction)
         try:
-            new_id = db.insert(conn, "memberships", data.model_dump())
+            new_id = db.insert(conn, "memberships", data.model_dump(exclude_none=True))
         except sqlite3.IntegrityError:
-            raise HTTPException(409, "Ce PNJ est déjà membre de cette faction") from None
+            if data.npc_id is not None:
+                raise HTTPException(409, "Ce PNJ est déjà membre de cette faction") from None
+            raise HTTPException(409, msg("« {member} » est déjà membre de « {faction} »",
+                                         member=member["name"], faction=faction["name"])) from None
         row = scoped(conn, request, "memberships", new_id, "Appartenance")
     return JSONResponse(row, status_code=201)
 
@@ -637,7 +672,9 @@ def update_membership(request: Request) -> Response:
     mid = path_id(request)
     data = parse_body(request, MembershipUpdate)
     with tx(request) as conn:
-        scoped(conn, request, "memberships", mid, "Appartenance")
+        current = scoped(conn, request, "memberships", mid, "Appartenance")
+        if current["member_faction_id"] is not None and data.is_leader:
+            raise HTTPException(400, "Seul un PNJ peut diriger une faction")
         db.update(conn, "memberships", mid, data.model_dump(exclude_unset=True), touch=False)
         row = scoped(conn, request, "memberships", mid, "Appartenance")
     return JSONResponse(row)

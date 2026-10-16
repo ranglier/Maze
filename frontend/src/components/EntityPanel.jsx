@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useState } from 'react';
 import { api } from '../api.js';
 import { FACTION_COLORS, KIND_LABEL, NPC_STATUS, PLACE_ROLES, placeKind } from '../constants.js';
 import { typeIndex, typeOf } from '../relationTypes.js';
@@ -10,7 +10,7 @@ import RichField from './RichField.jsx';
 import { mentionEntities } from './mentionEntities.js';
 import { ConflictPanel, useEntryDraft } from './EntryDraft.jsx';
 import { Field, Icon, KindImage, Markdown, TagInput, useAction, useConfirm, useToast } from './ui.jsx';
-import { N_, compareText, pt, t } from '../i18n/index.js';
+import { N_, compareText, pt, t, tn } from '../i18n/index.js';
 
 /**
  * Fiche PNJ / faction. Sur la carte : panneau latéral. Dans l'index des personnages (`page`) :
@@ -107,7 +107,9 @@ function EntityView({ kind, entity, graph, nodeName, resolveRef, onOpenNode, onO
   const cover = entity.images.find((i) => i.id === coverId);
   const factionById = useMemo(() => new Map(graph.factions.map((f) => [f.id, f])), [graph]);
   const npcById = useMemo(() => new Map(graph.npcs.map((n) => [n.id, n])), [graph]);
+  // PNJ : ses factions. Faction : ses membres (PNJ et sous-factions) ; parents : factions dont elle est membre.
   const memberships = graph.memberships.filter((m) => (kind === 'npc' ? m.npc_id : m.faction_id) === entity.id);
+  const parents = kind === 'faction' ? graph.memberships.filter((m) => m.member_faction_id === entity.id) : [];
   const ringColor = kind === 'npc'
     ? (factionById.get((memberships.find((m) => m.is_leader) || memberships[0])?.faction_id)?.color || '#5d6b80')
     : entity.color;
@@ -166,29 +168,28 @@ function EntityView({ kind, entity, graph, nodeName, resolveRef, onOpenNode, onO
         </div>
       )}
 
-      {kind === 'faction' && (
-        <section className="panel-section" data-entry-section="members" data-entry-label={t('Membres')}>
-          <div className="panel-section__head"><h3>{t('Membres')}</h3><span className="count">{memberships.length}</span></div>
-          {memberships.length === 0 ? (
-            <p className="muted">{t('Aucun membre. Ajoutez une faction depuis la fiche d\'un PNJ, ou liez un PNJ à cette faction.')}</p>
-          ) : (
-            <ul className="member-list">
-              {[...memberships].sort((a, b) => Number(b.is_leader) - Number(a.is_leader)).map((m) => {
-                const n = npcById.get(m.npc_id);
-                return n && (
-                  <li key={m.id}>
-                    <button type="button" onClick={() => onOpenNode(nodeId('npc', n.id))}>
-                      <img src={n.portrait_thumb || initialsAvatar(n.name, entity.color)} alt="" />
-                      <span className="member-list__name">{n.status === 'mort' ? `† ${n.name}` : n.name}</span>
-                      <span className="member-list__role">{m.role || (m.is_leader ? t('Dirigeant') : n.title)}</span>
-                      {m.is_leader && <Icon name="star" size={13} title={t('Dirigeant')} />}
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
+      {parents.length > 0 && (
+        <section className="panel-section" data-entry-section="member-of" data-entry-label={t('Membre de')}>
+          <div className="panel-section__head"><h3>{t('Membre de')}</h3><span className="count">{parents.length}</span></div>
+          <div className="chips chips--parents">
+            {parents.map((m) => {
+              const f = factionById.get(m.faction_id);
+              return f && (
+                <button key={m.id} type="button" className="chip" style={{ '--chip': f.color }}
+                  onClick={() => onOpenNode(nodeId('faction', f.id))}>
+                  <span className="chip__dot" />
+                  {f.name}
+                  {m.role && <span className="chip__role">{m.role}</span>}
+                </button>
+              );
+            })}
+          </div>
         </section>
+      )}
+
+      {kind === 'faction' && (
+        <MembersSection key={entity.id} faction={entity} memberships={memberships} npcById={npcById}
+          factionById={factionById} onOpenNode={onOpenNode} />
       )}
 
       {sections.map((s) => (
@@ -255,6 +256,75 @@ function EntityView({ kind, entity, graph, nodeName, resolveRef, onOpenNode, onO
         <Gallery kind={kind} entity={entity} onChanged={onChanged} />
       </div>
     </>
+  );
+}
+
+/**
+ * Membres d'une faction : PNJ (chefs en tête) puis sous-factions. Section repliable, repliée par défaut (état
+ * propre à la fiche affichée), compteur visible dans l'en-tête ; deux colonnes, une seule dans un panneau étroit.
+ */
+function MembersSection({ faction, memberships, npcById, factionById, onOpenNode }) {
+  const [open, setOpen] = useState(false);
+  const bodyId = useId();
+  const rank = (m) => (m.member_faction_id != null ? 2 : m.is_leader ? 0 : 1);
+  const members = [...memberships].sort((a, b) => rank(a) - rank(b));
+  const subCount = members.filter((m) => m.member_faction_id != null).length;
+  const summary = subCount
+    ? t('{npcs} et {factions}', { npcs: tn('{n} PNJ', '{n} PNJ', members.length - subCount), factions: tn('{n} sous-faction', '{n} sous-factions', subCount) })
+    : tn('{n} PNJ', '{n} PNJ', members.length);
+  return (
+    <section className={`panel-section panel-section--fold${open ? ' is-open' : ''}`} data-entry-section="members"
+      data-entry-label={t('Membres')}>
+      <div className="panel-section__head">
+        <h3>
+          <button type="button" className="panel-section__toggle" aria-expanded={open} aria-controls={bodyId}
+            aria-label={t('Membres : {detail}', { detail: summary })}
+            onClick={() => setOpen((o) => !o)} title={open ? t('Replier la liste des membres') : t('Afficher la liste des membres')}>
+            <span className="panel-section__chevron" aria-hidden="true"><Icon name="chevron" size={14} /></span>
+            {t('Membres')}
+            <span className="count" title={summary}>{members.length}</span>
+          </button>
+        </h3>
+      </div>
+      <div id={bodyId} className="panel-section__body" hidden={!open}>
+        {members.length === 0 ? (
+          <p className="muted">{t('Aucun membre. Ajoutez des PNJ depuis leur fiche, ou des sous-factions depuis la fiche de chacune (Membre de).')}</p>
+        ) : (
+          <ul className="member-list member-list--columns">
+            {members.map((m) => {
+              if (m.member_faction_id != null) {
+                const f = factionById.get(m.member_faction_id);
+                return f && (
+                  <li key={m.id} className="member-list__faction">
+                    <button type="button" onClick={() => onOpenNode(nodeId('faction', f.id))}
+                      title={m.role ? `${f.name} · ${m.role}` : f.name}>
+                      {f.emblem_thumb ? <img src={f.emblem_thumb} alt="" className="is-faction" />
+                        : <span className="member-list__seal" style={{ background: f.color }}><Icon name="banner" size={16} /></span>}
+                      <span className="member-list__name">{f.name}</span>
+                      <span className="member-list__role">
+                        <span className="member-list__tag">{t('Sous-faction')}</span>{m.role && ` · ${m.role}`}
+                      </span>
+                    </button>
+                  </li>
+                );
+              }
+              const n = npcById.get(m.npc_id);
+              return n && (
+                <li key={m.id}>
+                  <button type="button" onClick={() => onOpenNode(nodeId('npc', n.id))}
+                    title={[n.name, m.role || n.title].filter(Boolean).join(' · ')}>
+                    <img src={n.portrait_thumb || initialsAvatar(n.name, faction.color)} alt="" />
+                    <span className="member-list__name">{n.status === 'mort' ? `† ${n.name}` : n.name}</span>
+                    <span className="member-list__role">{m.role || (m.is_leader ? t('Dirigeant') : n.title)}</span>
+                    {m.is_leader && <Icon name="star" size={13} title={t('Dirigeant')} />}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -349,6 +419,9 @@ function EntityForm({ kind, entity, graph, resolveRef, onCancel, onSaved, onMemb
 
       {kind === 'npc' && (
         <MembershipEditor npcId={entity.id} graph={graph} onChanged={onMembershipsChanged} />
+      )}
+      {kind === 'faction' && (
+        <FactionParentsEditor factionId={entity.id} graph={graph} onChanged={onMembershipsChanged} />
       )}
       <EntityPlacesEditor kind={kind} entity={entity} onChanged={onMembershipsChanged} />
 
@@ -446,6 +519,77 @@ function MembershipEditor({ npcId, graph, onChanged }) {
         </div>
       )}
       <p className="field__hint">{t('Les changements de factions sont enregistrés immédiatement.')}</p>
+    </fieldset>
+  );
+}
+
+/**
+ * Factions dont cette faction est membre (sous-faction), avec un rôle ; plusieurs possibles, enregistrées tout de
+ * suite. Ni elle-même ni une de ses sous-factions (directes ou non) ne sont proposées : le serveur refuse les cycles.
+ */
+function FactionParentsEditor({ factionId, graph, onChanged }) {
+  const run = useAction();
+  const mine = graph.memberships.filter((m) => m.member_faction_id === factionId);
+  const descendants = useMemo(() => {
+    const found = new Set([factionId]);
+    const stack = [factionId];
+    while (stack.length) {
+      const cur = stack.pop();
+      for (const m of graph.memberships) {
+        if (m.faction_id === cur && m.member_faction_id != null && !found.has(m.member_faction_id)) {
+          found.add(m.member_faction_id);
+          stack.push(m.member_faction_id);
+        }
+      }
+    }
+    return found;
+  }, [graph, factionId]);
+  const available = graph.factions.filter((f) => !descendants.has(f.id) && !mine.some((m) => m.faction_id === f.id));
+  const [adding, setAdding] = useState('');
+  const factionById = new Map(graph.factions.map((f) => [f.id, f]));
+
+  const add = async () => {
+    if (!adding) return;
+    const done = await run(() => api.createMembership({ member_faction_id: factionId, faction_id: Number(adding) }));
+    if (done === undefined) return;
+    setAdding('');
+    onChanged();
+  };
+
+  return (
+    <fieldset className="memberships memberships--parents">
+      <legend>{t('Membre de')}</legend>
+      {mine.length === 0 && <p className="muted">{t('Cette faction n’est membre d’aucune autre faction.')}</p>}
+      {mine.map((m) => {
+        const f = factionById.get(m.faction_id);
+        return (
+          <div key={m.id} className="memberships__row memberships__row--parent" style={{ '--chip': f?.color }}>
+            <span className="chip__dot" />
+            <span className="memberships__name">{f?.name}</span>
+            <input aria-label={t('Rôle dans {name}', { name: f?.name })} placeholder={t('Rôle')} defaultValue={m.role} maxLength={200}
+              onBlur={async (e) => {
+                if (e.target.value !== m.role) {
+                  await run(() => api.updateMembership(m.id, { role: e.target.value }));
+                  onChanged();
+                }
+              }} />
+            <button type="button" className="icon-btn icon-btn--small" aria-label={t('Quitter {name}', { name: f?.name })}
+              onClick={async () => { await run(() => api.deleteMembership(m.id)); onChanged(); }}>
+              <Icon name="close" size={14} />
+            </button>
+          </div>
+        );
+      })}
+      {available.length > 0 && (
+        <div className="memberships__add">
+          <select value={adding} onChange={(e) => setAdding(e.target.value)} aria-label={t('Faction parente à ajouter')}>
+            <option value="">{t('Rejoindre une faction…')}</option>
+            {available.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+          </select>
+          <button type="button" className="btn btn--small btn--ghost" onClick={add} disabled={!adding}>{t('Ajouter')}</button>
+        </div>
+      )}
+      <p className="field__hint">{t('Sous-faction d’une ou plusieurs factions : elle apparaît parmi leurs membres. Enregistré immédiatement.')}</p>
     </fieldset>
   );
 }

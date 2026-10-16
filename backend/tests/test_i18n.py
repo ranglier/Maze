@@ -412,11 +412,13 @@ class CompleteCatalogTest(unittest.TestCase):
 
     def test_demo_texts(self):
         from maze import demo
-        texts = [demo.__dict__[n] for n in ("FACTIONS", "NPCS", "MEMBERSHIPS", "RELATIONS", "PLACES", "PLACE_LINKS")]
+        texts = [demo.__dict__[n] for n in ("FACTIONS", "NPCS", "MEMBERSHIPS", "RELATIONS", "PLACES", "PLACE_LINKS",
+                                            "FACTION_MEMBERSHIPS")]
         used = [f[i] for f in texts[0] for i in (1, 2, 4, 5, 6)]
         used += [n[i] for n in texts[1] for i in (1, 2, 7, 8, 9, 10, 11)]
         used += [m[2] for m in texts[2]] + [r[5] for r in texts[3]]
         used += [p[i] for p in texts[4] for i in (2, 4, 5, 6, 7)] + [link[3] for link in texts[5]]
+        used += [m[2] for m in texts[6]]
         self.assert_translated(used, "demo.py")
 
     def test_specific_patterns_first(self):

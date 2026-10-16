@@ -1,5 +1,8 @@
 export const nodeId = (kind, id) => `${kind}-${id}`;
 
+/** Nœud du membre d'une appartenance : un PNJ, ou une faction membre d'une autre (sous-faction, member_faction_id). */
+export const memberNodeId = (m) => (m.member_faction_id != null ? nodeId('faction', m.member_faction_id) : nodeId('npc', m.npc_id));
+
 export function parseNodeId(value) {
   const [kind, id] = value.split('-');
   return { kind, id: Number(id) };

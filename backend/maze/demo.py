@@ -29,6 +29,10 @@ FACTIONS = [
      "On dit qu'ils prient ce qui dort sous la baie.",
      "Une vingtaine de fidèles, surtout des pêcheurs ruinés par les tempêtes.",
      "Rouvrir le sanctuaire englouti à la prochaine grande marée."),
+    ("conseil", "Conseil du Port", "Assemblée", "#7c8796",
+     "Ceux qui se partagent le port, à défaut de s'entendre.",
+     "Réunit chaque mois la Garde et la maison Valcourt dans la salle de la Capitainerie.",
+     "Présenter un port en ordre à l'inspecteur royal."),
 ]
 
 NPCS = [
@@ -91,6 +95,12 @@ MEMBERSHIPS = [
     ("ysolde", "valcourt", "Héritière", False),
     ("oriane", "maree", "Grande prêtresse", True),
     ("brann", "maree", "Fidèle", False),
+]
+
+# Factions membres d'une autre faction (sous-factions) : membre, faction, rôle.
+FACTION_MEMBERSHIPS = [
+    ("garde", "conseil", "Bras armé"),
+    ("valcourt", "conseil", "Siège héréditaire"),
 ]
 
 RELATIONS = [
@@ -181,6 +191,8 @@ def create_demo(db_path, locale: str = i18n.SOURCE_LOCALE) -> int:
         for npc, fac, role, leader in MEMBERSHIPS:
             db.insert(conn, "memberships", {"npc_id": nids[npc], "faction_id": fids[fac], "role": t(role),
                                             "is_leader": leader})
+        for sub, fac, role in FACTION_MEMBERSHIPS:
+            db.insert(conn, "memberships", {"member_faction_id": fids[sub], "faction_id": fids[fac], "role": t(role)})
         ids = {"npc": nids, "faction": fids}
         for sk, s, tk, target, rtype, label, directed, secret in RELATIONS:
             db.insert(conn, "relations", {

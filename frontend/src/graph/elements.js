@@ -1,7 +1,7 @@
 import { NEUTRAL_RING } from '../constants.js';
 import { t } from '../i18n/core.js';
 import { typeIndex, typeOf } from '../relationTypes.js';
-import { initialsAvatar, nodeId } from '../util.js';
+import { initialsAvatar, memberNodeId, nodeId } from '../util.js';
 
 export const DEFAULT_FILTERS = {
   hiddenTypes: [],
@@ -16,6 +16,7 @@ export function npcRingColors(graph) {
   const factionColor = new Map(graph.factions.map((f) => [f.id, f.color]));
   const best = new Map();
   for (const m of graph.memberships) {
+    if (m.npc_id == null) continue; // sous-faction
     const current = best.get(m.npc_id);
     if (!current || (m.is_leader && !current.is_leader)) best.set(m.npc_id, m);
   }
@@ -81,19 +82,24 @@ export function buildElements(graph, filters, scope = null) {
     });
   }
 
+  // Appartenances : PNJ vers faction, ou faction vers la faction dont elle est membre (sous-faction, orientée
+  // vers la faction parente). Masquées avec le filtre « appartenances » ou avec l'une ou l'autre faction.
   for (const m of graph.memberships) {
+    const sub = m.member_faction_id != null;
+    const member = memberNodeId(m);
     const classes = ['membership'];
+    if (sub) classes.push('faction-member');
     if (m.is_leader) classes.push('leader');
-    if (!filters.showMemberships || hiddenFactions.has(m.faction_id)) classes.push('hidden');
-    if (outOfScope(nodeId('npc', m.npc_id)) || outOfScope(nodeId('faction', m.faction_id))) classes.push('hidden');
-    else if (scope && !(scope.nodes.has(nodeId('npc', m.npc_id)) && scope.nodes.has(nodeId('faction', m.faction_id)))) classes.push('context');
+    if (!filters.showMemberships || hiddenFactions.has(m.faction_id) || (sub && hiddenFactions.has(m.member_faction_id))) classes.push('hidden');
+    if (outOfScope(member) || outOfScope(nodeId('faction', m.faction_id))) classes.push('hidden');
+    else if (scope && !(scope.nodes.has(member) && scope.nodes.has(nodeId('faction', m.faction_id)))) classes.push('context');
     elements.push({
       group: 'edges',
       data: {
         id: `mem-${m.id}`,
         kind: 'membership',
         eid: m.id,
-        source: nodeId('npc', m.npc_id),
+        source: member,
         target: nodeId('faction', m.faction_id),
         color: factionColor.get(m.faction_id) || NEUTRAL_RING,
         label: m.is_leader ? (m.role || t('Dirigeant')) : m.role,

@@ -3,7 +3,7 @@
 // foundry.scenarios_of (export Foundry) ; les trois sont comparées sur des campagnes aléatoires communes
 // (backend/tests/test_cast_rules.py écrit et vérifie frontend/test/fixtures/cast-cases.json, cast.test.mjs le rejoue
 // ici). Calculée dans le navigateur : la carte d'un scénario suit aussitôt un ajout, un retrait ou une mention.
-import { nodeId } from './util.js';
+import { memberNodeId, nodeId } from './util.js';
 
 export function childrenOf(docs, parentId) {
   return docs.filter((d) => d.parent_id === parentId).sort((a, b) => a.sort_order - b.sort_order || a.id - b.id);
@@ -51,7 +51,7 @@ export function neighborsOf(graph, nodes) {
     if (nodes.has(b) && !nodes.has(a)) around.add(a);
   };
   for (const r of graph.relations) add(nodeId(r.source_kind, r.source_id), nodeId(r.target_kind, r.target_id));
-  for (const m of graph.memberships) add(nodeId('npc', m.npc_id), nodeId('faction', m.faction_id));
+  for (const m of graph.memberships) add(memberNodeId(m), nodeId('faction', m.faction_id));
   return around;
 }
 

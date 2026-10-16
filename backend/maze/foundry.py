@@ -270,6 +270,12 @@ def scenarios_of(conn: sqlite3.Connection, cid: int, cast: bool = True) -> list[
             "SELECT m.npc_id, m.faction_id FROM memberships m JOIN npcs n ON n.id = m.npc_id WHERE n.campaign_id = ?",
             (cid,)):
         factions_of[npc_id].add(faction_id)
+    # Factions dont une faction est membre (sous-factions, migration 031) : fiches liées comme celles d'un PNJ.
+    parents_of: dict[int, set[int]] = defaultdict(set)
+    for sub_id, faction_id in conn.execute(
+            """SELECT m.member_faction_id, m.faction_id FROM memberships m JOIN factions f ON f.id = m.faction_id
+                WHERE f.campaign_id = ? AND m.member_faction_id IS NOT NULL""", (cid,)):
+        parents_of[sub_id].add(faction_id)
     places_of: dict[tuple[str, int], set[int]] = defaultdict(set)
     present: dict[int, set[tuple[str, int]]] = defaultdict(set)
     for place_id, kind, eid in conn.execute(
@@ -304,6 +310,8 @@ def scenarios_of(conn: sqlite3.Connection, cid: int, cast: bool = True) -> list[
         for kind, eid in core:
             if kind == "npc":
                 related.update(("faction", f) for f in factions_of[eid])
+            if kind == "faction":
+                related.update(("faction", f) for f in parents_of[eid])
             if kind in ("npc", "faction"):
                 related.update(("place", p) for p in places_of[(kind, eid)])
             if kind == "place":
@@ -336,6 +344,10 @@ def build_export(conn: sqlite3.Connection, cid: int, version: str, instance: str
     memberships = q("""SELECT m.* FROM memberships m JOIN npcs n ON n.id = m.npc_id
                         JOIN factions f ON f.id = m.faction_id
                        WHERE n.campaign_id = ? ORDER BY f.sort_order, lower(f.name), f.id""", cid)
+    # Sous-factions (migration 031), à part : la requête des PNJ membres reste celle d'avant (même ordre, mêmes
+    # pages et empreintes pour une faction sans sous-faction).
+    nested = q("""SELECT m.* FROM memberships m JOIN factions f ON f.id = m.faction_id
+                   WHERE f.campaign_id = ? AND m.member_faction_id IS NOT NULL ORDER BY m.id""", cid)
     relations = q("SELECT * FROM relations WHERE campaign_id = ? ORDER BY id", cid)
     links = q("""SELECT l.* FROM place_links l JOIN places p ON p.id = l.place_id
                   WHERE p.campaign_id = ? ORDER BY l.id""", cid)
@@ -366,6 +378,13 @@ def build_export(conn: sqlite3.Connection, cid: int, version: str, instance: str
     for m in memberships:
         members_of[m["faction_id"]].append(m)
         factions_of[m["npc_id"]].append(m)
+    faction_rank = {f["id"]: i for i, f in enumerate(factions)}
+    subs_of: dict[int, list[dict[str, Any]]] = defaultdict(list)
+    parents_of: dict[int, list[dict[str, Any]]] = defaultdict(list)
+    for m in sorted(nested, key=lambda m: faction_rank.get(m["member_faction_id"], 0)):
+        subs_of[m["faction_id"]].append(m)
+    for m in sorted(nested, key=lambda m: faction_rank.get(m["faction_id"], 0)):
+        parents_of[m["member_faction_id"]].append(m)
     present: dict[int, list[dict[str, Any]]] = defaultdict(list)
     places_of: dict[tuple[str, int], list[dict[str, Any]]] = defaultdict(list)
     for pl in links:
@@ -483,7 +502,12 @@ def build_export(conn: sqlite3.Connection, cid: int, version: str, instance: str
         cover = f["emblem_image_id"]
         leaders = [link("npc", m["npc_id"]) for m in members_of[f["id"]] if m["is_leader"]]
         page.parts.append(cover_html(cover, f["name"]))
+        # Factions dont elle est membre et sous-factions (migration 031) : faits et liste vides, donc absents, pour
+        # une faction sans imbrication (page et empreinte inchangées).
+        parents = [link("faction", m["faction_id"]) + (f" ({escape(m['role'])})" if m["role"].strip() else "")
+                   for m in parents_of[f["id"]]]
         page.parts.append(facts("faction", f, [(tr("Chef"), ", ".join(leaders)),
+                                               (tr("Membre de"), ", ".join(parents)),
                                                (tr("Lieux"), ", ".join(place_items("faction", f["id"])))]))
         member_items = []
         for m in members_of[f["id"]]:
@@ -491,7 +515,12 @@ def build_export(conn: sqlite3.Connection, cid: int, version: str, instance: str
             if m["role"].strip():
                 item = tr("{label} : {value}", label=item, value=escape(m["role"]))
             member_items.append(tr("{member} (chef)", member=item) if m["is_leader"] else item)
+        sub_items = []
+        for m in subs_of[f["id"]]:
+            item = link("faction", m["member_faction_id"])
+            sub_items.append(tr("{label} : {value}", label=item, value=escape(m["role"])) if m["role"].strip() else item)
         texts("faction", f, page, [(tr("Membres"), _list(member_items)),
+                                   (tr("Sous-factions"), _list(sub_items)),
                                    (tr("Relations"), _list(relation_items("faction", f["id"], False)))],
               {"secrets": [(tr("Relations secrètes"), _list(relation_items("faction", f["id"], True)))]})
         entry = {"id": f["id"], "created": f["created_at"], "name": f["name"], "kind": f["kind"], "color": f["color"],

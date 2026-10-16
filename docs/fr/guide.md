@@ -11,8 +11,9 @@ Premier module livré : **PNJ et factions**, sous forme de carte interactive (gr
 - Carte interactive : déplacement libre des fiches (positions enregistrées), zoom, cadrage, export PNG.
 - Réorganisation automatique lisible : plusieurs dispositions sont calculées, les fiches sont écartées pour que chaque lien soit assez long pour son étiquette et qu'aucune étiquette ne chevauche une autre étiquette, une fiche ou un lien ; la plus lisible (moins de croisements, de liens confondus) est retenue.
 - PNJ : portrait, fonction, statut (vivant, mort, disparu, sort inconnu), accroche, apparence, personnalité, motivations, secrets MJ, notes, étiquettes, galerie d'images.
-- Factions : couleur (reprise sur l'anneau de ses membres), emblème, type, description, objectifs, ressources, secrets, notes, liste des membres.
+- Factions : couleur (reprise sur l'anneau de ses membres), emblème, type, description, objectifs, ressources, secrets, notes, liste des membres (section « Membres » repliée par défaut, nombre de membres dans son titre ; deux colonnes, une seule sur téléphone ou dans un panneau étroit ; PNJ, chefs en tête, puis sous-factions).
 - Appartenances : un PNJ peut appartenir à plusieurs factions, avec un rôle et un indicateur "dirige".
+- Factions imbriquées : une faction peut être membre (sous-faction) d'une ou plusieurs autres factions, avec un rôle (formulaire de la faction > « Membre de »). Ni elle-même ni une de ses propres sous-factions ne sont proposées : Maze refuse les boucles (A dans B dans A). La fiche de la sous-faction affiche « Membre de », celle de la faction parente la compte parmi ses membres ; sur la carte, une flèche pointillée va de la sous-faction vers sa faction parente (filtre « liens d'appartenance », ou en masquant l'une des deux factions). Pas de chef pour une sous-faction : seul un PNJ dirige une faction.
 - Relations entre PNJ et/ou factions : allié, ennemi, famille, amour, rival, mentor, hiérarchie, affaires, dette, autre ; libellé libre, détails, sens unique ou réciproque, relation secrète.
 - Survol d'un point : mise en évidence de son voisinage et de son accroche. Clic : ouverture de la fiche.
 - Création rapide : double-clic sur la carte, ou boutons PNJ / Faction. Mode "Lier" : cliquer deux fiches pour créer une relation.
@@ -537,7 +538,7 @@ Schéma de l'éditeur (`frontend/src/editor/schema.js`) : toute modification des
 | POST | /api/campaigns/{id}/npcs, /factions, /relations | Créer |
 | GET, PATCH, DELETE | /api/npcs/{id}, /api/factions/{id} | Fiche complète avec images ; `revision` dans la fiche, `base_revision` facultatif au PATCH (409 avec l'état actuel si la fiche a changé) |
 | POST | /api/npcs/{id}/images, /api/factions/{id}/images | Envoi d'images (multipart, champ files) |
-| POST, PATCH, DELETE | /api/memberships(/{id}) | Appartenances |
+| POST, PATCH, DELETE | /api/memberships(/{id}) | Appartenances : `faction_id` et un membre, `npc_id` (PNJ) ou `member_faction_id` (sous-faction ; 400 si elle-même, autre campagne, boucle ou `is_leader`) |
 | PATCH, DELETE | /api/relations/{id}, /api/images/{id} | Modifier, supprimer |
 | GET, POST | /api/campaigns/{id}/documents | Arbre des fiches rédigées, création |
 | GET, PATCH, DELETE | /api/documents/{id} | Fiche rédigée (PATCH content remplace le texte et réinitialise l'édition en cours) |

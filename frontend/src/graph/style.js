@@ -111,6 +111,11 @@ export const graphStyle = [
     },
   },
   { selector: 'edge.membership.leader', style: { width: 2.5, opacity: 0.85 } },
+  // Sous-faction : de la faction membre vers sa faction parente (flèche), un peu plus marquée.
+  {
+    selector: 'edge.membership.faction-member',
+    style: { width: 2, opacity: 0.8, 'target-arrow-shape': 'triangle', 'arrow-scale': 0.9 },
+  },
   { selector: '.hidden', style: { display: 'none' } },
   // Filtre sur une fiche rédigée : voisins directs des fiches citées, en retrait.
   { selector: 'node.context', style: { opacity: 0.38 } },

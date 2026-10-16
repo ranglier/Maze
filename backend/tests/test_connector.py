@@ -236,6 +236,69 @@ class ConnectorTest(unittest.TestCase):
         code, _ = raw(self.s.base, "POST", "/mcp", b" " * (4 * 1024 * 1024 + 1), headers)
         self.assertEqual(code, 413)
 
+    def test_nested_factions(self):
+        """Factions imbriquées (migration 031) : set_membership / remove_membership avec member_faction_id, règles
+        de l'API (cycle, elle-même, chef), get_entry (sous-factions, member_of) et get_campaign (member_of)."""
+        token = self.connect()["access_token"]
+        w = self.write_camp["id"]
+        mk = lambda name: self.tool(token, "create_entry", kind="faction", campaign_id=w, fields={"name": name})[1]  # noqa: E731
+        council, watch, cell = mk("Conseil des Brumes"), mk("Guet des Brumes"), mk("Cellule des Brumes")
+        ok, npc = self.tool(token, "create_entry", kind="npc", campaign_id=w, fields={"name": "Veilleur Orm"})
+        ok, member = self.tool(token, "set_membership", member_faction_id=watch["id"], faction_id=council["id"],
+                               role="Bras armé")
+        self.assertTrue(ok, member)
+        self.assertEqual((member["member_faction_id"], member["npc_id"], member["role"]),
+                         (watch["id"], None, "Bras armé"))
+        ok, member = self.tool(token, "set_membership", member_faction_id=watch["id"], faction_id=council["id"],
+                               role="Milice")
+        self.assertEqual(member["role"], "Milice")   # même paire : modifiée, pas doublée
+        self.assertTrue(self.tool(token, "set_membership", member_faction_id=cell["id"], faction_id=watch["id"])[0])
+        self.assertTrue(self.tool(token, "set_membership", npc_id=npc["id"], faction_id=watch["id"],
+                                  is_leader=True)[0])
+        ok, err = self.tool(token, "set_membership", member_faction_id=council["id"], faction_id=cell["id"])
+        self.assertFalse(ok)
+        self.assertIn("formerait un cycle", err)
+        ok, err = self.tool(token, "set_membership", member_faction_id=cell["id"], faction_id=cell["id"])
+        self.assertEqual((ok, err), (False, "Une faction ne peut pas être membre d'elle-même"))
+        ok, err = self.tool(token, "set_membership", member_faction_id=cell["id"], faction_id=council["id"],
+                            is_leader=True)
+        self.assertEqual((ok, err), (False, "Seul un PNJ peut diriger une faction"))
+        ok, err = self.tool(token, "set_membership", faction_id=council["id"])
+        self.assertFalse(ok)
+        ok, err = self.tool(token, "set_membership", npc_id=npc["id"], member_faction_id=cell["id"],
+                            faction_id=council["id"])
+        self.assertFalse(ok)
+        # Campagne en lecture seule ou fermée : refus, comme pour un PNJ.
+        ok, ro = self.tool(token, "set_membership", member_faction_id=watch["id"], faction_id=council["id"])
+        self.assertTrue(ok)
+        _, hidden = self.s.call("POST", f"/api/campaigns/{self.closed_camp['id']}/factions", {"name": "Fermée"})
+        ok, err = self.tool(token, "set_membership", member_faction_id=hidden["id"], faction_id=council["id"])
+        self.assertEqual((ok, err), (False, "Faction introuvable (ou non ouverte à Claude)"))
+
+        ok, detail = self.tool(token, "get_entry", kind="faction", id=watch["id"])
+        self.assertEqual([(m.get("npc"), m.get("member_faction"), m.get("leader")) for m in detail["memberships"]],
+                         [("Veilleur Orm", None, True), (None, "Cellule des Brumes", None)])
+        self.assertEqual([(m["faction"], m["role"]) for m in detail["member_of"]], [("Conseil des Brumes", "Milice")])
+        ok, detail = self.tool(token, "get_entry", kind="npc", id=npc["id"])
+        self.assertEqual([m["faction"] for m in detail["memberships"]], ["Guet des Brumes"])
+        self.assertNotIn("member_of", detail)
+        ok, overview = self.tool(token, "get_campaign", campaign_id=w)
+        factions = {f["name"]: f for f in overview["factions"]}
+        self.assertEqual(factions["Guet des Brumes"]["member_of"], [{"faction_id": council["id"], "role": "Milice"}])
+        self.assertEqual(factions["Conseil des Brumes"]["member_of"], [])
+        orm = next(n for n in overview["npcs"] if n["name"] == "Veilleur Orm")
+        self.assertEqual(orm["factions"], [{"faction_id": watch["id"], "role": "", "leader": True}])
+
+        ok, removed = self.tool(token, "remove_membership", member_faction_id=cell["id"], faction_id=watch["id"])
+        self.assertEqual(removed, {"removed": {"member_faction_id": cell["id"], "faction_id": watch["id"]}})
+        ok, err = self.tool(token, "remove_membership", member_faction_id=cell["id"], faction_id=watch["id"])
+        self.assertEqual((ok, err), (False, "Cette faction n'est pas membre de cette faction"))
+        # Une fois la boucle défaite, l'appartenance inverse devient possible.
+        self.assertTrue(self.tool(token, "set_membership", member_faction_id=council["id"], faction_id=cell["id"])[0])
+        for f in (council, watch, cell):
+            self.s.call("DELETE", f"/api/factions/{f['id']}")
+        self.s.call("DELETE", f"/api/npcs/{npc['id']}")
+
     def test_protocol_and_tools(self):
         token = self.connect()["access_token"]
         code, _, reply = self.rpc(token, "initialize", {"protocolVersion": "2025-06-18", "capabilities": {},

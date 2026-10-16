@@ -60,4 +60,8 @@ test('voisins : liens et appartenances autour des fiches affichées', () => {
   };
   assert.deepEqual(sorted(neighborsOf(graph, new Set(['npc-1']))), ['faction-7', 'npc-2']);
   assert.deepEqual(sorted(neighborsOf(graph, new Set(['npc-1', 'npc-2']))), ['faction-7']);
+  // Sous-faction (member_faction_id) : voisine de sa faction parente, et inversement.
+  graph.memberships.push({ npc_id: null, member_faction_id: 8, faction_id: 7 });
+  assert.deepEqual(sorted(neighborsOf(graph, new Set(['faction-8']))), ['faction-7']);
+  assert.deepEqual(sorted(neighborsOf(graph, new Set(['faction-7']))), ['faction-8', 'npc-1']);
 });

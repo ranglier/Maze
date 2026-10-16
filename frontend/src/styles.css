@@ -602,6 +602,35 @@ input[type="checkbox"] { accent-color: var(--brass); width: 16px; height: 16px; 
 .member-list img { grid-row: 1 / 3; width: 34px; height: 34px; border-radius: 50%; object-fit: cover; }
 .member-list__role { grid-column: 2; font-size: 12.5px; color: var(--mist); }
 .member-list svg { grid-row: 1 / 3; grid-column: 3; color: var(--brass); }
+/* Membres d'une faction : section repliable (repliée par défaut), deux colonnes, une seule sous 2 × 180 px
+   (panneau étroit) et sur téléphone. PNJ en portrait rond, sous-factions en sceau carré avec le libellé « Sous-faction ». */
+.panel-section__toggle {
+  display: inline-flex; align-items: center; gap: 6px;
+  margin: 0 0 0 -6px; padding: 2px 8px 2px 4px;
+  border: 0; border-radius: var(--r-md);
+  background: none; color: inherit; font: inherit; cursor: pointer;
+}
+.panel-section__toggle:hover { background: var(--slate-2); }
+.panel-section__toggle .count { margin-left: 2px; font-family: var(--sans); font-weight: 400; }
+.panel-section__chevron { display: inline-grid; color: var(--mist); transform: rotate(-90deg); transition: transform 150ms; }
+.panel-section--fold.is-open .panel-section__chevron { transform: rotate(0deg); }
+.panel-section--fold:not(.is-open) .panel-section__head { margin-bottom: 0; }
+.member-list--columns { grid-template-columns: repeat(auto-fill, minmax(max(180px, calc(50% - 4px)), 1fr)); column-gap: 8px; }
+@media (max-width: 760px), (pointer: coarse) and (max-height: 500px) {
+  .member-list--columns { grid-template-columns: minmax(0, 1fr); }
+}
+.member-list--columns button { min-width: 0; }
+.member-list--columns .member-list__name, .member-list--columns .member-list__role {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.member-list img.is-faction, .member-list__seal { border-radius: 9px; }
+.member-list__seal { grid-row: 1 / 3; display: grid; place-items: center; width: 34px; height: 34px; color: rgba(255, 255, 255, 0.85); }
+.member-list .member-list__seal svg { grid-row: auto; grid-column: auto; color: inherit; }
+.member-list__tag {
+  display: inline-block; padding: 0 6px; border: 1px solid var(--line); border-radius: 999px;
+  font-size: 11px; line-height: 16px; color: var(--mist); vertical-align: 1px;
+}
+.chips--parents { margin-bottom: 0; }
 
 /* Relations */
 .relation-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }

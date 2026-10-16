@@ -15,7 +15,7 @@ Website, with screenshots: https://ranglier.github.io/Maze/
 **Characters and factions**
 - Relationship graph: free placement, zoom, PNG export, automatic layout that keeps the most readable of several arrangements.
 - NPC sheets (portrait, status, hook, personality, motivations, GM secrets, gallery…) and faction sheets (colour, emblem, goals, resources, members).
-- Memberships with a role; typed relations (ally, enemy, family, rival, mentor, debt…), one-way or mutual, optionally secret.
+- Memberships with a role, for NPCs and for factions (a faction can be a sub-faction of one or more others, no loops); typed relations (ally, enemy, family, rival, mentor, debt…), one-way or mutual, optionally secret.
 - Graph views for a scenario's cast, for the factions, or for a place; a Characters tab lists everyone.
 
 **Places and interactive maps**
