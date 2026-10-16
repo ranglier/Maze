@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../api.js';
 import { initials } from '../util.js';
-import { Field, Icon, Modal, useAction } from './ui.jsx';
+import { Field, Icon, Modal, SourceLink, useAction } from './ui.jsx';
 import { useSheet } from '../viewport.js';
 
 export const ROLE_LABEL = { admin: 'Administrateur', mj: 'MJ' };
 
-export default function UserMenu({ user, onLogout, onAdmin }) {
+export default function UserMenu({ user, onLogout, onAdmin, sourceUrl }) {
   const [open, setOpen] = useState(false);
   const [account, setAccount] = useState(false);
   const ref = useRef(null);
@@ -47,6 +47,13 @@ export default function UserMenu({ user, onLogout, onAdmin }) {
               <Icon name="logout" size={15} /> Se déconnecter
             </button>
           </div>
+          {sourceUrl && (
+            <div className="popover__group popover__group--actions user-menu__about">
+              <SourceLink url={sourceUrl} role="menuitem" onClick={() => setOpen(false)}>
+                <Icon name="code" size={15} />
+              </SourceLink>
+            </div>
+          )}
         </div>
       )}
       {account && <PasswordDialog onClose={() => setAccount(false)} />}

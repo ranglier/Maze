@@ -18,7 +18,7 @@ from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 
 from . import auth, db, defaults, imaging, limits, throttle
-from .config import Settings
+from .config import LICENSE, Settings
 from .schemas import (
     CampaignCreate, CampaignUpdate, EntityOrder, FactionCreate, FactionUpdate, ImageUpdate, Login, PasswordChange, Setup,
     MembershipCreate, MembershipUpdate, NpcCreate, NpcUpdate, PositionsUpdate,
@@ -211,6 +211,9 @@ def auth_status(request: Request) -> Response:
         "user": auth.public_user(user) if user else None,
         "instance": instance_id(request) if user else None,
         "version": cfg.version,
+        # Public, même sans session (écran de connexion) : code source et licence (AGPL, section 13).
+        "source_url": cfg.source_url,
+        "license": LICENSE,
     })
 
 

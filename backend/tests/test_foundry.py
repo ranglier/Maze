@@ -401,7 +401,12 @@ class FoundryApiTest(unittest.TestCase):
         with zipfile.ZipFile(io.BytesIO(raw)) as zf:
             names = set(zf.namelist())
             inner = json.loads(zf.read("module.json"))
-        self.assertEqual(names, {"module.json", "scripts/maze-sync.mjs", "styles/maze-sync.css"})
+            license_text = zf.read("LICENSE").decode("utf-8")
+        self.assertEqual(names, {"module.json", "scripts/maze-sync.mjs", "styles/maze-sync.css", "LICENSE"})
+        # Licence : chemin relatif au module (format du manifeste de Foundry), texte de l'AGPL joint à l'archive.
+        self.assertEqual((manifest["license"], inner["license"]), ("LICENSE", "LICENSE"))
+        self.assertIn("GNU AFFERO GENERAL PUBLIC LICENSE", license_text)
+        self.assertEqual(license_text, (Path(__file__).resolve().parents[2] / "LICENSE").read_text(encoding="utf-8"))
         self.assertEqual(inner["download"], manifest["download"])
         self.assertEqual(inner["version"], manifest["version"])
 

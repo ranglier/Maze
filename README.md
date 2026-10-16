@@ -36,6 +36,7 @@ Maze is used in production by its author and has been through a thorough audit, 
 
 - **French-only interface.** Every screen, message and piece of documentation (except this README) is in French. Internationalisation is a very welcome contribution: there are roughly 1,000 user-facing strings to extract.
 - **One maintainer.** Reviews and answers may take a while.
+- **Free software.** Maze is licensed under the GNU AGPL-3.0-or-later (see [License](#license)).
 - **Built with heavy AI assistance.** Maze is developed with substantial help from Claude (Anthropic), under the direction and review of its author.
 - **System-agnostic core.** Nothing in Maze depends on a particular game system. The Foundry VTT module imports journals, scenes and map notes into any world; it currently fills in actors only for the Dark Heresy systems (`dark-heresy-v1` and `dark-heresy`).
 
@@ -118,7 +119,7 @@ Next: schedule the daily backup and install the update service (below). A step-b
 
 ## Configuration
 
-With Docker, `.env` feeds `MAZE_BIND`, `FORWARDED_ALLOW_IPS`, `MAZE_PUBLIC_URL` and `MAZE_BACKUP_KEEP` to `docker-compose.yml`; set other variables under `environment:` in a `docker-compose.override.yml`, then `docker compose up -d`.
+With Docker, `.env` feeds `MAZE_BIND`, `FORWARDED_ALLOW_IPS`, `MAZE_PUBLIC_URL`, `MAZE_SOURCE_URL` and `MAZE_BACKUP_KEEP` to `docker-compose.yml`; set other variables under `environment:` in a `docker-compose.override.yml`, then `docker compose up -d`.
 
 | Variable | Default | Purpose |
 |---|---|---|
@@ -137,6 +138,7 @@ With Docker, `.env` feeds `MAZE_BIND`, `FORWARDED_ALLOW_IPS`, `MAZE_PUBLIC_URL` 
 | MAZE_STATIC_DIR | /app/static in the image (`backend/maze/static` otherwise) | Built interface served by Maze (`frontend/dist` in development) |
 | MAZE_DB_WRITE_THREADS / MAZE_DB_READ_THREADS | 5 / 11 | Threads reserved for database writes and reads (writes waiting for a lock never delay reads) |
 | MAZE_PUBLIC_URL | (empty: derived from requests) | Public address, e.g. https://maze.example.org: OAuth addresses and MCP server URL of the Claude connector, Foundry module manifest |
+| MAZE_SOURCE_URL | https://github.com/ranglier/Maze | Where users of this instance can get its source code: "Code source (AGPL-3.0)" link on the login screen and in the account menu, as section 13 of the AGPL requires. A modified fork must point it to its own source code (see [License](#license)) |
 | MAZE_MAP_FONT | (empty) | TrueType font for map previews sent to Claude (`view_map`), tried before DejaVu Sans (in the image) and Pillow's font (no accents). Only useful outside the image |
 | MAZE_LIVE_MAX_PER_USER / MAZE_LIVE_MAX_TOTAL | 12 / 100 | Simultaneous real-time editing connections, per account and for the whole instance; beyond that, the page shows why and the browser retries later (close code 4429) |
 
@@ -263,8 +265,12 @@ GitHub Actions (`.github/workflows/ci.yml`) runs all of this on every push and p
 
 ## Contributing
 
-Contributions are welcome, internationalisation first. Issues and pull requests can be written in English or French. Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request: it covers the workflow (test first, small focused pull requests, green CI) and the project rules (migrations, entry fields, editor schema version, Foundry module version, deployment scripts).
+Contributions are welcome, internationalisation first. Issues and pull requests can be written in English or French. Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request: it covers the Developer Certificate of Origin (`git commit -s`), the workflow (test first, small focused pull requests, green CI) and the project rules (migrations, entry fields, editor schema version, Foundry module version, deployment scripts).
 
 ## License
 
-No license has been chosen yet; until then, all rights are reserved. A license will be added before the first public release.
+Maze is free software, licensed under the [GNU Affero General Public License v3.0 or later](LICENSE) (SPDX identifier: `AGPL-3.0-or-later`).
+
+You may use, modify and host Maze freely, for yourself, your group or anyone else. If you offer a modified version to other people, including as an online service, you must publish its source code under the same license, so that Maze stays open for every game master.
+
+Each instance shows a "Code source (AGPL-3.0)" link on the login screen and in the account menu, pointing to `MAZE_SOURCE_URL` (this repository by default). If you run a modified version, set `MAZE_SOURCE_URL` to the public repository or archive of the exact code you run.

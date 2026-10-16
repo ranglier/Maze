@@ -215,11 +215,11 @@ export default function App() {
 
   if (error) return <main className="splash"><div className="splash__card"><p className="form-error">{error}</p></div></main>;
   if (!auth) return <main className="splash" aria-busy="true" />;
-  if (auth.setup_required) return <SetupScreen onDone={checkAuth} />;
+  if (auth.setup_required) return <SetupScreen onDone={checkAuth} sourceUrl={auth.source_url} />;
   // Après connexion : fiche de la campagne (onglet Scénarios), quelle que soit l'adresse d'arrivée.
   if (!auth.authenticated) {
     // Après connexion : fiche de la campagne, sauf lien direct vers une page précise (session expirée, lien partagé).
-    return <LoginScreen onLoggedIn={() => {
+    return <LoginScreen sourceUrl={auth.source_url} onLoggedIn={() => {
       if (!/^#\/(c\/\d+\/|admin)/.test(window.location.hash)) window.history.replaceState(window.history.state, '', '#/');
       setRoute(parseHash());
       checkAuth();
@@ -227,7 +227,7 @@ export default function App() {
   }
 
   const user = auth.user;
-  const userMenu = <UserMenu user={user} onLogout={logout} onAdmin={() => navigate('#/admin')} />;
+  const userMenu = <UserMenu user={user} onLogout={logout} onAdmin={() => navigate('#/admin')} sourceUrl={auth.source_url} />;
   const palette = (
     <>
       {searchOpen && (

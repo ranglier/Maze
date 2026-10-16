@@ -44,6 +44,10 @@ PREFIX = "/api/foundry/v1/"
 FORMAT = "maze-foundry/1"
 TOKEN_PREFIX = "mzf_"
 MODULE_DIR = Path(__file__).resolve().parent / "foundry_module"
+# Texte de la licence (AGPL-3.0-or-later), joint à l'archive du module, que « license » de module.json désigne
+# (chemin relatif au module, format du manifeste de Foundry) : /app/LICENSE dans l'image (Dockerfile), racine du
+# dépôt hors de l'image.
+LICENSE_FILES = (MODULE_DIR.parents[1] / "LICENSE", MODULE_DIR.parents[2] / "LICENSE")
 STATUS_LABELS = {"vivant": "Vivant", "mort": "Mort", "disparu": "Disparu", "inconnu": "Inconnu"}
 
 
@@ -569,6 +573,9 @@ def module_zip(base: str) -> bytes:
             for path in sorted(MODULE_DIR.rglob("*")):
                 if path.is_file() and path.name != "module.json" and "__pycache__" not in path.parts:
                     zf.write(path, path.relative_to(MODULE_DIR).as_posix())
+            license_file = next((p for p in LICENSE_FILES if p.is_file()), None)
+            if license_file is not None:
+                zf.write(license_file, "LICENSE")
             zf.writestr("module.json", json.dumps(manifest, ensure_ascii=False, indent=2))
         _ZIP_CACHE.clear()
         _ZIP_CACHE[key] = buf.getvalue()

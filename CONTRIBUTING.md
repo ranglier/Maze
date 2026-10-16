@@ -2,8 +2,6 @@
 
 Thank you for your interest in Maze! This guide explains how to propose a change and what a pull request needs before it can be merged. The [README](README.md) covers installation, configuration and the development setup; [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (in French) explains how things work and why.
 
-> **Before anything substantial:** Maze does not have a license yet (see the [README](README.md#license)). Until one is chosen, please open an issue before starting significant work, so we can agree on it first.
-
 ## Ways to help
 
 - **Internationalisation.** The interface is French only. Extracting the roughly 1,000 user-facing strings into a translation layer, then adding English, is the most valuable contribution right now. Please open an issue first to agree on the approach.
@@ -34,7 +32,7 @@ The codebase currently follows this convention: identifiers (modules, functions,
        cd frontend && npm ci && npm run build && npm test
        NODE_PATH="$(npm root -g)" frontend/e2e/run-all.sh      # if you changed the interface
 
-6. **Open the pull request** against `main`: explain what changes and why, how you tested it, and anything a server administrator must know when updating (migration, new variable, manual step). GitHub Actions runs the whole suite; it must be green before review.
+6. **Open the pull request** against `main`, every commit signed off (see [Developer Certificate of Origin](#developer-certificate-of-origin)): explain what changes and why, how you tested it, and anything a server administrator must know when updating (migration, new variable, manual step). GitHub Actions runs the whole suite; it must be green before review.
 
 ## Project rules
 
@@ -52,11 +50,25 @@ These rules exist because breaking one of them has already caused a bug, or woul
 - **Security.** Every route that receives an object identifier must check that the object's campaign is accessible to the current account (`auth.can_access`). Request bodies are size-limited (`backend/maze/limits.py`). Never commit secrets, real campaign data or copyrighted images: tests use invented names and generated images.
 - **Documentation.** Update `docs/ARCHITECTURE.md`, and the README or the French guide (`docs/fr/guide.md`), whenever behaviour, configuration or deployment changes. Document every new environment variable in the README's Configuration table; `tests.test_docs` checks it.
 
+## Developer Certificate of Origin
+
+Maze is licensed under the GNU AGPL-3.0-or-later (see the [README](README.md#license) and [LICENSE](LICENSE)). Every contribution is published under that same license.
+
+Every commit must be signed off with `git commit -s`, which adds a line with your name and email address at the end of the message:
+
+    Signed-off-by: Your Name <you@example.org>
+
+By signing off, you certify that you wrote the change, or otherwise have the right to submit it under the project's license, as stated in the [Developer Certificate of Origin](https://developercertificate.org/). Use your real name or the name you are known by, and the email address of your commits (GitHub's `noreply` address is accepted).
+
+Forgot it? `git commit --amend -s` fixes the last commit; `git rebase --signoff main` signs every commit of your branch (then `git push --force-with-lease` to your fork).
+
 ## Commit messages
 
-One line, in the form "area : what changed", optionally followed by a paragraph explaining why. For example:
+One line, in the form "area : what changed", optionally followed by a paragraph explaining why, and the sign-off line. For example:
 
     Sauvegardes : écriture dans un .part renommé une fois complet, .part abandonnés retirés
+
+    Signed-off-by: Your Name <you@example.org>
 
 Pull requests are merged with a merge commit, so keep the commits of your branch meaningful.
 
