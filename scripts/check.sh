@@ -12,7 +12,8 @@
 #
 # Règles de quick (chaque fichier modifié ajoute des contrôles ; la liste et la raison sont affichées) :
 #   backend/maze/X.py              tests/test_X.py s'il existe, les tests qui importent maze.X (recherche simple :
-#                                  « maze.X » ou « from maze import ... X » sur une ligne), ruff sur le fichier
+#                                  « maze.X » ou « from maze import ... X » sur une ligne), ruff sur le fichier ;
+#                                  ni l'un ni l'autre : test_api (routes testées par HTTP)
 #   backend/maze/foundry*          test_foundry et frontend/test/foundry-module.test.mjs (module Foundry compris)
 #   backend/maze/migrations/*      test_migrations (numérotation, montée de version des bases)
 #   backend/maze/i18n/**, frontend/src/i18n/**
@@ -220,7 +221,12 @@ select_for() {
             stem="$(basename "$f" .py)"
             [ -f "$REPO/$f" ] && RUFF_FILES+=("${f#backend/}")
             add_srv "test_$stem" "$f (test du même nom)"
-            for t in $(importers "maze.$stem"); do add_srv "$t" "$f (importé par le test)"; done ;;
+            imp="$(importers "maze.$stem")"
+            for t in $imp; do add_srv "$t" "$f (importé par le test)"; done
+            # Module sans test dédié ni importeur (routes testées par HTTP) : test_api par défaut.
+            if [ ! -f "$REPO/backend/tests/test_$stem.py" ] && [ -z "$imp" ]; then
+                add_srv test_api "$f (aucun test dédié : routes couvertes par test_api)"
+            fi ;;
         backend/tests/fixtures/*)
             stem="${f#backend/tests/fixtures/}"; stem="${stem%%/*}"
             for t in $(cd "$REPO/backend/tests" && grep -lF "$stem" test_*.py | sed 's/\.py$//'); do
