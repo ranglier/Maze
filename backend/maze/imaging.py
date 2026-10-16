@@ -15,6 +15,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageOps, UnidentifiedImageError
 
+from .i18n import msg
 from .mediafiles import temp_name
 
 ALLOWED_FORMATS = {"JPEG", "PNG", "WEBP", "GIF"}
@@ -143,16 +144,14 @@ def process_upload(raw: bytes, media_dir: Path, campaign_id: int, max_side: int 
             if fmt == "JPEG" and pixels > MAX_PIXELS_JPEG:
                 raise ImageError("Image trop grande (250 millions de pixels au plus pour un JPEG)")
             if fmt == "JPEG" and probe.info.get("progressive") and pixels > MAX_PIXELS_PROGRESSIVE:
-                raise ImageError("Image trop grande pour un JPEG progressif (80 millions de pixels au plus) : "
-                                 "enregistrez-la en JPEG classique (non progressif) pour aller jusqu'à 250 millions")
+                raise ImageError("Image trop grande pour un JPEG progressif (80 millions de pixels au plus) : enregistrez-la en JPEG classique (non progressif) pour aller jusqu'à 250 millions")  # noqa: E501
             if fmt != "JPEG" and pixels > MAX_PIXELS_FULL_DECODE:
-                raise ImageError("Image trop grande (25 millions de pixels au plus ; enregistrez-la en JPEG "
-                                 "pour aller jusqu'à 250 millions)")
+                raise ImageError("Image trop grande (25 millions de pixels au plus ; enregistrez-la en JPEG pour aller jusqu'à 250 millions)")  # noqa: E501
             if max_side > MAX_SIDE:
                 limit = MAX_MAP_WORK_PROGRESSIVE if probe.info.get("progressive") else MAX_MAP_WORK
                 if _map_work(probe.size, max_side, fmt) > limit:
-                    raise ImageError(f"Image trop grande pour un fond de carte : ramenez-la à {max_side} px de côté "
-                                     "au plus (elle le serait de toute façon), en JPEG de préférence")
+                    raise ImageError(msg("Image trop grande pour un fond de carte : ramenez-la à {side} px de côté au plus (elle le serait de toute façon), en JPEG de préférence",  # noqa: E501
+                                         side=max_side))
             probe.verify()
     except (UnidentifiedImageError, OSError, Image.DecompressionBombError) as exc:
         raise ImageError("Fichier image illisible ou non pris en charge") from exc

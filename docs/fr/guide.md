@@ -143,7 +143,7 @@ Le conteneur tourne avec l'UID 1000, d'où le chown. Le dossier secrets/ est ign
     docker compose up -d --build
     docker compose logs -f maze
 
-Campagne de démonstration (facultatif) :
+Campagne de démonstration (facultatif ; `--lang en` pour une campagne en anglais, défaut : `MAZE_DEFAULT_LOCALE`) :
 
     docker compose exec maze python -m maze.demo
 

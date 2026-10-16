@@ -1,0 +1,19 @@
+{
+  "Adresse de retour non autorisée.": "Redirect address not allowed.",
+  "Aucune campagne n'est encore ouverte à Claude : choisissez-les dans Administration > Connecteur Claude.": "No campaign is open to Claude yet: choose them in Administration > Claude connector.",
+  "Autorisation impossible": "Authorisation failed",
+  "Autoriser": "Allow",
+  "Autoriser Claude": "Allow Claude",
+  "Autoriser Claude | Maze": "Allow Claude | Maze",
+  "Campagnes ouvertes à Claude : {count}, dont {writable} en lecture et écriture (liste dans Administration > Connecteur Claude).": "Campaigns open to Claude: {count}, including {writable} with read and write access (list in Administration > Claude connector).",
+  "Claude Code sur cet ordinateur": "Claude Code on this computer",
+  "Claude demande à se connecter à Maze en votre nom. Il ne verra que les campagnes que vous lui avez ouvertes.": "Claude is asking to connect to Maze on your behalf. It will only see the campaigns you have opened to it.",
+  "Client inconnu. Vérifiez l'identifiant client saisi dans claude.ai (Maze > Administration > Connecteur Claude).": "Unknown client. Check the client ID entered in claude.ai (Maze > Administration > Claude connector).",
+  "Identifiant administrateur": "Administrator username",
+  "Identifiant ou mot de passe incorrect.": "Incorrect username or password.",
+  "L'accès est suspendu : Claude ne pourra rien lire ni modifier avant que vous ne l'activiez dans Administration > Connecteur Claude.": "Access is paused: Claude cannot read or change anything until you turn it on in Administration > Claude connector.",
+  "Mot de passe": "Password",
+  "Refuser": "Deny",
+  "Retour après autorisation : {destination}": "Return after approval: {destination}",
+  "Seul un administrateur peut autoriser Claude.": "Only an administrator can allow Claude."
+}

@@ -319,19 +319,31 @@ def _build_app(cfg: Settings, lock: IO[str]) -> Starlette:
         routes.append(Mount("/assets", StaticFiles(directory=assets_dir), name="assets"))
     routes.append(Route("/{path:path}", spa))
 
+    VALUE_ERROR = "Value error, "   # préfixe de Pydantic devant le message d'un validateur (ValueError)
+
     # Messages traduits à la réponse (maze.i18n) : langue du compte, puis Accept-Language, puis MAZE_DEFAULT_LOCALE.
     # `detail` peut être un i18n.msg(...) (modèle et paramètres) ; marque posée pour que I18nMiddleware n'y revienne pas.
+    # Chaîne ordinaire : clé exacte, sinon modèle reconnu (message d'une exception composé sans msg, par sécurité).
     def translated(request: Request, detail):
         request.scope[i18n.TRANSLATED] = True
-        return i18n.translate(detail, i18n.request_locale(request.scope))
+        locale = i18n.request_locale(request.scope)
+        if isinstance(detail, str) and not isinstance(detail, i18n.Msg):
+            return i18n.translate_text(detail, locale)
+        return i18n.translate(detail, locale)
 
     async def http_error(request: Request, exc: HTTPException) -> Response:
         return JSONResponse({"detail": translated(request, exc.detail)}, status_code=exc.status_code,
                             headers=exc.headers)
 
     async def validation_error(request: Request, exc: RequestValidationError) -> Response:
-        # Message d'en-tête seulement : l'interface compose le détail des champs elle-même (api.js, formatDetail).
-        return JSONResponse({"detail": translated(request, "Données invalides"), "errors": exc.errors},
+        # Message d'en-tête ; l'interface compose le détail des champs elle-même (api.js, formatDetail), sauf le texte
+        # des validateurs de schemas.py (« Value error, Commentaire vide »), qu'elle affiche tel quel : traduit ici.
+        locale = i18n.request_locale(request.scope)
+        errors = exc.errors
+        if locale != i18n.SOURCE_LOCALE:
+            errors = [{**e, "msg": VALUE_ERROR + i18n.translate_text(e["msg"][len(VALUE_ERROR):], locale)}
+                      if isinstance(e.get("msg"), str) and e["msg"].startswith(VALUE_ERROR) else e for e in errors]
+        return JSONResponse({"detail": translated(request, "Données invalides"), "errors": errors},
                             status_code=422)
 
     async def database_error(request: Request, exc: sqlite3.OperationalError) -> Response:

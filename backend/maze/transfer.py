@@ -32,7 +32,8 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response, StreamingResponse
 from starlette.routing import Route
 
-from . import auth, db, defaults, entries, imaging, places
+from . import auth, db, defaults, entries, i18n, imaging, places
+from .i18n import msg
 from .admin import MAX_IMPORT_MB
 from .api import in_tx, path_id, scoped, settings, threaded, tx
 from .documents import MAX_DEPTH, sync_mentions
@@ -175,7 +176,7 @@ def _columns(conn: sqlite3.Connection, table: str) -> frozenset[str]:
 def _clean(conn: sqlite3.Connection, table: str, row: Any, drop: set[str]) -> dict[str, Any]:
     """Colonnes connues de la table (exports d'autres versions), valeurs simples uniquement."""
     if not isinstance(row, dict):
-        raise TransferError(f"Donnée invalide dans {table}")
+        raise TransferError(msg("Donnée invalide dans {table}", table=table))
     columns = _columns(conn, table)
     out = {k: v for k, v in row.items()
            if k in columns and k not in drop and (v is None or isinstance(v, (str, int, float)))}
@@ -195,7 +196,7 @@ def _read_member(archive: zipfile.ZipFile, info: zipfile.ZipInfo, limit: int) ->
         with archive.open(info) as member:
             raw = member.read(limit + 1)
     except (zipfile.BadZipFile, zlib.error, EOFError, NotImplementedError, RuntimeError) as exc:
-        raise TransferError(f"Archive corrompue ({info.filename})") from exc
+        raise TransferError(msg("Archive corrompue ({name})", name=info.filename)) from exc
     return None if len(raw) > limit else raw
 
 
@@ -204,7 +205,7 @@ def _read_data(archive: zipfile.ZipFile) -> dict[str, Any]:
         info = archive.getinfo("campaign.json")
     except KeyError:
         raise TransferError("Ce fichier n'est pas un export de campagne Maze (campaign.json absent)") from None
-    too_big = f"campaign.json trop volumineux (plus de {MAX_JSON // (1024 * 1024)} Mo)"
+    too_big = msg("campaign.json trop volumineux (plus de {size} Mo)", size=MAX_JSON // (1024 * 1024))
     if info.file_size > MAX_JSON:
         raise TransferError(too_big)
     raw = _read_member(archive, info, MAX_JSON)
@@ -234,7 +235,7 @@ def _read_data(archive: zipfile.ZipFile) -> dict[str, Any]:
         raise TransferError("Campagne absente de l'export")
     for table in TABLES:
         if not isinstance(data.get(table, []), list):
-            raise TransferError(f"Section {table} invalide")
+            raise TransferError(msg("Section {table} invalide", table=table))
     return data
 
 
@@ -272,7 +273,7 @@ def _stage_images(archive: zipfile.ZipFile, data: dict[str, Any], staging: Path)
     return valid
 
 
-def _unique_name(conn: sqlite3.Connection, name: str, user_id: int) -> str:
+def _unique_name(conn: sqlite3.Connection, name: str, user_id: int, locale: str = i18n.SOURCE_LOCALE) -> str:
     """Nom libre parmi les campagnes que voit celui qui importe (audit X1-M3 : comparer à toutes celles de l'instance
     révélait si un nom existait dans un autre compte). Deux campagnes de comptes différents peuvent porter le même
     nom, comme à la création."""
@@ -287,14 +288,17 @@ def _unique_name(conn: sqlite3.Connection, name: str, user_id: int) -> str:
         return name
     n = 1
     while True:
-        candidate = f"{name} (importée{'' if n == 1 else f' {n}'})"
+        candidate = (i18n.tr("{name} (importée)", locale, name=name) if n == 1
+                     else i18n.tr("{name} (importée {n})", locale, name=name, n=n))
         if candidate not in existing:
             return candidate
         n += 1
 
 
-def import_campaign(db_path: Path, media_dir: Path, archive_path: Path, user_id: int) -> int:
-    """Crée une nouvelle campagne à partir d'une archive ; renvoie son identifiant."""
+def import_campaign(db_path: Path, media_dir: Path, archive_path: Path, user_id: int,
+                    locale: str = i18n.SOURCE_LOCALE) -> int:
+    """Crée une nouvelle campagne à partir d'une archive ; renvoie son identifiant. `locale` : langue de ce que l'import
+    crée lui-même (nom par défaut, suffixe « (importée) », types fournis quand l'export n'en a pas)."""
     try:
         archive = zipfile.ZipFile(archive_path)
     except (zipfile.BadZipFile, OSError) as exc:
@@ -304,7 +308,7 @@ def import_campaign(db_path: Path, media_dir: Path, archive_path: Path, user_id:
         with archive:
             data = _read_data(archive)
             valid = _stage_images(archive, data, staging)
-        cid = _import_rows(db_path, data, valid, user_id)
+        cid = _import_rows(db_path, data, valid, user_id, locale)
         target = media_dir / str(cid)
         if target.exists():  # dossier laissé par une campagne supprimée au même numéro
             for f in staging.iterdir():
@@ -314,19 +318,21 @@ def import_campaign(db_path: Path, media_dir: Path, archive_path: Path, user_id:
         return cid
     except Exception as exc:
         if isinstance(exc, (sqlite3.Error, KeyError, TypeError, ValueError)):
-            raise TransferError(f"Données incohérentes dans l'export : {exc}") from exc
+            raise TransferError(msg("Données incohérentes dans l'export : {error}", error=str(exc))) from exc
         raise
     finally:
         shutil.rmtree(staging, ignore_errors=True)
         imaging._release_memory()  # JSON décodé et images vérifiées : mémoire rendue au système, même en cas d'échec
 
 
-def _import_rows(db_path: Path, data: dict[str, Any], valid: set[str], user_id: int) -> int:
+def _import_rows(db_path: Path, data: dict[str, Any], valid: set[str], user_id: int,
+                 locale: str = i18n.SOURCE_LOCALE) -> int:
     """Insère la campagne et tout son contenu dans une seule transaction ; renvoie son identifiant."""
     with db.transaction(db_path) as conn:
 
         campaign = _clean(conn, "campaigns", data["campaign"], {"id"})
-        campaign["name"] = _unique_name(conn, str(campaign.get("name") or "Campagne importée")[:200], user_id)
+        campaign["name"] = _unique_name(conn, str(campaign.get("name") or i18n.tr("Campagne importée", locale))[:200],
+                                        user_id, locale)
         cid = db.insert(conn, "campaigns", campaign)
         conn.execute("INSERT INTO campaign_members (campaign_id, user_id) VALUES (?, ?)", (cid, user_id))
 
@@ -343,7 +349,7 @@ def _import_rows(db_path: Path, data: dict[str, Any], valid: set[str], user_id: 
                     seen.add(values["key"])
                     db.insert(conn, "relation_types", {**values, "campaign_id": cid})
         else:
-            defaults.seed_relation_types(conn, cid)
+            defaults.seed_relation_types(conn, cid, locale)
 
         # Types de lieux (export antérieur : types fournis) ; « lieu » existe toujours.
         seen_kinds = set()
@@ -360,10 +366,10 @@ def _import_rows(db_path: Path, data: dict[str, Any], valid: set[str], user_id: 
                              "VALUES (?, ?, ?, ?, ?, ?)",
                              (cid, key[:40], label[:40], icon, len(seen_kinds), media(row.get("image")) or ""))
         if not seen_kinds:
-            defaults.seed_place_kinds(conn, cid)
+            defaults.seed_place_kinds(conn, cid, locale)
         elif defaults.DEFAULT_PLACE_KIND not in seen_kinds:
-            conn.execute("INSERT INTO place_kinds (campaign_id, key, label, icon, sort_order) VALUES (?, 'lieu', 'Lieu', 'pin', ?)",
-                         (cid, len(seen_kinds) + 1))
+            conn.execute("INSERT INTO place_kinds (campaign_id, key, label, icon, sort_order) VALUES (?, 'lieu', ?, 'pin', ?)",
+                         (cid, defaults.place_kind_label(defaults.DEFAULT_PLACE_KIND, locale), len(seen_kinds) + 1))
         place_kind_keys = {r[0] for r in conn.execute("SELECT key FROM place_kinds WHERE campaign_id = ?", (cid,))}
 
         ids: dict[str, dict[int, int]] = {"npc": {}, "faction": {}, "image": {}, "document": {}, "doc_image": {},
@@ -671,14 +677,14 @@ def export_route(request: Request) -> Response:
     headers = {"Content-Disposition": f"attachment; filename=\"{filename}\"", "Content-Length": str(size)}
     if json_size > MAX_JSON:
         # Archive impossible à réimporter (audit M16) : signalé aux scripts ; l'interface demande avant (export_check).
-        headers["X-Maze-Export-Warning"] = _too_big_message(json_size)
+        headers["X-Maze-Export-Warning"] = i18n.translate(_too_big_message(json_size), i18n.request_locale(request.scope))
     return StreamingResponse(chunks(), media_type="application/zip", headers=headers)
 
 
 def _too_big_message(json_size: int) -> str:
     mib = 1024 * 1024
-    return (f"campaign.json fait {json_size / mib:.1f} Mo, au-delà des {MAX_JSON // mib} Mo admis à l'import : "
-            "cette archive ne pourra pas être réimportée")
+    return msg("campaign.json fait {size} Mo, au-delà des {max} Mo admis à l'import : cette archive ne pourra pas être réimportée",  # noqa: E501
+               size=f"{json_size / mib:.1f}", max=MAX_JSON // mib)
 
 
 @threaded
@@ -690,7 +696,8 @@ def export_check(request: Request) -> Response:
         scoped(conn, request, "campaigns", cid, "Campagne")
     json_size = export_size(cfg.db_path, cid)
     return JSONResponse({"json_bytes": json_size, "max_bytes": MAX_JSON, "importable": json_size <= MAX_JSON,
-                         "message": None if json_size <= MAX_JSON else _too_big_message(json_size)})
+                         "message": None if json_size <= MAX_JSON else i18n.translate(
+                             _too_big_message(json_size), i18n.request_locale(request.scope))})
 
 
 async def import_route(request: Request) -> Response:
@@ -706,14 +713,15 @@ async def import_route(request: Request) -> Response:
             async for chunk in request.stream():
                 size += len(chunk)
                 if size > limit:
-                    raise HTTPException(413, f"Archive trop volumineuse (max {MAX_IMPORT_MB} Mo)")
+                    raise HTTPException(413, msg("Archive trop volumineuse (max {size} Mo)", size=MAX_IMPORT_MB))
                 await run_in_threadpool(handle.write, chunk)
         if size == 0:
             raise HTTPException(400, "Aucun fichier reçu")
         try:
-            cid = await run_in_threadpool(import_campaign, cfg.db_path, cfg.media_dir, path, user["id"])
+            cid = await run_in_threadpool(import_campaign, cfg.db_path, cfg.media_dir, path, user["id"],
+                                          i18n.request_locale(request.scope))
         except TransferError as exc:
-            raise HTTPException(400, str(exc)) from exc
+            raise HTTPException(400, i18n.message(exc)) from exc
     finally:
         path.unlink(missing_ok=True)
 

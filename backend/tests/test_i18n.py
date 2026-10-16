@@ -1,19 +1,28 @@
 """Traduction des messages du serveur (maze.i18n) : catalogues backend/maze/i18n/<langue>/*.json, messages à
 paramètres (msg, msgn), langue d'une requête (compte, Accept-Language, MAZE_DEFAULT_LOCALE), traduction des erreurs à
-la réponse, langue du compte (migration 030, PUT /api/auth/locale).
+la réponse, langue du compte (migration 030, PUT /api/auth/locale) ; catalogues complets (tout texte renvoyé à
+l'interface a sa traduction anglaise), données de départ d'une campagne, campagne de démonstration, page
+d'autorisation OAuth, export de Foundry dans les deux langues.
 
 Lancer : cd backend && python -m unittest -q tests.test_i18n
 """
 
 from __future__ import annotations
 
+import ast
 import contextlib
+import io
 import json
+import os
 import sqlite3
+import tempfile
 import unittest
+import urllib.error
+import urllib.parse
+import urllib.request
 from pathlib import Path
 
-from maze import i18n
+from maze import defaults, i18n
 from tests.test_api import Client, Server
 
 PACKAGE = Path(__file__).resolve().parents[1] / "maze"
@@ -293,6 +302,351 @@ class MigrationTest(unittest.TestCase):
             self.assertIn("locale", columns)
             self.assertEqual(columns["locale"][4], "''")   # valeur par défaut : vide = automatique
             self.assertEqual(columns["locale"][3], 1)      # NOT NULL
+        finally:
+            s.stop()
+
+
+
+# --- Catalogues complets -------------------------------------------------------------------------------------
+
+# Fonctions et exceptions dont le premier argument littéral est un texte renvoyé à l'interface (ou à l'administrateur
+# dans la page d'autorisation, ou au MJ dans les pages de Foundry). Le connecteur Claude (mcp*.py) reste en français.
+MESSAGE_CALLS = {"HTTPException", "msg", "msgn", "tr", "ImageError", "ArchiveError", "TransferError", "SpaceError",
+                 "_error_page", "translate"}
+# Deuxième argument : refuse(code, texte) et close(code, raison) des connexions temps réel (affichés par l'éditeur).
+SECOND_ARG_CALLS = {"refuse", "close"}
+WHAT_CALLS = {"get_or_404", "scoped"}   # dernier argument : sorte de fiche du message « {what} introuvable »
+
+
+def code_messages() -> dict[str, str]:
+    """Textes littéraux passés à ces appels dans le code du serveur (hors connecteur Claude) : {texte: fichier}."""
+    found: dict[str, str] = {}
+    for path in sorted(PACKAGE.glob("*.py")):
+        if path.name.startswith("mcp"):
+            continue
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if not isinstance(node, ast.Call):
+                continue
+            name = node.func.attr if isinstance(node.func, ast.Attribute) else getattr(node.func, "id", "")
+            args = (node.args[-1:] if name in WHAT_CALLS else node.args[1:2] if name in SECOND_ARG_CALLS
+                    else node.args[:1] if name in MESSAGE_CALLS else [])
+            for arg in args:
+                if isinstance(arg, ast.Constant) and isinstance(arg.value, str) and len(arg.value) > 1:
+                    found.setdefault(arg.value, path.name)
+    return found
+
+
+class CompleteCatalogTest(unittest.TestCase):
+    """Tout texte que le serveur renvoie à l'interface, crée dans une campagne ou écrit dans une page de Foundry a sa
+    traduction anglaise (sinon il resterait en français dans l'interface anglaise)."""
+
+    def assert_translated(self, texts, where: str) -> None:
+        en = i18n.catalog("en")
+        missing = sorted({t for t in texts if t and t not in en})
+        self.assertEqual(missing, [], f"{where} : sans traduction anglaise")
+
+    def test_messages_in_code(self):
+        found = code_messages()
+        self.assertGreater(len(found), 100)   # le relevé fonctionne
+        en = i18n.catalog("en")
+        # Clé d'un type de lieu (defaults.place_kind_label("lieu")) : pas un texte.
+        missing = sorted(f"{where} : « {text} »" for text, where in found.items() if text not in en and text != "lieu")
+        self.assertEqual(missing, [])
+
+    def test_message_tables(self):
+        from maze import admin, backup, documents, entries, foundry, image_copy, versions
+        self.assert_translated(versions.SYSTEM_LABELS, "versions.SYSTEM_LABELS")
+        self.assert_translated(admin.UPDATER_MESSAGES, "admin.UPDATER_MESSAGES")
+        self.assert_translated(backup.SPACE_MESSAGES.values(), "backup.SPACE_MESSAGES")
+        self.assert_translated(documents.TITLES.values(), "documents.TITLES")
+        self.assert_translated([*image_copy.KIND_LABEL.values(), *image_copy.DOC_LABEL.values()], "image_copy")
+        self.assert_translated(foundry.STATUS_LABELS.values(), "foundry.STATUS_LABELS")
+        self.assert_translated([f.foundry_label or f.label for kind in entries.KINDS for f in entries.fields(kind)
+                                if f.foundry], "entries (Foundry)")
+        self.assert_translated([label for _, label, *_ in defaults.DEFAULT_RELATION_TYPES], "natures de lien")
+        self.assert_translated([hint for *_, hint in defaults.DEFAULT_RELATION_TYPES], "indications de sens")
+        self.assert_translated([label for _, label, _ in defaults.DEFAULT_PLACE_KINDS], "types de lieux")
+        for name, value in (("TOO_DEEP (fiches)", documents.TOO_DEEP), ("UNSAVED_EDITS", documents.UNSAVED_EDITS)):
+            self.assertNotEqual(i18n.translate(value, "en"), str(value), name)
+
+    def test_demo_texts(self):
+        from maze import demo
+        texts = [demo.__dict__[n] for n in ("FACTIONS", "NPCS", "MEMBERSHIPS", "RELATIONS", "PLACES", "PLACE_LINKS")]
+        used = [f[i] for f in texts[0] for i in (1, 2, 4, 5, 6)]
+        used += [n[i] for n in texts[1] for i in (1, 2, 7, 8, 9, 10, 11)]
+        used += [m[2] for m in texts[2]] + [r[5] for r in texts[3]]
+        used += [p[i] for p in texts[4] for i in (2, 4, 5, 6, 7)] + [link[3] for link in texts[5]]
+        self.assert_translated(used, "demo.py")
+
+    def test_specific_patterns_first(self):
+        """« Échec de la vérification : {error} » reconnu avant « {name} : {error} »."""
+        self.assertEqual(i18n.translate_text("Échec de la vérification : réseau", "en"), "Check failed: réseau")
+        self.assertEqual(i18n.translate_text("photo.png : Impossible de traiter cette image", "en"),
+                         "photo.png: Impossible de traiter cette image")
+        self.assertEqual(i18n.translate_text("3 modification(s) disponible(s).", "en"), "Updates available: 3.")
+
+    def test_exception_message_keeps_template(self):
+        from maze.backup import ArchiveError
+        exc = ArchiveError(i18n.msg("Base illisible : {error}", error="disk I/O error"))
+        self.assertEqual(str(exc), "Base illisible : disk I/O error")
+        self.assertEqual(i18n.translate(i18n.message(exc), "en"), "Unreadable database: disk I/O error")
+        self.assertEqual(i18n.message(ValueError("brut")), "brut")
+
+
+# --- Messages sur un vrai serveur ------------------------------------------------------------------------------
+
+EN = {"Accept-Language": "en-GB,en;q=0.9"}
+
+
+class ServerMessagesTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.s = Server()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.s.stop()
+
+    def campaign(self, client=None, headers=None, name="Traduction") -> dict:
+        code, camp = (client or self.s.admin).call("POST", "/api/campaigns", {"name": name}, headers=headers)
+        self.assertEqual(code, 201)
+        return camp
+
+    def test_messages_follow_accept_language(self):
+        cid = self.campaign()["id"]
+        self.assertEqual(self.s.call("POST", f"/api/campaigns/{cid}/relation-types", {"label": "Allié"}, headers=EN),
+                         (409, {"detail": "The relation type “Allié” already exists"}))
+        _, kinds = self.s.call("GET", f"/api/campaigns/{cid}/places")
+        lieu = next(k for k in kinds["kinds"] if k["key"] == "lieu")
+        self.assertEqual(self.s.call("DELETE", f"/api/place-kinds/{lieu['id']}", headers=EN),
+                         (400, {"detail": "The “Place” type is the default type: it cannot be deleted"}))
+        # Pluriel : forme de la langue.
+        _, a = self.s.call("POST", f"/api/campaigns/{cid}/npcs", {"name": "A"})
+        _, b = self.s.call("POST", f"/api/campaigns/{cid}/npcs", {"name": "B"})
+        _, types = self.s.call("GET", f"/api/campaigns/{cid}/relation-types")
+        rival = next(t for t in types if t["key"] == "rival")
+        rel = {"source_kind": "npc", "source_id": a["id"], "target_kind": "npc", "target_id": b["id"], "type": "rival"}
+        self.assertEqual(self.s.call("POST", f"/api/campaigns/{cid}/relations", rel)[0], 201)
+        code, body = self.s.call("DELETE", f"/api/relation-types/{rival['id']}", headers=EN)
+        self.assertEqual((code, body["detail"]), (409, "1 relationship uses the type “Rival”. Change its type before deleting it."))
+        code, body = self.s.call("DELETE", f"/api/relation-types/{rival['id']}")
+        self.assertEqual(body["detail"], "1 lien utilise la nature « Rival ». Changez sa nature avant de la supprimer.")
+        self.assertEqual(self.s.call("POST", f"/api/campaigns/{cid}/relations", rel)[0], 201)
+        code, body = self.s.call("DELETE", f"/api/relation-types/{rival['id']}", headers=EN)
+        self.assertEqual(body["detail"], "2 relationships use the type “Rival”. Change their type before deleting it.")
+        # Message d'un validateur (schemas.py) : traduit dans le détail du champ.
+        code, body = self.s.call("POST", f"/api/campaigns/{cid}/factions", {"name": "F", "color": "rouge"}, headers=EN)
+        self.assertEqual((code, body["detail"]), (422, "Invalid data"))
+        self.assertEqual(body["errors"][0]["msg"], "Value error, Colour expected in #RRGGBB format")
+        code, body = self.s.call("POST", f"/api/campaigns/{cid}/factions", {"name": "F", "color": "rouge"})
+        self.assertEqual(body["errors"][0]["msg"], "Value error, Couleur attendue au format #RRGGBB")
+
+    def test_messages_follow_account_locale(self):
+        self.assertEqual(self.s.call("POST", "/api/admin/users", {"username": "anglais", "password": "motdepasse1"})[0], 201)
+        user = Client(self.s.base)
+        self.assertEqual(user.login("anglais", "motdepasse1"), 200)
+        self.assertEqual(user.call("PUT", "/api/auth/locale", {"locale": "en"})[0], 200)
+        code, body = user.call("POST", "/api/auth/password", {"current_password": "mauvais1", "new_password": "nouveau12"},
+                               headers={"Accept-Language": "fr"})
+        self.assertEqual((code, body["detail"]), (400, "Current password is incorrect"))
+        code, body = user.call("GET", "/api/documents/999999/versions", headers={"Accept-Language": "fr"})
+        self.assertEqual((code, body["detail"]), (404, "Entry not found"))
+
+    def test_version_labels_translated_on_read(self):
+        cid = self.campaign()["id"]
+        _, doc = self.s.call("POST", f"/api/campaigns/{cid}/documents", {"title": "Notes", "content": "<p>un</p>"})
+        self.assertEqual(self.s.call("PATCH", f"/api/documents/{doc['id']}", {"content": "<p>deux</p>"})[0], 200)
+        _, fr = self.s.call("GET", f"/api/documents/{doc['id']}/versions")
+        _, en = self.s.call("GET", f"/api/documents/{doc['id']}/versions", headers=EN)
+        self.assertEqual([v["label"] for v in fr["versions"]], ["Avant remplacement"])
+        self.assertEqual([v["label"] for v in en["versions"]], ["Before replacement"])
+        # Nom saisi par un MJ : jamais traduit, même s'il ressemble à un nom automatique.
+        vid = en["versions"][0]["id"]
+        self.assertEqual(self.s.call("PATCH", f"/api/documents/{doc['id']}/versions/{vid}", {"label": "État initial"})[0], 200)
+        _, en = self.s.call("GET", f"/api/documents/{doc['id']}/versions", headers=EN)
+        self.assertEqual(en["versions"][0]["label"], "État initial")
+        # Titre par défaut : dans la langue de celui qui crée la fiche (données, enregistré tel quel).
+        _, created = self.s.call("POST", f"/api/campaigns/{cid}/documents", {"title": ""}, headers=EN)
+        self.assertEqual(created["title"], "New scenario")
+        _, copy = self.s.call("POST", f"/api/documents/{doc['id']}/duplicate", headers=EN)
+        self.assertEqual(copy.get("title"), "Notes (copy)")
+
+    def test_live_refusal_follows_language(self):
+        """Refus d'une connexion temps réel (message affiché par l'éditeur) : langue du navigateur, puis du compte."""
+        from websockets.sync.client import connect
+        from maze.collab import SCHEMA_VERSION
+        cid = self.campaign()["id"]
+        _, doc = self.s.call("POST", f"/api/campaigns/{cid}/documents", {"title": "Live"})
+        url = f"{self.s.base.replace('http://', 'ws://')}/api/documents/{doc['id']}/live?client=1&v={SCHEMA_VERSION}"
+        for headers, detail in ((EN, "Authentication required"), ({}, "Authentification requise")):
+            with connect(url, additional_headers=headers, open_timeout=5) as ws:
+                self.assertEqual(json.loads(ws.recv(timeout=5))["detail"], detail)
+        self.assertEqual(self.s.call("POST", "/api/admin/users", {"username": "direct", "password": "motdepasse1"})[0], 201)
+        user = Client(self.s.base)
+        user.login("direct", "motdepasse1")
+        user.call("PUT", "/api/auth/locale", {"locale": "en"})
+        with connect(url.replace("client=1", "client=-5"), additional_headers={"Cookie": user.cookie_header()},
+                     open_timeout=5) as ws:
+            self.assertEqual(json.loads(ws.recv(timeout=5))["detail"], "Invalid client identifier")
+
+    def test_oauth_page_follows_accept_language(self):
+        query = "/oauth/authorize?" + urllib.parse.urlencode({"client_id": "inconnu", "redirect_uri": "https://claude.ai/x"})
+        for headers, lang, text in (({}, "fr", "Client inconnu"), (EN, "en", "Unknown client. Check the client ID")):
+            req = urllib.request.Request(self.s.base + query, headers=headers)
+            with self.assertRaises(urllib.error.HTTPError) as caught:
+                urllib.request.urlopen(req)
+            page = caught.exception.read().decode()
+            self.assertIn(f'<html lang="{lang}">', page)
+            self.assertIn(text, page)
+        self.assertIn("Authorisation failed", page)
+
+
+# --- Données de départ -----------------------------------------------------------------------------------------
+
+class SeedsTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.s = Server()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.s.stop()
+
+    def seeds(self, cid: int, client=None) -> tuple[dict, dict, dict]:
+        c = client or self.s.admin
+        _, types = c.call("GET", f"/api/campaigns/{cid}/relation-types")
+        _, places = c.call("GET", f"/api/campaigns/{cid}/places")
+        return ({t["key"]: t["label"] for t in types}, {t["key"]: t["hint"] for t in types},
+                {k["key"]: k["label"] for k in places["kinds"]})
+
+    def test_french_by_default_english_for_english_request_or_account(self):
+        _, fr = self.s.call("POST", "/api/campaigns", {"name": "FR"})
+        labels, hints, kinds = self.seeds(fr["id"])
+        self.assertEqual((labels["allie"], labels["autre"], kinds["batiment"], kinds["lieu"]),
+                         ("Allié", "Autre", "Bâtiment", "Lieu"))
+        _, en = self.s.call("POST", "/api/campaigns", {"name": "EN"}, headers=EN)
+        en_labels, en_hints, en_kinds = self.seeds(en["id"])
+        # Mêmes clés (stables) dans les deux langues ; seuls les libellés changent.
+        self.assertEqual(set(en_labels), set(labels))
+        self.assertEqual(set(en_kinds), set(kinds))
+        self.assertEqual((en_labels["allie"], en_labels["ennemi"], en_labels["autre"]), ("Ally", "Enemy", "Other"))
+        self.assertEqual(en_hints["mentor"], "the source is the target's mentor")
+        self.assertEqual(en_hints["allie"], "")
+        self.assertEqual((en_kinds["batiment"], en_kinds["lieu"], en_kinds["donjon"]),
+                         ("Building", "Place", "Dungeon, underground"))
+        # Compte en anglais : l'emporte sur l'en-tête du navigateur.
+        self.assertEqual(self.s.call("POST", "/api/admin/users", {"username": "graine", "password": "motdepasse1"})[0], 201)
+        user = Client(self.s.base)
+        user.login("graine", "motdepasse1")
+        user.call("PUT", "/api/auth/locale", {"locale": "en"})
+        _, mine = user.call("POST", "/api/campaigns", {"name": "Mine"}, headers={"Accept-Language": "fr"})
+        self.assertEqual(self.seeds(mine["id"], user)[0]["famille"], "Family")
+        # Relation de type « autre » : clé inchangée, libellé anglais.
+        _, a = self.s.call("POST", f"/api/campaigns/{en['id']}/npcs", {"name": "A"})
+        _, b = self.s.call("POST", f"/api/campaigns/{en['id']}/npcs", {"name": "B"})
+        code, rel = self.s.call("POST", f"/api/campaigns/{en['id']}/relations",
+                                {"source_kind": "npc", "source_id": a["id"], "target_kind": "npc", "target_id": b["id"]})
+        self.assertEqual((code, rel["type"]), (201, "autre"))
+        # Les campagnes existantes ne sont jamais traduites.
+        self.assertEqual(self.seeds(fr["id"])[0]["allie"], "Allié")
+
+    def test_import_creates_in_importer_language(self):
+        _, camp = self.s.call("POST", "/api/campaigns", {"name": "Exportée"})
+        code, archive = self.s.call("GET", f"/api/campaigns/{camp['id']}/export")
+        self.assertEqual(code, 200)
+        code, imported = self.s.call("POST", "/api/campaigns/import", raw=archive, content_type="application/zip",
+                                     headers=EN)
+        self.assertEqual((code, imported["name"]), (201, "Exportée (imported)"))
+        code, again = self.s.call("POST", "/api/campaigns/import", raw=archive, content_type="application/zip")
+        self.assertEqual(again["name"], "Exportée (importée)")   # nom libre en français
+        code, body = self.s.call("POST", "/api/campaigns/import", raw=b"pas un zip", content_type="application/zip",
+                                 headers=EN)
+        self.assertEqual((code, body["detail"]), (400, "Unreadable archive (a .zip file exported from Maze is expected)"))
+
+    def test_default_locale_for_seeds(self):
+        s = Server(env={"MAZE_DEFAULT_LOCALE": "en"})
+        try:
+            _, camp = s.call("POST", "/api/campaigns", {"name": "Instance anglaise"})
+            _, types = s.call("GET", f"/api/campaigns/{camp['id']}/relation-types")
+            self.assertEqual({t["key"]: t["label"] for t in types}["hierarchie"], "Hierarchy")
+        finally:
+            s.stop()
+
+
+class DemoLanguageTest(unittest.TestCase):
+    def test_demo_lang_option(self):
+        from maze import demo
+        with tempfile.TemporaryDirectory() as tmp:
+            saved = os.environ.get("MAZE_DATA_DIR")
+            os.environ["MAZE_DATA_DIR"] = tmp
+            try:
+                with contextlib.redirect_stdout(io.StringIO()):
+                    fr_id = demo.main()
+                    en_id = demo.main(["--lang", "en"])
+                with self.assertRaises(SystemExit), contextlib.redirect_stderr(io.StringIO()):
+                    demo.main(["--lang", "klingon"])
+            finally:
+                if saved is None:
+                    os.environ.pop("MAZE_DATA_DIR", None)
+                else:
+                    os.environ["MAZE_DATA_DIR"] = saved
+            with contextlib.closing(sqlite3.connect(Path(tmp) / "maze.db")) as conn:
+                name = lambda cid: conn.execute("SELECT name FROM campaigns WHERE id = ?", (cid,)).fetchone()[0]  # noqa: E731
+                self.assertEqual(name(fr_id), "Les Brumes d'Ys (démo)")
+                self.assertEqual(name(en_id), "The Mists of Ys (demo)")
+                factions = {r[0] for r in conn.execute("SELECT name FROM factions WHERE campaign_id = ?", (en_id,))}
+                self.assertIn("The Grey Hand", factions)
+                kinds = dict(conn.execute("SELECT key, label FROM place_kinds WHERE campaign_id = ?", (en_id,)).fetchall())
+                self.assertEqual(kinds["ville"], "City")
+                # Types des lieux : clés inchangées, toujours connues de la campagne.
+                orphans = conn.execute("""SELECT COUNT(*) FROM places p WHERE p.campaign_id = ? AND NOT EXISTS (
+                                            SELECT 1 FROM place_kinds k WHERE k.campaign_id = p.campaign_id AND k.key = p.kind)""",
+                                       (en_id,)).fetchone()[0]
+                self.assertEqual(orphans, 0)
+                secret = conn.execute("SELECT secrets FROM npcs WHERE campaign_id = ? AND name = 'Captain Hart'",
+                                      (en_id,)).fetchone()[0]
+                self.assertIn("[[Maëlis Corvin]]", secret)   # lien [[Nom]] : nom du personnage inchangé
+
+
+# --- Export de Foundry ---------------------------------------------------------------------------------------------
+
+class FoundryExportLanguageTest(unittest.TestCase):
+    def test_export_in_both_languages(self):
+        s = Server()
+        try:
+            _, camp = s.call("POST", "/api/campaigns", {"name": "Foundry"})
+            cid = camp["id"]
+            _, fac = s.call("POST", f"/api/campaigns/{cid}/factions", {"name": "La Vigie"})
+            _, npc = s.call("POST", f"/api/campaigns/{cid}/npcs", {"name": "Bob", "title": "Guetteur",
+                                                                   "secrets": "<p>Traître</p>"})
+            s.call("POST", "/api/memberships", {"npc_id": npc["id"], "faction_id": fac["id"], "is_leader": True})
+            _, created = s.call("POST", "/api/admin/foundry/tokens", {"name": "t", "campaigns": [cid]})
+
+            def export(query: str = "") -> dict:
+                req = urllib.request.Request(f"{s.base}/api/foundry/v1/campaigns/{cid}/export{query}",
+                                             headers={"Authorization": f"Bearer {created['token']}", **EN})
+                with urllib.request.urlopen(req) as resp:
+                    return json.loads(resp.read())
+
+            default, fr, en, other = export(), export("?lang=fr"), export("?lang=en"), export("?lang=de")
+            bob = {name: next(n for n in data["npcs"] if n["id"] == npc["id"])
+                   for name, data in (("default", default), ("fr", fr), ("en", en), ("other", other))}
+            # Sans paramètre ni langue connue : MAZE_DEFAULT_LOCALE (fr), même si le navigateur est en anglais.
+            self.assertEqual(bob["default"]["html"], bob["fr"]["html"])
+            self.assertEqual(bob["other"]["hash"], bob["fr"]["hash"])
+            self.assertIn("<strong>Titre :</strong> Guetteur", bob["fr"]["html"])
+            self.assertIn("<strong>Statut :</strong> Vivant", bob["fr"]["html"])
+            self.assertIn("- chef", bob["fr"]["html"])
+            self.assertIn("<h2>Secrets</h2>", bob["fr"]["secret_html"])
+            self.assertIn("<strong>Title:</strong> Guetteur", bob["en"]["html"])
+            self.assertIn("<strong>Status:</strong> Alive", bob["en"]["html"])
+            self.assertIn("<strong>Factions:</strong>", bob["en"]["html"])
+            self.assertIn("La Vigie</a> - leader", bob["en"]["html"])
+            self.assertIn("Traître", bob["en"]["secret_html"])          # texte du MJ : jamais traduit
+            # Autre langue = autre HTML, donc autre empreinte : le module réécrit les pages non modifiées.
+            self.assertNotEqual(bob["en"]["hash"], bob["fr"]["hash"])
+            self.assertEqual(en["campaign"]["name"], "Foundry")
+            self.assertEqual({k["key"]: k["label"] for k in en["place_kinds"]}["ville"], "Ville")   # données de la campagne
         finally:
             s.stop()
 

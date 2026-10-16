@@ -24,7 +24,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 
-from . import auth, db
+from . import auth, db, i18n
 from .htmlimg import doc_image_id, img_tags, remove_imgs
 from .api import in_tx, parse, parse_body, path_id, scoped, threaded, touch_campaign, tx
 from .schemas import VersionCreate, VersionRestore, VersionUpdate
@@ -32,6 +32,22 @@ from .schemas import VersionCreate, VersionRestore, VersionUpdate
 AUTO_INTERVAL = timedelta(minutes=10)
 KEEP_AUTO = 100          # versions automatiques conservées par fiche
 FIELDS = "id, kind, label, title, size, author_name, created_at"
+# Noms des versions automatiques posés par Maze (fiches rédigées, et PNJ, factions, lieux : entry_history). Enregistrés
+# en français, traduits à la lecture dans la langue de la requête (maze.i18n) ; le nom d'une version manuelle, saisi
+# par un MJ (repris par une version « restore »), ne l'est jamais.
+SYSTEM_LABELS = frozenset({
+    "Avant remplacement", "Avant modification par Claude", "Modification par Claude", "Avant restauration",
+    "Avant restauration (navigateur)", "Avant suppression d'une image", "État initial", "État précédent",
+})
+
+
+def labels_out(request: Request, rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Noms des versions automatiques dans la langue de la requête (voir SYSTEM_LABELS)."""
+    locale = i18n.request_locale(request.scope)
+    for row in rows:
+        if row.get("kind") == "auto" and row.get("label") in SYSTEM_LABELS:
+            row["label"] = i18n.translate(row["label"], locale)
+    return rows
 
 
 def _digest(html: str) -> str:
@@ -139,7 +155,8 @@ def list_versions(request: Request) -> Response:
         doc = scoped(conn, request, "documents", did, "Fiche")
         rows = [dict(r) for r in conn.execute(
             f"SELECT {FIELDS} FROM document_versions WHERE document_id = ? ORDER BY id DESC", (did,))]
-    return JSONResponse({"current": {"title": doc["title"], "updated_at": doc["updated_at"]}, "versions": rows})
+    return JSONResponse({"current": {"title": doc["title"], "updated_at": doc["updated_at"]},
+                         "versions": labels_out(request, rows)})
 
 
 @threaded
@@ -147,7 +164,7 @@ def get_version(request: Request) -> Response:
     did = path_id(request)
     with tx(request) as conn:
         scoped(conn, request, "documents", did, "Fiche")
-        return JSONResponse(_version(conn, did, path_id(request, "vid")))
+        return JSONResponse(labels_out(request, [_version(conn, did, path_id(request, "vid"))])[0])
 
 
 @threaded

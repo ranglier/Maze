@@ -1,0 +1,133 @@
+{
+  "MAZE_SYNC": {
+    "Menu": {
+      "Name": "Maze",
+      "Label": "Import from Maze",
+      "Hint": "NPCs, factions, places and maps of a Maze campaign as journals, scenes and actors."
+    },
+    "Kind": {
+      "npc": "NPCs",
+      "faction": "Factions",
+      "place": "Places",
+      "map": "Map",
+      "actor": "Actor"
+    },
+    "Folder": {
+      "Root": "{campaign} - {label}",
+      "Maps": "Maps",
+      "NoFaction": "No faction",
+      "Removed": "Removed from Maze"
+    },
+    "Page": {
+      "Sheet": "Sheet",
+      "Secrets": "Secrets (GM)",
+      "Maps": "Maps",
+      "ActorLink": "{name}'s sheet (Maze)"
+    },
+    "Status": {
+      "brouillon": "draft",
+      "pret": "ready",
+      "en_cours": "in progress",
+      "joue": "played"
+    },
+    "Error": {
+      "BadUrl": "Invalid Maze address (https://…)",
+      "Unreachable": "Cannot reach Maze ({url}): address, certificate or CORS. {error}",
+      "TokenRefused": "Token refused by Maze (revoked or copied incorrectly).",
+      "NotFound": "Not found in Maze (campaign not open to this token?).",
+      "Status": "Maze answered {status}.",
+      "Format": "Unexpected format ({format}): update the module.",
+      "Scenario": "Scenario not found in Maze (deleted?): reconnect to refresh the list.",
+      "UploadRefused": "upload refused by Foundry",
+      "NoBackground": "map background not downloaded",
+      "Image": "Image {name}: {error}",
+      "Entry": "{name}: {error}",
+      "Map": "Map {name}: {error}",
+      "Actor": "Actor {name}: {error}",
+      "System": "Actors: system “{system}” not supported (journals only)."
+    },
+    "Log": {
+      "Reading": "Reading the campaign from Maze…",
+      "Campaign": "{name}: {npcs} NPCs, {factions} factions, {places} places, {maps} maps.",
+      "Scenario": {
+        "one": "Scenario “{title}”: {npcs} NPCs, {factions} factions, {places} places, {n} map.",
+        "other": "Scenario “{title}”: {npcs} NPCs, {factions} factions, {places} places, {n} maps."
+      },
+      "Downloading": {
+        "one": "Downloading {n} image…",
+        "other": "Downloading {n} images…"
+      },
+      "Progress": "… {done} / {total}",
+      "Creating": {
+        "one": "Creating {n} journal…",
+        "other": "Creating {n} journals…"
+      },
+      "Filling": {
+        "one": "Updating the content of {n} journal…",
+        "other": "Updating the content of {n} journals…"
+      },
+      "Scenes": {
+        "one": "Maps: {n} scene…",
+        "other": "Maps: {n} scenes…"
+      },
+      "Actors": "Actors: {n} NPCs…"
+    },
+    "Report": {
+      "Item": "{kind}: {name}",
+      "Skipped": "{kind}: {name} ({page})",
+      "Biography": "biography",
+      "Done": "Done:",
+      "Created": {
+        "one": "{n} created",
+        "other": "{n} created"
+      },
+      "Updated": {
+        "one": "{n} updated",
+        "other": "{n} updated"
+      },
+      "Unchanged": {
+        "one": "{n} unchanged",
+        "other": "{n} unchanged"
+      },
+      "Removed": {
+        "one": "{n} removed from Maze",
+        "other": "{n} removed from Maze"
+      },
+      "Summary": "{created}, {updated}, {unchanged}.",
+      "SummaryRemoved": "{created}, {updated}, {unchanged}, {removed}.",
+      "SkippedTitle": "Changed in Foundry, left as they are",
+      "DuplicatesTitle": "Copies made in Foundry, ignored",
+      "ErrorsTitle": "Errors",
+      "Notify": "Import from Maze complete."
+    },
+    "App": {
+      "Title": "Import from Maze",
+      "Connection": "Connection to Maze",
+      "Url": "Maze address",
+      "Token": "Token",
+      "TokenSaved": "saved (leave empty to keep it)",
+      "TokenHint": "Token created in Maze, Administration > Foundry VTT. It stays in this browser.",
+      "Connect": "Sign in",
+      "Import": "Import",
+      "Campaign": "Campaign",
+      "CampaignOption": "{name} ({npcs} NPCs, {factions} factions, {places} places, {maps} maps)",
+      "Scenario": "Scenario",
+      "ScenarioHint": "A scenario: only the entries it mentions (@), in itself and its pages, with the additions and removals of its map, and the maps of its places. Other entries already imported are not touched.",
+      "WholeCampaign": "Whole campaign",
+      "Untitled": "Untitled",
+      "ScenarioOption": "{title} ({status})",
+      "Related": "With neighbouring entries: factions of the NPCs, places where they are, people present at the places mentioned",
+      "Npcs": "NPC journals",
+      "Factions": "Faction journals",
+      "Places": "Place journals",
+      "Maps": "Interactive maps as scenes",
+      "Actors": "NPC actors",
+      "ActorsUnsupported": "NPC actors (system “{system}” not supported)",
+      "FullMaps": "Full-resolution map backgrounds (heavier)",
+      "Overwrite": "Also replace what was changed in Foundry",
+      "Start": "Import",
+      "NoCampaign": "No campaign is open to this token.",
+      "Button": "Maze"
+    }
+  }
+}

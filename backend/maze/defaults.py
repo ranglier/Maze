@@ -1,4 +1,8 @@
-"""Valeurs par défaut créées avec chaque nouvelle campagne."""
+"""Valeurs par défaut créées avec chaque nouvelle campagne.
+
+Libellés et indications enregistrés dans la langue de celui qui crée la campagne (`locale` : maze.i18n, traductions
+dans maze/i18n/<langue>/seeds.json) ; les clés (`allie`, `batiment`…) sont les mêmes dans toutes les langues et seules
+elles servent de référence (liens, lieux, connecteur, import). Les campagnes existantes ne sont jamais traduites."""
 
 from __future__ import annotations
 
@@ -7,6 +11,7 @@ import sqlite3
 import unicodedata
 
 from . import db
+from .i18n import SOURCE_LOCALE, tr
 
 # (clé, libellé, couleur, orienté, indication de sens)
 DEFAULT_RELATION_TYPES = [
@@ -37,17 +42,23 @@ DEFAULT_PLACE_KINDS = [
 DEFAULT_PLACE_KIND = "lieu"
 
 
-def seed_place_kinds(conn: sqlite3.Connection, campaign_id: int) -> None:
+def place_kind_label(key: str, locale: str = SOURCE_LOCALE) -> str:
+    """Libellé fourni d'un type de lieu, dans une langue (« lieu » : « Lieu », « Place »…)."""
+    label = next((label for k, label, _ in DEFAULT_PLACE_KINDS if k == key), key)
+    return tr(label, locale)
+
+
+def seed_place_kinds(conn: sqlite3.Connection, campaign_id: int, locale: str = SOURCE_LOCALE) -> None:
     for order, (key, label, icon) in enumerate(DEFAULT_PLACE_KINDS):
         conn.execute("INSERT OR IGNORE INTO place_kinds (campaign_id, key, label, icon, sort_order) VALUES (?, ?, ?, ?, ?)",
-                     (campaign_id, key, label, icon, order))
+                     (campaign_id, key, tr(label, locale), icon, order))
 
 
-def seed_relation_types(conn: sqlite3.Connection, campaign_id: int) -> None:
+def seed_relation_types(conn: sqlite3.Connection, campaign_id: int, locale: str = SOURCE_LOCALE) -> None:
     for order, (key, label, color, directed, hint) in enumerate(DEFAULT_RELATION_TYPES):
         db.insert(conn, "relation_types", {
-            "campaign_id": campaign_id, "key": key, "label": label, "color": color,
-            "directed": directed, "hint": hint, "sort_order": order,
+            "campaign_id": campaign_id, "key": key, "label": tr(label, locale), "color": color,
+            "directed": directed, "hint": tr(hint, locale) if hint else "", "sort_order": order,
         })
 
 

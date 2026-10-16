@@ -16,17 +16,21 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 
-from . import db, imaging
+from . import db, i18n, imaging
 from .api import IMAGE_FIELD, TABLES, _store_images, entity_detail, parse_body, path_id, scoped, settings, threaded, touch_campaign, tx
 from .schemas import ImageCopy
 
 DOC_IMAGE = re.compile(r'data-doc-image="(\d+)"')
 SOURCES = {"library": "library_images", "gallery": "images", "document": "document_images", "map": "maps"}
+# Provenance affichée dans le choix d'une image (« PNJ : Bob »), dans la langue de la requête (maze.i18n).
 KIND_LABEL = {"npc": "PNJ", "faction": "Faction", "place": "Lieu"}
 DOC_LABEL = {"campaign": "Fiche de campagne", "scenario": "Scénario", "page": "Page"}
 
 
-def _catalog(conn, cid: int) -> list[dict[str, Any]]:
+def _catalog(conn, cid: int, locale: str = i18n.SOURCE_LOCALE) -> list[dict[str, Any]]:
+    def tr(text: str, **params: Any) -> str:
+        return i18n.tr(text, locale, **params)
+
     names = {(kind, r[0]): r[1] for kind, table in TABLES.items()
              for r in conn.execute(f"SELECT id, name FROM {table} WHERE campaign_id = ?", (cid,))}
     docs = {r[0]: (r[1], r[2]) for r in conn.execute("SELECT id, title, kind FROM documents WHERE campaign_id = ?", (cid,))}
@@ -39,16 +43,18 @@ def _catalog(conn, cid: int) -> list[dict[str, Any]]:
                 "caption": r["caption"] if "caption" in r.keys() else r["name"] if "name" in r.keys() else "", "width": r["width"], "height": r["height"],
                 "origin": origin}
 
-    out = [item("library", r, "Bibliothèque")
+    out = [item("library", r, tr("Bibliothèque"))
            for r in conn.execute("SELECT * FROM library_images WHERE campaign_id = ? ORDER BY id DESC", (cid,))]
-    out += [item("gallery", r, f"{KIND_LABEL[r['owner_kind']]} : {names.get((r['owner_kind'], r['owner_id']), '')}")
+    out += [item("gallery", r, tr("{kind} : {name}", kind=tr(KIND_LABEL[r["owner_kind"]]),
+                                  name=names.get((r["owner_kind"], r["owner_id"]), "")))
             for r in conn.execute("SELECT * FROM images WHERE campaign_id = ? ORDER BY owner_kind, owner_id, sort_order, id",
                                   (cid,))]
     for r in conn.execute("SELECT * FROM document_images WHERE campaign_id = ? ORDER BY id DESC", (cid,)):
         doc = docs.get(r["document_id"])
         if r["id"] in used and doc:
-            out.append(item("document", r, f"{DOC_LABEL.get(doc[1], 'Fiche')} : {doc[0] or 'Sans titre'}"))
-    out += [item("map", r, "Carte interactive")
+            out.append(item("document", r, tr("{kind} : {name}", kind=tr(DOC_LABEL.get(doc[1], "Fiche")),
+                                              name=doc[0] or tr("Sans titre"))))
+    out += [item("map", r, tr("Carte interactive"))
             for r in conn.execute("SELECT * FROM maps WHERE campaign_id = ? ORDER BY sort_order, id", (cid,))]
     return out
 
@@ -58,7 +64,7 @@ def campaign_images(request: Request) -> Response:
     cid = path_id(request)
     with tx(request) as conn:
         scoped(conn, request, "campaigns", cid, "Campagne")
-        return JSONResponse({"images": _catalog(conn, cid)})
+        return JSONResponse({"images": _catalog(conn, cid, i18n.request_locale(request.scope))})
 
 
 def _source(conn, data: ImageCopy, campaign_id: int) -> dict[str, Any]:
@@ -78,7 +84,7 @@ def _copy(request: Request, row: dict[str, Any], campaign_id: int) -> imaging.St
             return imaging.copy_stored(media_dir, row["preview"], row["thumb"], campaign_id, width, height)
         return imaging.copy_stored(media_dir, row["file"], row["thumb"], campaign_id, row["width"], row["height"])
     except imaging.ImageError as exc:
-        raise HTTPException(404, str(exc)) from exc
+        raise HTTPException(404, i18n.message(exc)) from exc
 
 
 def _copy_to_entity(kind: str):

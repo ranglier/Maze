@@ -82,6 +82,9 @@ def _patterns(locale: str) -> tuple[tuple[re.Pattern[str], str], ...]:
             pos = m.end()
         parts.append(re.escape(key[pos:]))
         out.append((re.compile("".join(parts), re.DOTALL), key))
+    # Le plus précis d'abord (le plus de texte hors paramètres) : « Échec de la vérification : {error} » avant
+    # « {name} : {error} », qui reconnaîtrait aussi le premier.
+    out.sort(key=lambda item: -len(PLACEHOLDER.sub("", item[1])))
     return tuple(out)
 
 
@@ -143,6 +146,19 @@ def msgn(singular: str, plural: str, n: Any, /, **params: Any) -> Msg:
     """Message au pluriel : msgn("{n} lien utilise ce type", "{n} liens utilisent ce type", n). `n` est aussi un
     paramètre. Clé du catalogue : la forme au singulier ; valeur : {"one": ..., "other": ...}."""
     return Msg(singular, {"n": n, **params}, plural, n)
+
+
+def message(exc: BaseException) -> str:
+    """Message d'une exception (ImageError, ArchiveError, TransferError…) en gardant le `msg(...)` qu'elle porte :
+    `str(exc)` rendrait une chaîne ordinaire, traduite seulement si elle figure telle quelle au catalogue."""
+    first = exc.args[0] if len(exc.args) == 1 else None
+    return first if isinstance(first, str) else str(exc)
+
+
+def tr(template: str, locale: str | None, /, **params: Any) -> str:
+    """Texte composé directement dans une langue (données créées, pages de Foundry, page d'autorisation) :
+    translate(msg(template, **params), locale)."""
+    return translate(Msg(template, params), locale)
 
 
 def lookup(text: str, locale: str) -> str | None:
@@ -230,6 +246,13 @@ def default_locale(scope: dict[str, Any] | None = None) -> str:
     app = (scope or {}).get("app")
     settings = getattr(getattr(app, "state", None), "settings", None)
     return getattr(settings, "default_locale", None) or SOURCE_LOCALE
+
+
+def chosen_locale(value: Any, scope: dict[str, Any] | None = None) -> str:
+    """Langue demandée explicitement (paramètre `lang` de l'export de Foundry : game.i18n.lang du monde) si le
+    serveur la connaît, sinon MAZE_DEFAULT_LOCALE."""
+    code = normalize(value)
+    return code if code in available_locales() else default_locale(scope)
 
 
 def request_locale(scope: dict[str, Any]) -> str:

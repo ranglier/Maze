@@ -1,0 +1,133 @@
+{
+  "MAZE_SYNC": {
+    "Menu": {
+      "Name": "Maze",
+      "Label": "Importer depuis Maze",
+      "Hint": "PNJ, factions, lieux et cartes d'une campagne de Maze en journaux, scènes et acteurs."
+    },
+    "Kind": {
+      "npc": "PNJ",
+      "faction": "Factions",
+      "place": "Lieux",
+      "map": "Carte",
+      "actor": "Acteur"
+    },
+    "Folder": {
+      "Root": "{campaign} - {label}",
+      "Maps": "Cartes",
+      "NoFaction": "Sans faction",
+      "Removed": "Retirés de Maze"
+    },
+    "Page": {
+      "Sheet": "Fiche",
+      "Secrets": "Secrets (MJ)",
+      "Maps": "Cartes",
+      "ActorLink": "Fiche de {name} (Maze)"
+    },
+    "Status": {
+      "brouillon": "brouillon",
+      "pret": "prêt",
+      "en_cours": "en cours",
+      "joue": "joué"
+    },
+    "Error": {
+      "BadUrl": "Adresse de Maze invalide (https://…)",
+      "Unreachable": "Maze injoignable ({url}) : adresse, certificat ou CORS. {error}",
+      "TokenRefused": "Jeton refusé par Maze (révoqué ou mal copié).",
+      "NotFound": "Introuvable dans Maze (campagne non ouverte à ce jeton ?).",
+      "Status": "Maze a répondu {status}.",
+      "Format": "Format inattendu ({format}) : mettre à jour le module.",
+      "Scenario": "Scénario introuvable dans Maze (supprimé ?) : reconnectez-vous pour rafraîchir la liste.",
+      "UploadRefused": "dépôt refusé par Foundry",
+      "NoBackground": "fond de carte non téléchargé",
+      "Image": "Image {name} : {error}",
+      "Entry": "{name} : {error}",
+      "Map": "Carte {name} : {error}",
+      "Actor": "Acteur {name} : {error}",
+      "System": "Acteurs : système « {system} » non pris en charge (journaux seulement)."
+    },
+    "Log": {
+      "Reading": "Lecture de la campagne dans Maze…",
+      "Campaign": "{name} : {npcs} PNJ, {factions} factions, {places} lieux, {maps} cartes.",
+      "Scenario": {
+        "one": "Scénario « {title} » : {npcs} PNJ, {factions} factions, {places} lieux, {n} carte.",
+        "other": "Scénario « {title} » : {npcs} PNJ, {factions} factions, {places} lieux, {n} cartes."
+      },
+      "Downloading": {
+        "one": "Téléchargement de {n} image…",
+        "other": "Téléchargement de {n} images…"
+      },
+      "Progress": "… {done} / {total}",
+      "Creating": {
+        "one": "Création de {n} journal…",
+        "other": "Création de {n} journaux…"
+      },
+      "Filling": {
+        "one": "Mise à jour du contenu de {n} journal…",
+        "other": "Mise à jour du contenu de {n} journaux…"
+      },
+      "Scenes": {
+        "one": "Cartes : {n} scène…",
+        "other": "Cartes : {n} scènes…"
+      },
+      "Actors": "Acteurs : {n} PNJ…"
+    },
+    "Report": {
+      "Item": "{kind} : {name}",
+      "Skipped": "{kind} : {name} ({page})",
+      "Biography": "biographie",
+      "Done": "Terminé :",
+      "Created": {
+        "one": "{n} créé",
+        "other": "{n} créés"
+      },
+      "Updated": {
+        "one": "{n} mis à jour",
+        "other": "{n} mis à jour"
+      },
+      "Unchanged": {
+        "one": "{n} inchangé",
+        "other": "{n} inchangés"
+      },
+      "Removed": {
+        "one": "{n} retiré de Maze",
+        "other": "{n} retirés de Maze"
+      },
+      "Summary": "{created}, {updated}, {unchanged}.",
+      "SummaryRemoved": "{created}, {updated}, {unchanged}, {removed}.",
+      "SkippedTitle": "Modifiés dans Foundry, laissés tels quels",
+      "DuplicatesTitle": "Copies faites dans Foundry, ignorées",
+      "ErrorsTitle": "Erreurs",
+      "Notify": "Import depuis Maze terminé."
+    },
+    "App": {
+      "Title": "Importer depuis Maze",
+      "Connection": "Connexion à Maze",
+      "Url": "Adresse de Maze",
+      "Token": "Jeton",
+      "TokenSaved": "enregistré (laisser vide pour le garder)",
+      "TokenHint": "Jeton créé dans Maze, Administration > Foundry VTT. Il reste dans ce navigateur.",
+      "Connect": "Se connecter",
+      "Import": "Import",
+      "Campaign": "Campagne",
+      "CampaignOption": "{name} ({npcs} PNJ, {factions} factions, {places} lieux, {maps} cartes)",
+      "Scenario": "Scénario",
+      "ScenarioHint": "Un scénario : seulement les fiches qu'il cite (@), lui et ses pages, avec les ajouts et retraits de sa carte, et les cartes de ses lieux. Les autres fiches déjà importées ne sont pas touchées.",
+      "WholeCampaign": "Toute la campagne",
+      "Untitled": "Sans titre",
+      "ScenarioOption": "{title} ({status})",
+      "Related": "Avec les fiches voisines : factions des PNJ, lieux où ils se trouvent, présents des lieux cités",
+      "Npcs": "Journaux des PNJ",
+      "Factions": "Journaux des factions",
+      "Places": "Journaux des lieux",
+      "Maps": "Cartes interactives en scènes",
+      "Actors": "Acteurs des PNJ",
+      "ActorsUnsupported": "Acteurs des PNJ (système « {system} » non pris en charge)",
+      "FullMaps": "Fonds de carte en pleine définition (plus lourds)",
+      "Overwrite": "Remplacer aussi ce qui a été modifié dans Foundry",
+      "Start": "Importer",
+      "NoCampaign": "Aucune campagne n'est ouverte à ce jeton.",
+      "Button": "Maze"
+    }
+  }
+}

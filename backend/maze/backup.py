@@ -38,6 +38,7 @@ from pathlib import Path
 from typing import Any
 
 from . import db
+from .i18n import msg
 from .mediafiles import FILE_NAME, is_temp
 from .config import Settings, load_settings
 
@@ -243,6 +244,13 @@ def space_needed(cfg: Settings, extra: int = 0) -> int:
     return 2 * max(latest_size(cfg), extra) + SPACE_MARGIN
 
 
+# Refus faute de place, renvoyé à l'administration (traduit à la réponse, maze.i18n) : une phrase par opération.
+SPACE_MESSAGES = {
+    "sauvegarde": "Espace disque insuffisant pour une sauvegarde : {free} Mo libres sur le volume, {needed} Mo nécessaires (deux fois la taille de la dernière archive, plus {margin} Mo). Supprimez d'anciennes archives (Administration > Sauvegardes) ou agrandissez le volume.",  # noqa: E501
+    "restauration": "Espace disque insuffisant pour une restauration : {free} Mo libres sur le volume, {needed} Mo nécessaires (deux fois la taille de la dernière archive, plus {margin} Mo). Supprimez d'anciennes archives (Administration > Sauvegardes) ou agrandissez le volume.",  # noqa: E501
+}
+
+
 def check_space(cfg: Settings, target_dir: Path, extra: int = 0, action: str = "sauvegarde") -> None:
     """Refuse (SpaceError) si le volume n'a pas deux fois la taille de la dernière archive (ou de `extra`, l'archive
     à restaurer) plus SPACE_MARGIN de libre : une archive à moitié écrite sur un disque plein ne sert à rien, et une
@@ -250,10 +258,7 @@ def check_space(cfg: Settings, target_dir: Path, extra: int = 0, action: str = "
     free, needed = free_space(target_dir), space_needed(cfg, extra)
     if free < needed:
         mb = 1024 * 1024
-        raise SpaceError(f"Espace disque insuffisant pour une {action} : {free // mb} Mo libres sur le volume, "
-                         f"{needed // mb} Mo nécessaires (deux fois la taille de la dernière archive, plus "
-                         f"{SPACE_MARGIN // mb} Mo). Supprimez d'anciennes archives (Administration > Sauvegardes) "
-                         "ou agrandissez le volume.")
+        raise SpaceError(msg(SPACE_MESSAGES[action], free=free // mb, needed=needed // mb, margin=SPACE_MARGIN // mb))
 
 
 def rotate(target_dir: Path, nature: str, keep: int, protect: tuple[Path, ...] = ()) -> None:
@@ -327,11 +332,11 @@ def _check_members(tar: tarfile.TarFile) -> None:
         name = member.name.removeprefix("./")
         parts = Path(name).parts
         if member.name.startswith("/") or ".." in parts or not (member.isfile() or member.isdir()):
-            raise ArchiveError(f"Élément refusé dans l'archive : {member.name}")
+            raise ArchiveError(msg("Élément refusé dans l'archive : {name}", name=member.name))
         if name == "maze.db" and member.isfile():
             has_db = True
         elif not (MEDIA_FILE if member.isfile() else MEDIA_DIR).match(name):
-            raise ArchiveError(f"Élément inattendu dans l'archive : {member.name}")
+            raise ArchiveError(msg("Élément inattendu dans l'archive : {name}", name=member.name))
     if not has_db:
         raise ArchiveError("L'archive ne contient pas de base Maze (maze.db)")
 
@@ -353,10 +358,10 @@ def _check_database(path: Path) -> dict[str, Any]:
         finally:
             conn.close()
     except sqlite3.DatabaseError as exc:
-        raise ArchiveError(f"Base illisible : {exc}") from exc
+        raise ArchiveError(msg("Base illisible : {error}", error=str(exc))) from exc
     if problem:
-        raise ArchiveError("Sauvegarde issue d'une version plus récente de Maze (ou d'une autre branche) : mettez "
-                           f"Maze à jour d'abord. Détail : {problem}")
+        raise ArchiveError(msg("Sauvegarde issue d'une version plus récente de Maze (ou d'une autre branche) : mettez Maze à jour d'abord. Détail : {problem}",  # noqa: E501
+                               problem=problem))
     return {"schema": version, "campaigns": campaigns, "users": users}
 
 
@@ -369,7 +374,7 @@ def inspect_archive(archive: Path) -> dict[str, Any]:
                 tar.extract("maze.db" if "maze.db" in tar.getnames() else "./maze.db", tmp, filter="data")
                 return _check_database(Path(tmp) / "maze.db")
     except (tarfile.TarError, OSError, EOFError) as exc:
-        raise ArchiveError(f"Archive illisible : {exc}") from exc
+        raise ArchiveError(msg("Archive illisible : {error}", error=str(exc))) from exc
 
 
 def _merge_accounts(new_db: Path, current_db: Path, restorer: str | None = None,
@@ -448,11 +453,10 @@ def _merge_accounts(new_db: Path, current_db: Path, restorer: str | None = None,
             conn.execute("UPDATE main.users SET session_epoch = session_epoch + 1")
         conn.execute("DETACH DATABASE actuelle")
         if not conn.execute("SELECT COUNT(*) FROM users WHERE role = 'admin' AND active = 1").fetchone()[0]:
-            hint = (" ; comptes de l'archive absents de la base en service, donc restaurés désactivés : "
-                    + ", ".join(disabled) + " (reprise après sinistre sur une instance neuve, en ligne de commande : "
-                    "--keep-archive-accounts)") if disabled else ""
-            raise ArchiveError("La sauvegarde ne contient aucun administrateur actif (états actuels des comptes "
-                               f"repris){hint} : restauration refusée")
+            if disabled:
+                raise ArchiveError(msg("La sauvegarde ne contient aucun administrateur actif (états actuels des comptes repris) ; comptes de l'archive absents de la base en service, donc restaurés désactivés : {accounts} (reprise après sinistre sur une instance neuve, en ligne de commande : --keep-archive-accounts) : restauration refusée",  # noqa: E501
+                                       accounts=", ".join(disabled)))
+            raise ArchiveError("La sauvegarde ne contient aucun administrateur actif (états actuels des comptes repris) : restauration refusée")  # noqa: E501
     finally:
         conn.close()
     return disabled, removed
@@ -812,14 +816,11 @@ def _restore(archive: Path, cfg: Settings, restorer: str | None, keep_archive_ac
                 tar.extract("maze.db", work / "avant", filter="data")
             _copy_database(work / "avant" / "maze.db", cfg.db_path)
             if isinstance(exc, _MediaStuck):
-                raise ArchiveError(
-                    f"Remplacement des images impossible ({exc.cause}), et l'ancien dossier des images n'a pas pu "
-                    f"reprendre sa place ({exc.error}) : restauration annulée, base remise en l'état, mais les "
-                    f"images d'avant sont dans {exc.old_media} et non dans {cfg.media_dir}. Arrêter Maze, mettre "
-                    f"de côté {cfg.media_dir} s'il existe, renommer {exc.old_media} en {cfg.media_dir}, puis "
-                    "redémarrer.") from exc
-            raise ArchiveError(f"Remplacement des images impossible ({exc}) : restauration annulée, base et "
-                               "images remises en l'état") from exc
+                raise ArchiveError(msg(
+                    "Remplacement des images impossible ({cause}), et l'ancien dossier des images n'a pas pu reprendre sa place ({error}) : restauration annulée, base remise en l'état, mais les images d'avant sont dans {old} et non dans {media}. Arrêter Maze, mettre de côté {media} s'il existe, renommer {old} en {media}, puis redémarrer.",  # noqa: E501
+                    cause=str(exc.cause), error=str(exc.error), old=str(exc.old_media), media=str(cfg.media_dir))) from exc
+            raise ArchiveError(msg("Remplacement des images impossible ({error}) : restauration annulée, base et images remises en l'état",  # noqa: E501
+                                   error=str(exc))) from exc
         if old_media is not None:
             shutil.rmtree(old_media, ignore_errors=True)
     finally:

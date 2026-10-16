@@ -24,7 +24,8 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 
-from . import auth, db, imaging, limits, versions
+from . import auth, db, i18n, imaging, limits, versions
+from .i18n import msg
 from .connector import _require_json
 from .api import IMAGE_FIELD, TABLES, _store_images, get_or_404, in_tx, parse_body, path_id, settings, threaded, touch_campaign, tx
 from .documents import UNSAVED_EDITS, has_unsaved_edits
@@ -134,11 +135,11 @@ async def upload_library(request: Request) -> Response:
         for upload in uploads:
             raw = await upload.read(limit + 1)
             if len(raw) > limit:
-                raise HTTPException(413, f"{upload.filename} dépasse {cfg.max_upload_mb} Mo")
+                raise HTTPException(413, msg("{name} dépasse {size} Mo", name=upload.filename or "", size=cfg.max_upload_mb))
             try:
                 img = await run_in_threadpool(imaging.process_upload, raw, cfg.media_dir, cid)
             except imaging.ImageError as exc:
-                raise HTTPException(400, f"{upload.filename} : {exc}") from exc
+                raise HTTPException(400, msg("{name} : {error}", name=upload.filename or "", error=i18n.message(exc))) from exc
             stored.append((img, (upload.filename or "")[:200]))
 
         def _work(conn: sqlite3.Connection):
@@ -220,7 +221,7 @@ def assign_library(request: Request) -> Response:
         except OSError as exc:
             raise HTTPException(404, "Fichier de l'image introuvable sur le serveur") from exc
         except imaging.ImageError as exc:
-            raise HTTPException(400, str(exc)) from exc
+            raise HTTPException(400, i18n.message(exc)) from exc
 
     new_id = run()
     if data.remove:
@@ -249,7 +250,8 @@ def delete_document_image(request: Request) -> Response:
                             (row["campaign_id"], f'%data-doc-image="{iid}"%')).fetchall()
         for doc in docs:
             if has_unsaved_edits(conn, doc["id"]):
-                raise HTTPException(409, f"Une fiche qui affiche cette image est en cours d'écriture. {UNSAVED_EDITS}")
+                raise HTTPException(409, msg("Une fiche qui affiche cette image est en cours d'écriture. {detail}",
+                                             detail=UNSAVED_EDITS))
             versions.snapshot(conn, doc["id"], label="Avant suppression d'une image")
             versions.replace_content(conn, doc["id"], strip_doc_image(doc["content"], iid), user["id"])
             touched.append(doc["id"])
