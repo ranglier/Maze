@@ -63,6 +63,9 @@ const PATHS = {
   history: 'M3.5 10a6.5 6.5 0 102-4.7M3.5 3.5v2.8h2.8M10 6.5V10l2.5 2',
   copy: 'M7.5 7.5h9v9h-9zM4 12.5V3.5h9',
   template: 'M4 3.5h12v4H4zM4 10h5v6.5H4zM11.5 10H16M11.5 13H16M11.5 16H16',
+  // Chronologie : axe horizontal, événements alternés au-dessus et en dessous.
+  grip: 'M7.5 5h.01M12.5 5h.01M7.5 10h.01M12.5 10h.01M7.5 15h.01M12.5 15h.01',
+  timeline: 'M2.5 10h15M5.5 10V5.5M10 10v4.5M14.5 10V5.5M4 5.5h3M8.5 14.5h3M13 5.5h3',
   pin: 'M10 17.5s-5.5-5.2-5.5-9.5a5.5 5.5 0 0111 0c0 4.3-5.5 9.5-5.5 9.5zM10 10a2 2 0 100-4 2 2 0 000 4z',
   region: 'M2.5 16l5-8 3 4.5 2-3 5 6.5z',
   city: 'M3 17V8l3-2 3 2v9M9 17V5l3-2 3 2v12M15 17v-6h2.5v6M2 17h16',

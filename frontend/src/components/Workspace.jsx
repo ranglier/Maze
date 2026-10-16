@@ -542,6 +542,7 @@ export default function Workspace({
             nodeName={nodeName}
             resolveRef={resolveRef}
             mapAction={mapAction}
+            timelineEnabled={Boolean(campaign.timeline_enabled)}
             onClose={() => select(null)}
             onOpenNode={(id) => openNode(id)}
             onOpenEdge={openEdge}

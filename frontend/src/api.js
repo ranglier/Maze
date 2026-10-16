@@ -224,6 +224,15 @@ export const api = {
   updateRelationType: (id, data) => request('PATCH', `/api/relation-types/${id}`, data),
   deleteRelationType: (id) => request('DELETE', `/api/relation-types/${id}`),
 
+  // Chronologie (module facultatif, campaign.timeline_enabled) : événements ordonnés à la main.
+  events: (cid) => request('GET', `/api/campaigns/${cid}/events`),
+  // data : { title, date_label?, description?, tags?, before_id? } (before_id absent : à la fin).
+  createEvent: (cid, data) => request('POST', `/api/campaigns/${cid}/events`, data),
+  // data : champs modifiés seulement, et base_revision (409 avec l'état actuel en cas de conflit).
+  updateEvent: (id, data) => request('PATCH', `/api/events/${id}`, data),
+  deleteEvent: (id) => request('DELETE', `/api/events/${id}`),
+  orderEvents: (cid, ids) => request('PUT', `/api/campaigns/${cid}/events/order`, { ids }),
+
   documents: (cid) => request('GET', `/api/campaigns/${cid}/documents`),
   createDocument: (cid, data) => request('POST', `/api/campaigns/${cid}/documents`, data),
   moveDocument: (id, parentId, index) => request('PUT', `/api/documents/${id}/move`, { parent_id: parentId, index }),

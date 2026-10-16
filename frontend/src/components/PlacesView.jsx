@@ -12,6 +12,7 @@ import { KindsContext, PlaceIcon, useKinds } from './PlaceIcon.jsx';
 import PlaceTree from './PlaceTree.jsx';
 import RichField from './RichField.jsx';
 import { mentionEntities } from './mentionEntities.js';
+import { TimelineSection } from './TimelineView.jsx';
 import { ConflictPanel, useEntryDraft } from './EntryDraft.jsx';
 import { Field, Icon, KindImage, Markdown, Modal, TagInput, useAction, useConfirm, useToast } from './ui.jsx';
 
@@ -203,6 +204,7 @@ export default function PlacesView({
               </article>
             ) : (
               <PlaceSheet place={detail} data={data} campaignId={cid} resolveRef={resolveRef}
+                timelineEnabled={Boolean(campaign.timeline_enabled)}
                 onOpen={go} onOpenNode={openNode} onEdit={() => setEditing(true)} onChanged={refresh}
                 onCreateChild={() => setCreating({ parentId: detail.id })} onDelete={() => remove(detail)}
                 onPin={pin} />
@@ -387,7 +389,7 @@ function PlaceCards({ places, all, counts, onOpen }) {
 
 // --- Fiche du lieu -------------------------------------------------------------------------
 
-function PlaceSheet({ place, data, campaignId, resolveRef, onOpen, onOpenNode, onEdit, onChanged, onCreateChild, onDelete, onPin }) {
+function PlaceSheet({ place, data, campaignId, resolveRef, timelineEnabled, onOpen, onOpenNode, onEdit, onChanged, onCreateChild, onDelete, onPin }) {
   const pinned = Boolean(data.places.find((p) => p.id === place.id)?.pinned);
   const cover = place.images.find((i) => i.id === place.image_id);
   const counts = new Map();
@@ -558,6 +560,8 @@ function PlaceSheet({ place, data, campaignId, resolveRef, onOpen, onOpenNode, o
           </ul>
         </section>
       )}
+
+      {timelineEnabled && <TimelineSection campaignId={campaignId} items={place.timeline} />}
 
       {place.tags.length > 0 && (
         <div className="tags" aria-label={t('Étiquettes')}>{place.tags.map((tag) => <span key={tag} className="tag">{tag}</span>)}</div>
