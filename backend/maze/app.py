@@ -39,6 +39,7 @@ from .transfer import routes as transfer_routes
 from .comments import routes as comment_routes
 from .search import routes as search_routes
 from .places import routes as place_routes
+from .timeline import routes as timeline_routes
 from .scenemap import routes as scenemap_routes
 from .templates import routes as template_routes
 from .versions import routes as version_routes
@@ -302,6 +303,7 @@ def _build_app(cfg: Settings, lock: IO[str]) -> Starlette:
         *search_routes,
         *template_routes,
         *place_routes,
+        *timeline_routes,
         *scenemap_routes,
         *version_routes,
         *entry_history_routes,

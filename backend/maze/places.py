@@ -16,6 +16,7 @@ from . import auth, db, defaults, i18n, imaging
 from .i18n import msg
 from .entry_history import record_change
 from .maps import maps_for_place
+from .timeline import backlinks
 from .api import (
     _upload_images, check_entity, check_image_owner, get_or_404, image_out, in_tx, parse_body, path_id,
     revision_conflict, scoped, settings, threaded, thumb_url, touch_campaign, tx,
@@ -91,6 +92,7 @@ def place_detail(conn: sqlite3.Connection, place_id: int) -> dict[str, Any]:
              JOIN documents d ON d.id = m.document_id
             WHERE m.target_kind = 'place' AND m.target_id = ? AND d.campaign_id = ?
             ORDER BY d.kind = 'campaign' DESC, d.sort_order, d.id""", (place_id, row["campaign_id"])).fetchall())
+    row["timeline"] = backlinks(conn, "place", place_id, row["campaign_id"])   # événements de la chronologie
     row["links"] = _links(conn, [place_id])
     # PNJ et factions des sous-lieux (à tous les niveaux), avec le sous-lieu concerné.
     nested = [pid for pid in _subtree(conn, place_id) if pid != place_id]

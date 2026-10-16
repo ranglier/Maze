@@ -27,7 +27,7 @@ T = TypeVar("T")
 
 MIGRATIONS_DIR = Path(__file__).resolve().parent / "migrations"
 JSON_COLUMNS = {"tags"}
-BOOL_COLUMNS = {"directed", "secret", "is_leader"}
+BOOL_COLUMNS = {"directed", "secret", "is_leader", "timeline_enabled"}
 
 
 class _TextExtractor(HTMLParser):

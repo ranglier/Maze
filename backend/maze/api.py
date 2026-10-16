@@ -512,6 +512,8 @@ def entity_detail(conn: sqlite3.Connection, kind: str, entity_id: int) -> dict[s
             WHERE m.target_kind = ? AND m.target_id = ? AND d.campaign_id = ?
             ORDER BY d.kind = 'campaign' DESC, d.sort_order, d.id""", (kind, entity_id, row["campaign_id"])).fetchall())
     row["maps"] = scenario_maps_of(conn, kind, entity_id, row["campaign_id"])
+    from .timeline import backlinks  # import circulaire évité
+    row["timeline"] = backlinks(conn, kind, entity_id, row["campaign_id"])   # événements qui la citent
     # Lieux où se trouve ce PNJ / cette faction.
     row["places"] = db.rows_to_dicts(conn.execute(
         """SELECT l.id AS link_id, l.role, p.id, p.name, p.kind, k.label AS kind_label, k.icon AS kind_icon,

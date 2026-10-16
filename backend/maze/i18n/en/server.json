@@ -86,6 +86,7 @@
   "L'entité liée n'existe pas dans cette campagne": "The linked entry does not exist in this campaign",
   "L'identifiant « {username} » est déjà utilisé": "The username “{username}” is already taken",
   "L'opération précédente s'est arrêtée sans pouvoir enregistrer son résultat (disque plein, redémarrage du serveur…). Consultez le journal, puis relancez.": "The previous operation stopped before it could record its result (disk full, server restart…). Check the log, then try again.",
+  "L'événement de référence n'existe pas dans cette campagne": "The reference event does not exist in this campaign",
   "La base de l'archive est endommagée": "The archive's database is damaged",
   "La fiche de campagne ne peut pas être dupliquée": "The campaign page cannot be duplicated",
   "La fiche de campagne ne peut pas être supprimée": "The campaign page cannot be deleted",
@@ -97,6 +98,7 @@
   "La liste doit contenir exactement les lieux de ce niveau": "The list must contain exactly the places of this level",
   "La liste doit contenir exactement les sous-fiches de cette fiche": "The list must contain exactly the sub-pages of this page",
   "La liste doit contenir exactement les types de lieux de la campagne": "The list must contain exactly the place types of the campaign",
+  "La liste doit contenir exactement les événements de cette campagne": "The list must contain exactly the events of this campaign",
   "La mise à jour a échoué avant le redémarrage : la version précédente est toujours en service. Voir le journal.": "The update failed before the restart: the previous version is still running. See the log.",
   "La mise à jour a échoué et le retour automatique à la version précédente n'a pas abouti : Maze est peut-être arrêté. Intervention nécessaire sur le serveur : voir le journal.": "The update failed and the automatic rollback to the previous version did not succeed: Maze may be stopped. Action is needed on the server: see the log.",
   "La mise à jour s'est arrêtée avant la fin : voir le journal.": "The update stopped before finishing: see the log.",
@@ -185,6 +187,7 @@
   "{field} : identifiant attendu": "{field}: identifier expected",
   "{kind} : {name}": "{kind}: {name}",
   "{max} cartes au plus par campagne": "{max} maps at most per campaign",
+  "{max} événements au plus par campagne": "{max} events at most per campaign",
   "{name} : {error}": "{name}: {error}",
   "{name} dépasse {size} Mo": "{name} exceeds {size} MB",
   "{n} lien utilise la nature « {label} ». Changez sa nature avant de la supprimer.": {
@@ -199,5 +202,6 @@
   "Élément inattendu dans l'archive : {name}": "Unexpected item in the archive: {name}",
   "Élément refusé dans l'archive : {name}": "Item refused in the archive: {name}",
   "État initial": "Initial state",
-  "État précédent": "Previous state"
+  "État précédent": "Previous state",
+  "Événement": "Event"
 }
