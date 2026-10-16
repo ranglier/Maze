@@ -249,19 +249,26 @@ def default_locale(scope: dict[str, Any] | None = None) -> str:
 
 
 def chosen_locale(value: Any, scope: dict[str, Any] | None = None) -> str:
-    """Langue demandée explicitement (paramètre `lang` de l'export de Foundry : game.i18n.lang du monde) si le
-    serveur la connaît, sinon MAZE_DEFAULT_LOCALE."""
+    """Langue demandée explicitement (paramètre `lang` de l'export de Foundry : langue des pages du monde, choisie par
+    le module) si le serveur la connaît, sinon MAZE_DEFAULT_LOCALE."""
     code = normalize(value)
     return code if code in available_locales() else default_locale(scope)
 
 
+def account_locale(user: Any) -> str | None:
+    """Langue réglée dans le compte (`users.locale`) si le serveur la connaît, sinon None (réglage « Automatique »,
+    ou langue admise par PUT /api/auth/locale mais sans catalogue sur ce serveur : la suite du choix s'applique)."""
+    code = user.get("locale") if isinstance(user, dict) else None
+    return code if code and code in available_locales() else None
+
+
 def request_locale(scope: dict[str, Any], preferred: Any = None) -> str:
-    """Langue des messages d'une requête : compte connecté, puis `preferred` (langue de l'interface passée en paramètre
-    `lang` par une connexion qui ne peut pas envoyer d'en-tête, le temps réel) si le serveur la connaît, puis
-    Accept-Language, puis MAZE_DEFAULT_LOCALE."""
-    user = (scope.get("state") or {}).get("user")
-    if isinstance(user, dict) and user.get("locale"):
-        return user["locale"]
+    """Langue des messages d'une requête : compte connecté (langue connue du serveur), puis `preferred` (langue de
+    l'interface passée en paramètre `lang` par une connexion qui ne peut pas envoyer d'en-tête, le temps réel) si le
+    serveur la connaît, puis Accept-Language, puis MAZE_DEFAULT_LOCALE."""
+    account = account_locale((scope.get("state") or {}).get("user"))
+    if account:
+        return account
     code = normalize(preferred)
     if code and code in available_locales():
         return code

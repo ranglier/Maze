@@ -260,6 +260,24 @@ class RequestLocaleTest(unittest.TestCase):
         self.assertEqual(user.call("PUT", "/api/auth/locale", {"locale": "fr", "x": 1})[0], 422)
         self.assertEqual(Client(self.s.base).call("PUT", "/api/auth/locale", {"locale": "en"})[0], 401)
 
+    def test_unknown_account_locale_is_ignored(self):
+        """Code admis par PUT /api/auth/locale mais sans catalogue sur ce serveur (« de ») : la suite du choix
+        s'applique (Accept-Language, puis MAZE_DEFAULT_LOCALE), comme pour « Automatique »."""
+        user = Client(self.s.base)
+        self.assertEqual(self.s.call("POST", "/api/admin/users", {"username": "germaniste", "password": "motdepasse1"})[0],
+                         201)
+        self.assertEqual(user.login("germaniste", "motdepasse1"), 200)
+        self.assertEqual(user.call("PUT", "/api/auth/locale", {"locale": "de"}), (200, {"locale": "de"}))
+        self.assertEqual(user.call("GET", "/api/auth/status")[1]["user"]["locale"], "de")   # réglage gardé tel quel
+        code, body = user.call("GET", "/api/campaigns/999999", headers=EN)
+        self.assertEqual((code, body["detail"]), (404, "Campaign not found"))
+        code, body = user.call("GET", "/api/campaigns/999999", headers={"Accept-Language": "de"})
+        self.assertEqual((code, body["detail"]), (404, "Campagne introuvable"))
+        self.assertIsNone(i18n.account_locale({"locale": "de"}))
+        self.assertIsNone(i18n.account_locale({"locale": ""}))
+        self.assertIsNone(i18n.account_locale(None))
+        self.assertEqual(i18n.account_locale({"locale": "en"}), "en")
+
 
 class DefaultLocaleTest(unittest.TestCase):
     def test_instance_default(self):
@@ -497,6 +515,14 @@ class ServerMessagesTest(unittest.TestCase):
         with connect(url.replace("client=1", "client=-5") + "&lang=fr",
                      additional_headers={"Cookie": user.cookie_header()}, open_timeout=5) as ws:
             self.assertEqual(json.loads(ws.recv(timeout=5))["detail"], "Invalid client identifier")
+        # Langue du compte inconnue du serveur : celle de l'interface, puis le navigateur.
+        user.call("PUT", "/api/auth/locale", {"locale": "de"})
+        for query, headers, detail in (("&lang=en", {"Accept-Language": "fr"}, "Invalid client identifier"),
+                                       ("", EN, "Invalid client identifier"),
+                                       ("", {"Accept-Language": "fr"}, "Identifiant de client invalide")):
+            with connect(url.replace("client=1", "client=-5") + query,
+                         additional_headers={"Cookie": user.cookie_header(), **headers}, open_timeout=5) as ws:
+                self.assertEqual(json.loads(ws.recv(timeout=5))["detail"], detail)
 
     def test_oauth_page_follows_accept_language(self):
         query = "/oauth/authorize?" + urllib.parse.urlencode({"client_id": "inconnu", "redirect_uri": "https://claude.ai/x"})

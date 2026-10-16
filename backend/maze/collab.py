@@ -286,7 +286,7 @@ class Hub:
         user = auth.load_session_user(self.db_path, ws.scope.get("session") or {})
         if user is None:
             return await refuse(CLOSE_AUTH, "Authentification requise")
-        locale = user.get("locale") or locale
+        locale = i18n.account_locale(user) or locale
         if self.restoring():
             await ws.close(CLOSE_RETRY)  # nouvel essai du navigateur après la restauration
             return
