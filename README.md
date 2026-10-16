@@ -34,7 +34,7 @@ Maze is a web application for game masters who prepare their campaigns alone or 
 
 Maze is used in production by its author and has been through a thorough audit, but it is young as a community project:
 
-- **French-only interface.** Every screen, message and piece of documentation (except this README) is in French. Internationalisation is a very welcome contribution: there are roughly 1,000 user-facing strings to extract.
+- **French-only interface, English on the way.** Every screen, message and piece of documentation (except this README) is in French. The translation layer is in place (gettext style, French text as the key: [frontend/src/i18n/README.md](frontend/src/i18n/README.md)) and the roughly 1,000 user-facing strings are being extracted; contributions for other languages are welcome.
 - **One maintainer.** Reviews and answers may take a while.
 - **Free software.** Maze is licensed under the GNU AGPL-3.0-or-later (see [License](#license)).
 - **Built with heavy AI assistance.** Maze is developed with substantial help from Claude (Anthropic), under the direction and review of its author.

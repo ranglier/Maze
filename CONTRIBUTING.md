@@ -4,7 +4,7 @@ Thank you for your interest in Maze! This guide explains how to propose a change
 
 ## Ways to help
 
-- **Internationalisation.** The interface is French only. Extracting the roughly 1,000 user-facing strings into a translation layer, then adding English, is the most valuable contribution right now. Please open an issue first to agree on the approach.
+- **Internationalisation.** The translation layer is in place (gettext style, the French text is the key) and the interface is being translated into English. Translating a zone, or adding a language, is the most valuable contribution right now: read [frontend/src/i18n/README.md](frontend/src/i18n/README.md).
 - **Bug reports.** Describe what you did, what you expected and what happened. Include the Maze version (Administration > Mise à jour), your browser and the relevant server log lines (`docker compose logs --tail 100 maze`), without passwords, tokens or campaign content you do not want to share.
 - **Game systems.** The core does not depend on any game system. The Foundry VTT module fills in actors for the Dark Heresy systems only; mappings for other systems are welcome.
 - **Documentation**, in English or French: installation on other platforms, reverse proxies other than Caddy, corrections.
@@ -14,7 +14,7 @@ Thank you for your interest in Maze! This guide explains how to propose a change
 
 Issues, pull requests and reviews can be written in **English or French**.
 
-The codebase currently follows this convention: identifiers (modules, functions, variables, API fields) are in English; comments, docstrings, log and error messages, the interface, the documentation and commit messages are in French. Follow the language of the surrounding code. New interface strings stay in French until the translation layer exists.
+The codebase currently follows this convention: identifiers (modules, functions, variables, API fields) are in English; comments, docstrings, log and error messages, the interface, the documentation and commit messages are in French. Follow the language of the surrounding code. New interface strings are written in French, wrapped in `t()` (or `tn()` for plurals), with their English translation in the catalog of their zone; server error messages are French too, with `msg()` when they contain values, and translated in `backend/maze/i18n/`. See [frontend/src/i18n/README.md](frontend/src/i18n/README.md).
 
 ## Development workflow
 
@@ -48,6 +48,7 @@ These rules exist because breaking one of them has already caused a bug, or woul
 - **Dependencies.** Versions are pinned exactly: `backend/requirements.txt`, `frontend/package.json`, and the lockfile `frontend/package-lock.json`, installed with `npm ci`. Discuss any new dependency in an issue first. If one is accepted, update the lockfile in the same pull request.
 - **Deployment scripts.** `deploy/update.sh`, `deploy/maze-updater.sh`, `docker-compose.yml` and the systemd units run on existing servers. A change must let the current version update itself without manual steps; if a manual step is unavoidable, say so clearly in the pull request. `backend/tests/test_deploy.py` replays these scripts with a simulated Docker.
 - **Security.** Every route that receives an object identifier must check that the object's campaign is accessible to the current account (`auth.can_access`). Request bodies are size-limited (`backend/maze/limits.py`). Never commit secrets, real campaign data or copyrighted images: tests use invented names and generated images.
+- **Translations.** No hard-coded French in `frontend/src` outside `t()`: `frontend/test/i18n-pending.test.mjs` fails otherwise (except for the files still listed in `frontend/test/i18n-pending.json`, a list that only shrinks). Every key needs its English translation (`frontend/test/i18n.test.mjs`).
 - **Documentation.** Update `docs/ARCHITECTURE.md`, and the README or the French guide (`docs/fr/guide.md`), whenever behaviour, configuration or deployment changes. Document every new environment variable in the README's Configuration table; `tests.test_docs` checks it.
 
 ## Developer Certificate of Origin
