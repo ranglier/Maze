@@ -144,8 +144,8 @@
   "Seul l'auteur peut supprimer ce commentaire": "Only the author can delete this comment",
   "Seul un fil peut être résolu": "Only a thread can be resolved",
   "Seuls les scénarios ont une carte": "Only scenarios have a map",
-  "Trop de connexions temps réel sur ce serveur": "Too many live connections on this server",
-  "Trop de fiches ouvertes en temps réel par ce compte": "Too many pages open live for this account",
+  "Trop de connexions temps réel sur ce serveur": "Too many real-time connections on this server",
+  "Trop de fiches ouvertes en temps réel par ce compte": "Too many pages open in real time for this account",
   "Trop de niveaux de sous-lieux ({max} au plus)": "Too many levels of sub-places ({max} at most)",
   "Trop de niveaux de sous-pages ({max} au plus)": "Too many levels of sub-pages ({max} at most)",
   "Trop de tentatives depuis cette adresse. Réessayez dans {n} minute.": {

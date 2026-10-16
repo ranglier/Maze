@@ -4,7 +4,7 @@ import { applyAwarenessUpdate, Awareness, encodeAwarenessUpdate, removeAwareness
 import { rescueEdits } from '../session.js';
 import { docToHtml, htmlToDoc, schema } from './schema.js';
 import { SCHEMA_VERSION, STALE_EVENT } from './schemaVersion.js';
-import { N_ } from '../i18n/core.js';
+import { N_, getLocale } from '../i18n/core.js';
 
 /*
  * Connexion temps réel d'une fiche (voir backend/maze/collab.py pour le protocole).
@@ -101,8 +101,10 @@ export class LiveDocument {
   connect() {
     if (this.closed) return;
     const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    // lang : langue effective de l'interface (compte, choix de l'écran de connexion, navigateur), pour les messages
+    // du serveur ; un WebSocket ne peut pas envoyer l'Accept-Language qu'api.js ajoute aux requêtes.
     const ws = new WebSocket(`${proto}//${window.location.host}/api/documents/${this.docId}/live`
-      + `?client=${this.ydoc.clientID}&v=${SCHEMA_VERSION}`);
+      + `?client=${this.ydoc.clientID}&v=${SCHEMA_VERSION}&lang=${encodeURIComponent(getLocale())}`);
     ws.binaryType = 'arraybuffer';
     this.ws = ws;
     this.welcomed = false;

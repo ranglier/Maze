@@ -265,9 +265,10 @@ class Hub:
     async def endpoint(self, ws: WebSocket) -> None:
         doc_id = int(ws.path_params["id"])
         await ws.accept()
-        # Langue des messages affichés par l'éditeur : en-tête Accept-Language du navigateur (ou MAZE_DEFAULT_LOCALE)
-        # jusqu'à la lecture du compte, puis celle du compte si elle est choisie.
-        locale = i18n.request_locale(ws.scope)
+        # Langue des messages affichés par l'éditeur : langue de l'interface (paramètre `lang`, editor/live.js ; un
+        # WebSocket ne peut pas porter l'Accept-Language d'api.js), sinon en-tête Accept-Language du navigateur (ou
+        # MAZE_DEFAULT_LOCALE) jusqu'à la lecture du compte, puis celle du compte si elle est choisie.
+        locale = i18n.request_locale(ws.scope, ws.query_params.get("lang"))
 
         def refuse(code: int, detail: str, **extra: Any):
             return self._refuse(ws, code, detail, locale, **extra)

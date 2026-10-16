@@ -481,12 +481,21 @@ class ServerMessagesTest(unittest.TestCase):
         for headers, detail in ((EN, "Authentication required"), ({}, "Authentification requise")):
             with connect(url, additional_headers=headers, open_timeout=5) as ws:
                 self.assertEqual(json.loads(ws.recv(timeout=5))["detail"], detail)
+        # Langue de l'interface (paramètre lang, editor/live.js) : avant Accept-Language ; inconnue, ignorée.
+        for lang, headers, detail in (("en", {"Accept-Language": "fr"}, "Authentication required"),
+                                      ("fr", EN, "Authentification requise"), ("xx", EN, "Authentication required")):
+            with connect(f"{url}&lang={lang}", additional_headers=headers, open_timeout=5) as ws:
+                self.assertEqual(json.loads(ws.recv(timeout=5))["detail"], detail)
         self.assertEqual(self.s.call("POST", "/api/admin/users", {"username": "direct", "password": "motdepasse1"})[0], 201)
         user = Client(self.s.base)
         user.login("direct", "motdepasse1")
         user.call("PUT", "/api/auth/locale", {"locale": "en"})
         with connect(url.replace("client=1", "client=-5"), additional_headers={"Cookie": user.cookie_header()},
                      open_timeout=5) as ws:
+            self.assertEqual(json.loads(ws.recv(timeout=5))["detail"], "Invalid client identifier")
+        # La langue choisie dans le compte l'emporte sur celle que l'interface transmet.
+        with connect(url.replace("client=1", "client=-5") + "&lang=fr",
+                     additional_headers={"Cookie": user.cookie_header()}, open_timeout=5) as ws:
             self.assertEqual(json.loads(ws.recv(timeout=5))["detail"], "Invalid client identifier")
 
     def test_oauth_page_follows_accept_language(self):

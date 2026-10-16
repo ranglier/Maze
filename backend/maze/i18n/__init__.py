@@ -255,11 +255,16 @@ def chosen_locale(value: Any, scope: dict[str, Any] | None = None) -> str:
     return code if code in available_locales() else default_locale(scope)
 
 
-def request_locale(scope: dict[str, Any]) -> str:
-    """Langue des messages d'une requête : compte connecté, puis Accept-Language, puis MAZE_DEFAULT_LOCALE."""
+def request_locale(scope: dict[str, Any], preferred: Any = None) -> str:
+    """Langue des messages d'une requête : compte connecté, puis `preferred` (langue de l'interface passée en paramètre
+    `lang` par une connexion qui ne peut pas envoyer d'en-tête, le temps réel) si le serveur la connaît, puis
+    Accept-Language, puis MAZE_DEFAULT_LOCALE."""
     user = (scope.get("state") or {}).get("user")
     if isinstance(user, dict) and user.get("locale"):
         return user["locale"]
+    code = normalize(preferred)
+    if code and code in available_locales():
+        return code
     for name, value in scope.get("headers") or ():
         if name == b"accept-language":
             found = negotiate(value.decode("latin-1"))
