@@ -2,9 +2,13 @@
 # l'interface, parcours navigateur, version du module Foundry et numérotation des migrations.
 name: CI
 
+# Une seule exécution par modification : les branches sont testées par leur demande de fusion, main après chaque
+# fusion ; lancement à la main possible sur n'importe quelle branche (Actions > CI > Run workflow).
 on:
   push:
+    branches: [main]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
