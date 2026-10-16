@@ -878,6 +878,7 @@ input[type="checkbox"] { accent-color: var(--brass); width: 16px; height: 16px; 
 }
 .toast--success { border-color: rgba(95, 180, 156, 0.5); }
 .toast--error { border-color: rgba(210, 85, 90, 0.7); color: #ffd6d7; }
+.toast--warning { border-color: rgba(201, 164, 92, 0.7); color: #f3dfb4; }
 
 /* Avis persistants : modifications non fusionnées, Maze mis à jour (session.js, SessionNotices.jsx) */
 .session-notices {
@@ -1065,7 +1066,11 @@ input[type="checkbox"] { accent-color: var(--brass); width: 16px; height: 16px; 
 
 /* Images (administration) */
 .images-admin { position: relative; min-height: 60vh; }
-.images-admin__bar { display: grid; grid-template-columns: minmax(180px, 280px) minmax(0, 1fr); gap: 10px; margin-bottom: 12px; }
+.images-admin__bar {
+  display: grid; grid-template-columns: minmax(180px, 260px) minmax(0, 1fr) auto auto; gap: 10px; margin-bottom: 12px;
+}
+.images-admin__sort { width: auto; min-width: 150px; }
+.images-admin__select { white-space: nowrap; height: auto; min-height: 36px; }
 .images-admin__filters { margin-bottom: 10px; }
 .images-admin__count { margin-left: 4px; color: var(--mist-2); font-size: 12px; }
 .images-admin__stats { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 14px; }
@@ -1076,10 +1081,53 @@ input[type="checkbox"] { accent-color: var(--brass); width: 16px; height: 16px; 
   transition: border-color 120ms, transform 120ms;
 }
 .images-admin__card:hover, .images-admin__card:focus-visible { border-color: var(--brass); }
+/* Sélection multiple : case en haut à gauche (survol, focus, sélection en cours, écran tactile), vignette choisie
+   entourée et voilée. */
+.images-admin__grid > li { position: relative; }
+.images-admin__pick {
+  position: absolute; left: 6px; top: 6px; z-index: 2; display: grid; place-items: center; width: 34px; height: 34px;
+  cursor: pointer; opacity: 0; transition: opacity 120ms;
+}
+.images-admin__pick input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.images-admin__box {
+  display: grid; place-items: center; width: 24px; height: 24px; border-radius: 6px; pointer-events: none;
+  border: 2px solid rgba(232, 226, 212, 0.9); background: rgba(16, 21, 30, 0.72); color: transparent;
+  box-shadow: 0 1px 4px rgba(5, 8, 14, 0.5); transition: background-color 120ms, border-color 120ms;
+}
+.images-admin__pick input:checked + .images-admin__box { background: var(--brass); border-color: var(--brass); color: #1b1608; }
+.images-admin__pick input:focus-visible + .images-admin__box { outline: 2px solid var(--brass); outline-offset: 2px; }
+.images-admin__pick:hover .images-admin__box { border-color: var(--brass); }
+.images-admin__grid > li:hover .images-admin__pick, .images-admin__grid > li:focus-within .images-admin__pick,
+.images-admin.is-selecting .images-admin__pick { opacity: 1; }
+.images-admin__card.is-picked { border-color: var(--brass); box-shadow: 0 0 0 1px var(--brass); }
+.images-admin__card.is-picked .images-admin__thumb::after {
+  content: ""; position: absolute; inset: 0; background: rgba(201, 164, 92, 0.2); pointer-events: none;
+}
+.images-admin__card.is-picked .images-admin__thumb img { transform: scale(0.94); }
+.images-admin__thumb img { transition: transform 120ms; }
+/* Barre d'actions de la sélection, collée au bas de la zone visible. */
+.images-admin__actions {
+  position: sticky; bottom: 16px; z-index: 8; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px;
+  margin-top: 18px; padding: 10px 12px 10px 18px; border: 1px solid rgba(201, 164, 92, 0.55); border-radius: var(--r-lg);
+  background: var(--slate-2); box-shadow: var(--shadow-float); animation: fade-in 150ms ease-out;
+}
+.images-admin__summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; margin: 0; min-width: 0; }
+.images-admin__summary strong { font-weight: 600; }
+.images-admin__summary .muted { font-size: 13px; }
+.images-admin__actions-buttons { display: flex; flex-wrap: wrap; gap: 8px; margin-left: auto; }
+html:has(.images-admin.has-actions) .toasts { bottom: 96px; }
+.images-delete { display: grid; gap: 10px; }
+.images-delete ul { margin: 0; padding-left: 20px; display: grid; gap: 4px; }
+.images-delete__sources { color: var(--bone); }
+.images-delete__effects { color: var(--mist); font-size: 14px; }
+.images-delete__hidden {
+  display: flex; align-items: center; gap: 8px; margin: 0; padding: 8px 12px; border-radius: var(--r-md);
+  background: var(--brass-soft); color: var(--brass); font-size: 14px;
+}
 .images-admin__thumb { position: relative; display: block; aspect-ratio: 1; background: var(--ink-deep); margin-bottom: 6px; }
 .images-admin__thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .images-admin__tag {
-  position: absolute; left: 6px; top: 6px; padding: 1px 7px; border-radius: 999px; font-size: 11.5px; font-weight: 600;
+  position: absolute; right: 6px; top: 6px; padding: 1px 7px; border-radius: 999px; font-size: 11.5px; font-weight: 600;
   background: rgba(16, 21, 30, 0.85); color: var(--brass);
 }
 .images-admin__tag.is-muted { color: var(--mist); }
@@ -1107,9 +1155,19 @@ input[type="checkbox"] { accent-color: var(--brass); width: 16px; height: 16px; 
 .image-dialog__assign select { min-height: 140px; }
 .image-dialog__assign .btn { justify-self: start; }
 @media (max-width: 760px), (pointer: coarse) and (max-height: 500px) {
-  .images-admin__bar { grid-template-columns: 1fr; }
+  .images-admin__bar { grid-template-columns: minmax(0, 1fr) auto; }
+  .images-admin__campaign, .images-admin__search { grid-column: 1 / -1; }
+  .images-admin__sort { min-width: 0; width: 100%; }
   .images-admin__grid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; }
+  /* Au-dessus de la barre de navigation basse quand elle est là (sinon au bas de l'écran). */
+  .images-admin__actions { bottom: 8px; padding: 10px 12px; gap: 8px; }
+  html.has-nav .images-admin__actions { bottom: calc(var(--nav-h) + 8px); }
+  .images-admin__actions-buttons { margin-left: 0; width: 100%; }
+  .images-admin__actions-buttons .btn { flex: 1 1 auto; justify-content: center; }
+  html:has(.images-admin.has-actions) .toasts { bottom: 190px; }
+  html.has-nav:has(.images-admin.has-actions) .toasts { bottom: calc(var(--nav-h) + 190px); }
 }
+@media (pointer: coarse) { .images-admin__pick { opacity: 1; width: 44px; height: 44px; left: 2px; top: 2px; } }
 
 /* Connecteur Claude (administration) */
 .claude-status__text { display: inline-flex; align-items: center; gap: 10px; }

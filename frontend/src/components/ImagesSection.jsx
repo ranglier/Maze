@@ -1,9 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api.js';
-import { Icon, Modal, useAction, useConfirm, useToast } from './ui.jsx';
+import { Icon, Modal, useAction, useConfirm, useDialogLayer, useToast } from './ui.jsx';
 import { SectionHead, fmtDate, fmtSize } from './AdminPage.jsx';
 import { KIND_LABEL } from '../constants.js';
+import { storage } from '../util.js';
 import { N_, pt, t, tn, useLocale } from '../i18n/index.js';
+import {
+  addRange, chunks, deletionSummary, hiddenCount, imageKey, mergeResults, normalizeSort, pruneSelection, selectAll,
+  sortImages, toggleKey, toItems,
+} from '../imageSelection.js';
 
 // Libellés traduits à l'affichage (t(…)) : N_ les signale seulement à l'extraction.
 const FILTERS = [
@@ -13,6 +18,8 @@ const FILTERS = [
   { key: 'document', label: N_('Fiches rédigées') },
   { key: 'map', label: N_('Cartes') },
 ];
+const SORT_LABEL = { recent: N_('Plus récentes'), oldest: N_('Plus anciennes'), heaviest: N_('Plus lourdes'), name: N_('Nom') };
+const SORT_KEY = 'maze:images:sort';
 const COVER_LABEL = { npc: N_('Portrait'), faction: N_('Emblème'), place: N_('Illustration') };
 const DOC_LABEL = { campaign: N_('Fiche de campagne'), scenario: N_('Scénario'), page: N_('Page') };
 // Phrases entières par sorte d'image de couverture (genre et ordre des mots propres à chaque langue).
@@ -21,7 +28,7 @@ const COVER_USE = {
   npc: () => t('Utiliser comme portrait'), faction: () => t('Utiliser comme emblème'), place: () => t('Utiliser comme illustration'),
 };
 
-const keyOf = (img) => `${img.source}-${img.id}`;
+const keyOf = imageKey;
 
 function origin(img, cid) {
   if (img.source === 'library') return { label: t('Bibliothèque'), href: null };
@@ -46,7 +53,14 @@ export default function ImagesSection({ campaigns }) {
   const [data, setData] = useState(null);
   const [filter, setFilter] = useState('all');
   const [query, setQuery] = useState('');
-  const [selected, setSelected] = useState(null);
+  const [selected, setSelected] = useState(null);   // image ouverte dans sa fenêtre
+  const [sort, setSort] = useState(() => normalizeSort(storage.get(SORT_KEY)));
+  // Sélection multiple : clés `${source}-${id}`, gardées au changement de filtre, de recherche ou de tri.
+  const [picked, setPicked] = useState(() => new Set());
+  const [anchor, setAnchor] = useState(null);       // dernière vignette cliquée (Maj+clic : plage depuis elle)
+  const [selecting, setSelecting] = useState(false); // mode « Sélectionner » (au doigt : un appui bascule)
+  const [asking, setAsking] = useState(false);      // fenêtre de confirmation de la suppression groupée
+  const [progress, setProgress] = useState(null);   // { done, total } pendant la suppression groupée
   const [upload, setUpload] = useState(false);
   const [drop, setDrop] = useState(false);
   const fileRef = useRef(null);
@@ -66,12 +80,19 @@ export default function ImagesSection({ campaigns }) {
   }, [cid, run]);
   useEffect(() => { setData(null); load(); }, [load]);
 
+  // Après un rechargement : clés des images disparues retirées de la sélection.
+  useEffect(() => { if (data) setPicked((p) => pruneSelection(p, data.images)); }, [data]);
+
   const shown = useMemo(() => {
     if (!data) return [];
     const q = query.trim().toLowerCase();
-    return data.images.filter((img) => (filter === 'all' || img.source === filter)
-      && (!q || `${title(img)} ${img.name} ${origin(img, cid).label}`.toLowerCase().includes(q)));
-  }, [data, filter, query, cid, locale]);
+    return sortImages(data.images.filter((img) => (filter === 'all' || img.source === filter)
+      && (!q || `${title(img)} ${img.name} ${origin(img, cid).label}`.toLowerCase().includes(q))), sort, title);
+  }, [data, filter, query, cid, locale, sort]);
+  const shownKeys = useMemo(() => shown.map(keyOf), [shown]);
+  const pickedImages = useMemo(() => (data?.images || []).filter((img) => picked.has(keyOf(img))), [data, picked]);
+  const hidden = useMemo(() => hiddenCount(picked, shownKeys), [picked, shownKeys]);
+  const active = selecting || picked.size > 0;
   const counts = useMemo(() => {
     const c = { all: 0, library: 0, gallery: 0, document: 0, map: 0 };
     for (const img of data?.images || []) { c.all += 1; c[img.source] += 1; }
@@ -110,11 +131,68 @@ export default function ImagesSection({ campaigns }) {
     load();
   };
 
+  const changeSort = (value) => { setSort(value); storage.set(SORT_KEY, value); };
+  const clearSelection = () => { setPicked(new Set()); setAnchor(null); };
+  const endSelection = () => { clearSelection(); setSelecting(false); };
+
+  /** Clic sur une vignette : Maj = plage, Ctrl/Cmd ou sélection en cours = bascule, sinon ouverture de la fenêtre. */
+  const clickCard = (e, key) => {
+    if (e.shiftKey) {
+      e.preventDefault();
+      setPicked((p) => addRange(p, shownKeys, anchor, key));
+    } else if (e.ctrlKey || e.metaKey || active) {
+      setPicked((p) => toggleKey(p, key));
+    } else {
+      setSelected(key);
+    }
+    setAnchor(key);
+  };
+  const clickCheck = (e, key) => {
+    if (e.shiftKey) setPicked((p) => addRange(p, shownKeys, anchor, key));
+    else setPicked((p) => toggleKey(p, key));
+    setAnchor(key);
+  };
+  const gridKeys = (e) => {
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === 'a') {
+      e.preventDefault();
+      setPicked((p) => selectAll(p, shownKeys));
+    }
+  };
+
+  const removePicked = async () => {
+    setAsking(false);
+    const batches = chunks(toItems(pickedImages));
+    const total = pickedImages.length;
+    const results = [];
+    setProgress({ done: 0, total });
+    try {
+      // Un lot après l'autre, sans recharger la liste entre deux (une seule lecture à la fin).
+      for (const items of batches) {
+        results.push(await api.admin.deleteImages(cid, items));
+        setProgress((p) => ({ ...p, done: Math.min(total, p.done + items.length) }));
+      }
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+    const out = mergeResults(results);
+    if (out.deleted) toast(tn('{n} image supprimée', '{n} images supprimées', out.deleted), 'success');
+    if (out.editing.length) {
+      toast(tn('{n} illustration laissée : une fiche rédigée qui l’affiche est en cours d’écriture',
+        '{n} illustrations laissées : une fiche rédigée qui les affiche est en cours d’écriture', out.editing.length), 'warning');
+    }
+    // Restent sélectionnées : les illustrations laissées et, après une erreur, les lots pas encore traités.
+    const done = new Set(results.flatMap((r, i) => batches[i].map(imageKey)));
+    const kept = new Set(out.editing);
+    setPicked((p) => new Set([...p].filter((k) => kept.has(k) || !done.has(k))));
+    setProgress(null);
+    load();
+  };
+
   const current = campaigns?.find((c) => c.id === cid);
 
   return (
     <div
-      className={`images-admin${drop ? ' is-drop' : ''}`}
+      className={`images-admin${drop ? ' is-drop' : ''}${active ? ' is-selecting' : ''}${picked.size ? ' has-actions' : ''}`}
       onDragOver={(e) => { if ([...e.dataTransfer.types].includes('Files')) { e.preventDefault(); setDrop(true); } }}
       onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setDrop(false); }}
       onDrop={(e) => { e.preventDefault(); setDrop(false); send(e.dataTransfer.files); }}
@@ -133,12 +211,20 @@ export default function ImagesSection({ campaigns }) {
       ) : (
         <>
           <div className="images-admin__bar">
-            <select value={cid ?? ''} onChange={(e) => { setCid(Number(e.target.value)); setSelected(null); }}
-              aria-label={t('Campagne')} className="images-admin__campaign">
+            <select value={cid ?? ''} onChange={(e) => { setCid(Number(e.target.value)); setSelected(null); endSelection(); }}
+              aria-label={t('Campagne')} className="images-admin__campaign" disabled={!!progress}>
               {campaigns.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
             <input type="search" placeholder={t('Rechercher une légende, une fiche…')} value={query}
-              onChange={(e) => setQuery(e.target.value)} aria-label={t('Rechercher')} />
+              onChange={(e) => setQuery(e.target.value)} aria-label={t('Rechercher')} className="images-admin__search" />
+            <select value={sort} onChange={(e) => changeSort(e.target.value)} aria-label={t('Trier les images')}
+              className="images-admin__sort">
+              {Object.entries(SORT_LABEL).map(([key, label]) => <option key={key} value={key}>{t(label)}</option>)}
+            </select>
+            <button type="button" className={`btn ${active ? 'btn--primary' : 'btn--ghost'} images-admin__select`}
+              aria-pressed={active} onClick={() => (active ? endSelection() : setSelecting(true))} disabled={!data?.images.length && !active}>
+              <Icon name={active ? 'close' : 'check'} size={16} /> {active ? t('Terminer') : t('Sélectionner')}
+            </button>
           </div>
           <div className="segmented segmented--compact images-admin__filters" role="tablist" aria-label={t('Sorte d’images')}>
             {FILTERS.map((f) => (
@@ -168,12 +254,21 @@ export default function ImagesSection({ campaigns }) {
               <p className="muted">{t('Glissez des images ici ou utilisez « Déposer des images » : elles iront dans la bibliothèque.')}</p>
             </div>
           ) : (
-            <ul className="images-admin__grid">
+            <ul className="images-admin__grid" onKeyDown={gridKeys} aria-label={t('Images de la campagne')}>
               {shown.map((img) => {
                 const from = origin(img, cid);
+                const key = keyOf(img);
+                const on = picked.has(key);
                 return (
-                  <li key={keyOf(img)}>
-                    <button type="button" className="images-admin__card" onClick={() => setSelected(keyOf(img))}>
+                  <li key={key} className={on ? 'is-picked' : undefined}>
+                    <label className="images-admin__pick" title={on ? t('Retirer de la sélection') : t('Ajouter à la sélection')}>
+                      <input type="checkbox" checked={on} onClick={(e) => clickCheck(e, key)} onChange={() => {}}
+                        aria-label={t('Sélectionner « {title} »', { title: title(img) })} />
+                      <span className="images-admin__box" aria-hidden="true"><Icon name="check" size={14} /></span>
+                    </label>
+                    <button type="button" className={`images-admin__card${on ? ' is-picked' : ''}`}
+                      aria-pressed={active ? on : undefined} aria-haspopup={active ? undefined : 'dialog'}
+                      onMouseDown={(e) => { if (e.shiftKey) e.preventDefault(); }} onClick={(e) => clickCard(e, key)}>
                       <span className="images-admin__thumb">
                         <img src={img.thumb_url} alt="" loading="lazy" />
                         {img.cover && <span className="images-admin__tag">{t(COVER_LABEL[img.owner.kind])}</span>}
@@ -190,12 +285,105 @@ export default function ImagesSection({ campaigns }) {
           )}
         </>
       )}
+      {active && !progress && !asking && <EscapeLayer onEscape={endSelection} />}
+      {(picked.size > 0 || progress) && (
+        <div className="images-admin__actions" role="region" aria-label={t('Images sélectionnées')}>
+          <p className="images-admin__summary" aria-live="polite">
+            {progress ? t('Suppression… {done}/{total}', progress) : (
+              <>
+                <strong>{tn('{n} image sélectionnée · {size}', '{n} images sélectionnées · {size}', picked.size,
+                  { size: fmtSize(pickedImages.reduce((sum, img) => sum + (img.bytes || 0), 0)) })}</strong>
+                {hidden > 0 && <span className="muted">{tn('dont {n} masquée par le filtre', 'dont {n} masquées par le filtre', hidden)}</span>}
+              </>
+            )}
+          </p>
+          <div className="images-admin__actions-buttons">
+            <button type="button" className="btn btn--ghost" disabled={!!progress}
+              onClick={() => setPicked((p) => selectAll(p, shownKeys))}>
+              {t('Tout sélectionner ({n})', { n: shown.length })}
+            </button>
+            <button type="button" className="btn btn--ghost" disabled={!!progress} onClick={clearSelection}>{t('Désélectionner')}</button>
+            <button type="button" className="btn btn--danger" disabled={!!progress || !pickedImages.length} onClick={() => setAsking(true)}>
+              <Icon name="trash" size={16} /> {t('Supprimer')}
+            </button>
+          </div>
+        </div>
+      )}
+      {asking && pickedImages.length > 0 && (
+        <DeleteDialog images={pickedImages} hidden={hidden} onCancel={() => setAsking(false)} onConfirm={removePicked} />
+      )}
       {drop && <div className="images-admin__dropzone" aria-hidden="true"><Icon name="upload" size={28} /> {t('Déposer dans la bibliothèque')}</div>}
       {selected && data && data.images.some((i) => keyOf(i) === selected) && (
         <ImageDialog img={data.images.find((i) => keyOf(i) === selected)} cid={cid}
           onClose={() => setSelected(null)} onChanged={load} />
       )}
     </div>
+  );
+}
+
+/** Échap vide la sélection, sauf si une fenêtre (image, confirmation, recherche) est au-dessus. */
+function EscapeLayer({ onEscape }) {
+  useDialogLayer((e) => {
+    if (e.key === 'Escape' && !e.defaultPrevented) onEscape();
+  });
+  return null;
+}
+
+/** Confirmation d'une suppression groupée : nombre par sorte et conséquences. */
+function DeleteDialog({ images, hidden, onCancel, onConfirm }) {
+  const s = deletionSummary(images);
+  const sources = [
+    ['library', tn('{n} image de la bibliothèque', '{n} images de la bibliothèque', s.bySource.library)],
+    ['gallery', tn('{n} image de galerie de fiche', '{n} images de galeries de fiches', s.bySource.gallery)],
+    ['document', tn('{n} illustration de fiche rédigée', '{n} illustrations de fiches rédigées', s.bySource.document)],
+    ['map', tn('{n} fond de carte interactive', '{n} fonds de cartes interactives', s.bySource.map)],
+  ].filter(([key]) => s.bySource[key] > 0);
+  const effects = [];
+  if (s.covers) {
+    effects.push(tn('{n} portrait, emblème ou illustration de fiche sera remplacé par l’image suivante de sa galerie.',
+      '{n} portraits, emblèmes ou illustrations de fiches seront remplacés par l’image suivante de leur galerie.', s.covers));
+  }
+  if (s.shownInDocs) {
+    const docs = tn('{n} fiche rédigée', '{n} fiches rédigées', s.documents);
+    effects.push(tn('{n} illustration affichée dans {docs} sera retirée du texte (version gardée dans l’historique).',
+      '{n} illustrations affichées dans {docs} seront retirées du texte (version gardée dans l’historique).', s.shownInDocs, { docs }));
+  }
+  if (s.maps) {
+    effects.push(tn('{n} carte interactive sera supprimée avec ses épingles (les lieux restent).',
+      '{n} cartes interactives seront supprimées avec leurs épingles (les lieux restent).', s.maps));
+  }
+  return (
+    <Modal title={t('Supprimer les images sélectionnées')} onClose={onCancel}
+      footer={(
+        <>
+          <button type="button" className="btn btn--ghost" onClick={onCancel}>{t('Annuler')}</button>
+          <button type="button" className="btn btn--danger" onClick={onConfirm}>
+            {tn('Supprimer {n} image', 'Supprimer {n} images', s.count)}
+          </button>
+        </>
+      )}>
+      <div className="images-delete">
+        <p className="confirm-text">
+          {tn('{n} image ({size}) sera supprimée du serveur :', '{n} images ({size}) seront supprimées du serveur :', s.count,
+            { size: fmtSize(s.bytes) })}
+        </p>
+        <ul className="images-delete__sources">
+          {sources.map(([key, label]) => <li key={key}>{label}</li>)}
+        </ul>
+        {effects.length > 0 && (
+          <ul className="images-delete__effects">
+            {effects.map((text) => <li key={text}>{text}</li>)}
+          </ul>
+        )}
+        {hidden > 0 && (
+          <p className="images-delete__hidden">
+            <Icon name="eye" size={16} />
+            {tn('Dont {n} image masquée par le filtre ou la recherche actuels.',
+              'Dont {n} images masquées par le filtre ou la recherche actuels.', hidden)}
+          </p>
+        )}
+      </div>
+    </Modal>
   );
 }
 
