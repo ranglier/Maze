@@ -410,6 +410,42 @@ class CompleteCatalogTest(unittest.TestCase):
         self.assertEqual(i18n.translate(i18n.message(exc), "en"), "Unreadable database: disk I/O error")
         self.assertEqual(i18n.message(ValueError("brut")), "brut")
 
+    def test_newer_backup_message_fully_translated(self):
+        """Restauration d'une sauvegarde plus récente que le code : le détail (db.schema_problem) est un `msg`, traduit
+        avec le message qui l'englobe, conseil de restauration compris ; texte français inchangé pour le journal."""
+        from maze import backup, db
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "maze.db"
+            with contextlib.closing(sqlite3.connect(path)) as conn:
+                conn.executescript("CREATE TABLE campaigns (id INTEGER); CREATE TABLE npcs (id INTEGER); "
+                                   "CREATE TABLE factions (id INTEGER); PRAGMA user_version = 999;")
+            with self.assertRaises(backup.ArchiveError) as caught:
+                backup._check_database(path)
+        text = i18n.message(caught.exception)
+        self.assertIn("Détail : base au schéma 999, plus récent que ce code", str(text))
+        self.assertIn(db.RESTORE_HINT, str(text))
+        en = i18n.translate(text, "en")
+        self.assertTrue(en.startswith("Backup from a newer version of Maze (or another branch): update Maze first. "
+                                      "Details: database at schema 999, newer than this code (latest known migration: "),
+                        en)
+        self.assertIn("restore the backup taken before the update", en)
+        self.assertNotRegex(en, r"[éèàùç«»]|base au|restaurez")
+        # Migration inconnue (autre branche) et user_version en avance : même traduction complète.
+        with contextlib.closing(sqlite3.connect(":memory:")) as conn:
+            conn.executescript(db.SCHEMA_TABLE + "; INSERT INTO schema_migrations (version, name, checksum) "
+                               "VALUES (1, '001_autre_branche.sql', ''); PRAGMA user_version = 1;")
+            unknown = db.schema_problem(conn)
+            conn.execute("PRAGMA user_version = 5")
+            conn.execute("DELETE FROM schema_migrations")
+            conn.execute("INSERT INTO schema_migrations (version, name, checksum) VALUES (?, ?, '')",
+                         (1, db.migration_files()[0][1]))
+            ahead = db.schema_problem(conn)
+        self.assertIn("001_autre_branche.sql", unknown)
+        self.assertTrue(i18n.translate(unknown, "en").startswith(
+            "the database contains migrations unknown to this code (001_autre_branche.sql): it comes from a newer"))
+        self.assertTrue(i18n.translate(ahead, "en").startswith(
+            "database at schema 5 while the latest recorded migration is 001: a version of Maze"), ahead)
+
 
 # --- Messages sur un vrai serveur ------------------------------------------------------------------------------
 
