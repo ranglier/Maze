@@ -3,14 +3,15 @@ import { api } from '../api.js';
 import { Field, Icon, Modal, useAction, useConfirm, useToast } from './ui.jsx';
 import { SectionHead, fmtDate } from './AdminPage.jsx';
 import { CopyField } from './ClaudeSection.jsx';
+import { t } from '../i18n/index.js';
 
 /** Cases à cocher des campagnes lisibles avec un jeton. */
 function CampaignChecks({ campaigns, selected, onChange }) {
   const toggle = (id) => onChange(selected.includes(id) ? selected.filter((x) => x !== id) : [...selected, id]);
   return (
     <fieldset className="checklist">
-      <legend>Campagnes lisibles avec ce jeton</legend>
-      {campaigns.length === 0 && <p className="muted">Aucune campagne pour l’instant.</p>}
+      <legend>{t('Campagnes lisibles avec ce jeton')}</legend>
+      {campaigns.length === 0 && <p className="muted">{t('Aucune campagne pour l’instant.')}</p>}
       {campaigns.map((c) => (
         <label key={c.id} className="check">
           <input type="checkbox" checked={selected.includes(c.id)} onChange={() => toggle(c.id)} />
@@ -32,21 +33,21 @@ function TokenDialog({ token, campaigns, onClose, onSaved }) {
     setBusy(true);
     const data = { name: name.trim(), campaigns: selected };
     const out = await run(() => (token ? api.admin.updateFoundryToken(token.id, data) : api.admin.createFoundryToken(data)),
-      token ? 'Jeton modifié' : undefined);
+      token ? t('Jeton modifié') : undefined);
     setBusy(false);
     if (out) onSaved(out);
   };
   return (
-    <Modal title={token ? `Jeton « ${token.name} »` : 'Nouveau jeton Foundry'} onClose={onClose} footer={(
+    <Modal title={token ? t('Jeton « {name} »', { name: token.name }) : t('Nouveau jeton Foundry')} onClose={onClose} footer={(
       <>
-        <button type="button" className="btn btn--ghost" onClick={onClose}>Annuler</button>
+        <button type="button" className="btn btn--ghost" onClick={onClose}>{t('Annuler')}</button>
         <button type="button" className="btn btn--primary" onClick={save} disabled={busy || !name.trim()}>
-          {token ? 'Enregistrer' : 'Créer le jeton'}
+          {token ? t('Enregistrer') : t('Créer le jeton')}
         </button>
       </>
     )}>
       <form onSubmit={save}>
-        <Field label="Nom" htmlFor="foundry-token-name" hint="Pour reconnaître le jeton : le nom du serveur ou du monde Foundry.">
+        <Field label={t('Nom')} htmlFor="foundry-token-name" hint={t('Pour reconnaître le jeton : le nom du serveur ou du monde Foundry.')}>
           <input id="foundry-token-name" className="input" value={name} maxLength={80} onChange={(e) => setName(e.target.value)} />
         </Field>
         <CampaignChecks campaigns={campaigns || []} selected={selected} onChange={setSelected} />
@@ -61,20 +62,20 @@ function CreatedTokenDialog({ created, onClose }) {
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(created.token);
-      toast('Jeton copié', 'success');
+      toast(t('Jeton copié'), 'success');
     } catch {
-      toast('Copie impossible : sélectionnez le jeton et copiez-le avec Ctrl+C.', 'error');
+      toast(t('Copie impossible : sélectionnez le jeton et copiez-le avec Ctrl+C.'), 'error');
     }
   };
   return (
-    <Modal title={`Jeton « ${created.name} » créé`} onClose={onClose} footer={(
+    <Modal title={t('Jeton « {name} » créé', { name: created.name })} onClose={onClose} footer={(
       <>
-        <button type="button" className="btn btn--ghost" onClick={copy}><Icon name="copy" size={16} /> Copier</button>
-        <button type="button" className="btn btn--primary" onClick={onClose}>J’ai copié le jeton</button>
+        <button type="button" className="btn btn--ghost" onClick={copy}><Icon name="copy" size={16} /> {t('Copier')}</button>
+        <button type="button" className="btn btn--primary" onClick={onClose}>{t('J’ai copié le jeton')}</button>
       </>
     )}>
-      <Field label="Jeton" htmlFor="foundry-new-token"
-        hint="Copiez-le maintenant : Maze n’en garde qu’une empreinte, il ne sera plus jamais affiché. Collez-le dans la fenêtre « Importer depuis Maze » du module Foundry.">
+      <Field label={t('Jeton')} htmlFor="foundry-new-token"
+        hint={t('Copiez-le maintenant : Maze n’en garde qu’une empreinte, il ne sera plus jamais affiché. Collez-le dans la fenêtre « Importer depuis Maze » du module Foundry.')}>
         <input id="foundry-new-token" className="input table__mono" readOnly value={created.token}
           onFocus={(e) => e.target.select()} onClick={(e) => e.target.select()} />
       </Field>
@@ -99,78 +100,86 @@ export default function FoundrySection({ campaigns }) {
 
   const revoke = async (token) => {
     const yes = await confirm({
-      title: 'Révoquer le jeton',
-      message: `Le module Foundry qui utilise « ${token.name} » ne pourra plus lire Maze. Ce qui a déjà été importé `
-        + 'reste dans Foundry.',
-      confirmLabel: 'Révoquer',
+      title: t('Révoquer le jeton'),
+      message: t('Le module Foundry qui utilise « {name} » ne pourra plus lire Maze. Ce qui a déjà été importé reste dans Foundry.',
+        { name: token.name }),
+      confirmLabel: t('Révoquer'),
     });
     if (!yes) return;
-    const out = await run(() => api.admin.deleteFoundryToken(token.id), 'Jeton révoqué');
+    const out = await run(() => api.admin.deleteFoundryToken(token.id), t('Jeton révoqué'));
     if (out) {
       setState(out);
       if (created?.id === token.id) setCreated(null);
     }
   };
 
-  if (!state) return <p className="muted">Chargement…</p>;
+  if (!state) return <p className="muted">{t('Chargement…')}</p>;
 
   return (
     <>
       <SectionHead title="Foundry VTT"
-        description="Le module « Maze - import des fiches » importe dans un monde Foundry les PNJ, factions, lieux et cartes interactives d’une campagne : journaux, scènes avec notes, acteurs (Dark Heresy). Il lit Maze avec un jeton, en lecture seule ; rien ne repart de Foundry vers Maze.">
+        description={t('Le module « Maze - import des fiches » importe dans un monde Foundry les PNJ, factions, lieux et cartes interactives d’une campagne : journaux, scènes avec notes, acteurs (Dark Heresy). Il lit Maze avec un jeton, en lecture seule ; rien ne repart de Foundry vers Maze.')}>
         <button type="button" className="btn btn--primary" onClick={() => setDialog({ type: 'create' })}>
-          <Icon name="plus" size={16} /> Nouveau jeton
+          <Icon name="plus" size={16} /> {t('Nouveau jeton')}
         </button>
       </SectionHead>
 
       <section className="admin__block">
-        <h2>Installer le module dans Foundry</h2>
+        <h2>{t('Installer le module dans Foundry')}</h2>
         <dl className="facts claude-facts">
-          <CopyField label="Adresse du manifeste" value={state.manifest_url} />
-          <CopyField label="Adresse de Maze (à saisir dans le module)" value={state.maze_url} />
+          <CopyField label={t('Adresse du manifeste')} value={state.manifest_url} />
+          <CopyField label={t('Adresse de Maze (à saisir dans le module)')} value={state.maze_url} />
         </dl>
         <ol className="claude-steps">
-          <li>Écran de configuration de Foundry : <strong>Modules complémentaires &gt; Installer un module</strong>, coller l’adresse du manifeste en bas de la fenêtre, puis <strong>Installer</strong>. Les mises à jour du module suivent celles de Maze (version {state.module_version}).</li>
-          <li>Dans le monde : <strong>Gérer les modules</strong>, activer « Maze - import des fiches ».</li>
-          <li>Onglet <strong>Journaux &gt; Maze</strong> (ou Paramètres &gt; Maze) : saisir l’adresse de Maze et le jeton, <strong>Se connecter</strong>, choisir la campagne, <strong>Importer</strong>. Un nouvel import met à jour ce qui a changé.</li>
+          <li>{t('Écran de configuration de Foundry : {menu}, coller l’adresse du manifeste en bas de la fenêtre, puis {install}. Les mises à jour du module suivent celles de Maze (version {version}).', {
+            menu: <strong>{t('Modules complémentaires > Installer un module')}</strong>,
+            install: <strong>{t('Installer')}</strong>,
+            version: state.module_version,
+          })}</li>
+          <li>{t('Dans le monde : {manage}, activer « Maze - import des fiches ».', { manage: <strong>{t('Gérer les modules')}</strong> })}</li>
+          <li>{t('Onglet {tab} (ou Paramètres > Maze) : saisir l’adresse de Maze et le jeton, {connect}, choisir la campagne, {import}. Un nouvel import met à jour ce qui a changé.', {
+            tab: <strong>{t('Journaux > Maze')}</strong>,
+            connect: <strong>{t('Se connecter')}</strong>,
+            import: <strong>{t('Importer')}</strong>,
+          })}</li>
         </ol>
         <p className="field__hint">
-          Le serveur Foundry télécharge le module à cette adresse : s’il est sur le même réseau que Maze et que le nom
-          public ne s’y résout pas, ajoutez-le au conteneur Foundry (extra_hosts de Docker Compose, vers l’adresse du
-          reverse proxy).
+          {t('Le serveur Foundry télécharge le module à cette adresse : s’il est sur le même réseau que Maze et que le nom public ne s’y résout pas, ajoutez-le au conteneur Foundry (extra_hosts de Docker Compose, vers l’adresse du reverse proxy).')}
         </p>
       </section>
 
       <section className="admin__block">
-        <h2>Jetons</h2>
-        <p className="field__hint">Un jeton n’est affiché qu’à sa création. Perdu : révoquez-le et créez-en un autre. Il est révoqué d’office si l’administrateur qui l’a créé perd ce rôle, est désactivé ou supprimé, et à la restauration d’une sauvegarde.</p>
+        <h2>{t('Jetons')}</h2>
+        <p className="field__hint">{t('Un jeton n’est affiché qu’à sa création. Perdu : révoquez-le et créez-en un autre. Il est révoqué d’office si l’administrateur qui l’a créé perd ce rôle, est désactivé ou supprimé, et à la restauration d’une sauvegarde.')}</p>
         {state.tokens.length === 0 ? (
-          <p className="muted">Aucun jeton. Créez-en un pour chaque serveur Foundry.</p>
+          <p className="muted">{t('Aucun jeton. Créez-en un pour chaque serveur Foundry.')}</p>
         ) : (
           <div className="table-wrap">
             <table className="table">
-              <thead><tr><th>Nom</th><th>Campagnes</th><th>Créé le</th><th>Dernière utilisation</th><th /></tr></thead>
+              <thead><tr><th>{t('Nom')}</th><th>{t('Campagnes')}</th><th>{t('Créé le')}</th><th>{t('Dernière utilisation')}</th><th /></tr></thead>
               <tbody>
-                {state.tokens.map((t) => (
-                  <tr key={t.id}>
+                {state.tokens.map((tok) => (
+                  <tr key={tok.id}>
                     <td>
-                      <strong>{t.name}</strong>
-                      <span className="table__sub table__mono">mzf_{t.hint}…</span>
+                      <strong>{tok.name}</strong>
+                      <span className="table__sub table__mono">mzf_{tok.hint}…</span>
                     </td>
                     <td className="table__campaigns">
-                      {t.campaigns.length === 0
-                        ? <span className="muted">Aucune</span>
-                        : t.campaigns.map((id) => names.get(id) || `#${id}`).join(', ')}
+                      {tok.campaigns.length === 0
+                        ? <span className="muted">{t('Aucune')}</span>
+                        : tok.campaigns.map((id) => names.get(id) || `#${id}`).join(', ')}
                     </td>
-                    <td className="table__nums">{fmtDate(t.created_at)}{t.created_by ? ` (${t.created_by})` : ''}</td>
-                    <td className="table__nums">{fmtDate(t.last_used_at)}</td>
+                    <td className="table__nums">
+                      {tok.created_by ? t('{date} ({name})', { date: fmtDate(tok.created_at), name: tok.created_by }) : fmtDate(tok.created_at)}
+                    </td>
+                    <td className="table__nums">{fmtDate(tok.last_used_at)}</td>
                     <td className="table__actions">
-                      <button type="button" className="icon-btn" title="Nom et campagnes" aria-label={`Modifier ${t.name}`}
-                        onClick={() => setDialog({ type: 'edit', token: t })}>
+                      <button type="button" className="icon-btn" title={t('Nom et campagnes')} aria-label={t('Modifier {name}', { name: tok.name })}
+                        onClick={() => setDialog({ type: 'edit', token: tok })}>
                         <Icon name="edit" size={16} />
                       </button>
-                      <button type="button" className="icon-btn" title="Révoquer" aria-label={`Révoquer ${t.name}`}
-                        onClick={() => revoke(t)}>
+                      <button type="button" className="icon-btn" title={t('Révoquer')} aria-label={t('Révoquer {name}', { name: tok.name })}
+                        onClick={() => revoke(tok)}>
                         <Icon name="trash" size={16} />
                       </button>
                     </td>
@@ -188,7 +197,7 @@ export default function FoundrySection({ campaigns }) {
         <TokenDialog token={dialog.token} campaigns={campaigns} onClose={() => setDialog(null)}
           onSaved={(out) => {
             setState(out);
-            if (dialog.type === 'create') setCreated({ id: out.token_id, name: out.tokens.find((t) => t.id === out.token_id)?.name, token: out.token });
+            if (dialog.type === 'create') setCreated({ id: out.token_id, name: out.tokens.find((x) => x.id === out.token_id)?.name, token: out.token });
             setDialog(null);
           }} />
       )}

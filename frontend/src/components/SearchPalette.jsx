@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { api } from '../api.js';
-import { placeKind } from '../constants.js';
+import { NPC_STATUS, placeKind } from '../constants.js';
+import { N_, t } from '../i18n/index.js';
 import { initialsAvatar, storage } from '../util.js';
 import { Icon, KindImage, useDialogLayer } from './ui.jsx';
 
@@ -11,12 +12,13 @@ import { Icon, KindImage, useDialogLayer } from './ui.jsx';
  * marqueurs \u0002 et \u0003, transformés ici en <mark> (aucun HTML interprété).
  */
 
+// Libellés traduits à l'affichage (t(g.label)) : N_ les signale seulement à l'extraction.
 const GROUPS = [
-  { kind: 'npc', label: 'PNJ' },
-  { kind: 'faction', label: 'Factions' },
-  { kind: 'place', label: 'Lieux' },
-  { kind: 'document', label: 'Fiches rédigées' },
-  { kind: 'comment', label: 'Commentaires' },
+  { kind: 'npc', label: N_('PNJ') },
+  { kind: 'faction', label: N_('Factions') },
+  { kind: 'place', label: N_('Lieux') },
+  { kind: 'document', label: N_('Fiches rédigées') },
+  { kind: 'comment', label: N_('Commentaires') },
 ];
 
 export function Highlight({ text }) {
@@ -36,7 +38,12 @@ export function Highlight({ text }) {
   return <>{parts}</>;
 }
 
-const ENTRY_LABEL = { npc: 'le PNJ', faction: 'la faction', place: 'le lieu' };
+// Commentaire d'une fiche PNJ, faction ou lieu : phrase entière par sorte de fiche.
+const ENTRY_COMMENT = {
+  npc: (name) => t('sur le PNJ « {name} »', { name }),
+  faction: (name) => t('sur la faction « {name} »', { name }),
+  place: (name) => t('sur le lieu « {name} »', { name }),
+};
 
 const plain = (text) => (text || '').replace(/[\u0002\u0003]/g, '');
 
@@ -53,7 +60,7 @@ export function resultHref(r, query) {
 }
 
 function docLabel(r) {
-  return r.doc_kind === 'campaign' ? 'Fiche de campagne' : (plain(r.doc_title) || 'Sans titre');
+  return r.doc_kind === 'campaign' ? t('Fiche de campagne') : (plain(r.doc_title) || t('Sans titre'));
 }
 
 export default function SearchPalette({ campaign, multiple, onClose, onNavigate }) {
@@ -77,7 +84,7 @@ export default function SearchPalette({ campaign, multiple, onClose, onNavigate 
     if (q.length < 2) { setResults(null); setLoading(false); return undefined; }
     let cancelled = false;
     setLoading(true);
-    const t = setTimeout(async () => {
+    const timer = setTimeout(async () => {
       try {
         const data = await api.search(q, scope === 'all' || !campaign ? 'all' : campaign.id);
         if (!cancelled) { setResults(data.results); setActive(0); }
@@ -87,7 +94,7 @@ export default function SearchPalette({ campaign, multiple, onClose, onNavigate 
         if (!cancelled) setLoading(false);
       }
     }, 160);
-    return () => { cancelled = true; clearTimeout(t); };
+    return () => { cancelled = true; clearTimeout(timer); };
   }, [query, scope, campaign]);
 
   // Résultats regroupés par type, dans l'ordre d'affichage (pour la navigation au clavier).
@@ -116,36 +123,37 @@ export default function SearchPalette({ campaign, multiple, onClose, onNavigate 
   let index = -1;
   return createPortal(
     <div className="palette-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="palette" role="dialog" aria-modal="true" aria-label="Recherche globale">
+      <div className="palette" role="dialog" aria-modal="true" aria-label={t('Recherche globale')}>
         <div className="palette__field">
           <Icon name="search" size={18} />
           <input ref={inputRef} type="search" value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={onKeyDown}
-            placeholder="Rechercher un PNJ, une faction, un lieu, un scénario…" aria-label="Rechercher"
+            placeholder={t('Rechercher un PNJ, une faction, un lieu, un scénario…')} aria-label={t('Rechercher')}
             aria-controls="palette-results" autoComplete="off" spellCheck={false} />
           {loading && <span className="palette__spinner" aria-hidden="true" />}
-          <button type="button" className="icon-btn palette__close" onClick={onClose} aria-label="Fermer la recherche">
+          <button type="button" className="icon-btn palette__close" onClick={onClose} aria-label={t('Fermer la recherche')}>
             <Icon name="close" />
           </button>
         </div>
         {campaign && multiple && (
-          <div className="palette__scope segmented" role="radiogroup" aria-label="Portée de la recherche">
+          <div className="palette__scope segmented" role="radiogroup" aria-label={t('Portée de la recherche')}>
             <button type="button" role="radio" aria-checked={scope !== 'all'} className={scope !== 'all' ? 'is-active' : ''}
               onClick={() => setScopeSaved('campaign')}>{campaign.name}</button>
             <button type="button" role="radio" aria-checked={scope === 'all'} className={scope === 'all' ? 'is-active' : ''}
-              onClick={() => setScopeSaved('all')}>Toutes mes campagnes</button>
+              onClick={() => setScopeSaved('all')}>{t('Toutes mes campagnes')}</button>
           </div>
         )}
         <div className="palette__results" id="palette-results" ref={listRef} role="listbox">
           {query.trim().length < 2 ? (
             <p className="palette__hint">
-              Accents et majuscules sont ignorés, un début de mot suffit. <kbd>↑</kbd> <kbd>↓</kbd> pour choisir,
-              {' '}<kbd>Entrée</kbd> pour ouvrir.
+              {t('Accents et majuscules sont ignorés, un début de mot suffit. {up} {down} pour choisir, {enter} pour ouvrir.', {
+                up: <kbd>↑</kbd>, down: <kbd>↓</kbd>, enter: <kbd>{t('Entrée')}</kbd>,
+              })}
             </p>
           ) : results && flat.length === 0 && !loading ? (
-            <p className="palette__hint">Aucun résultat pour « {query.trim()} ».</p>
+            <p className="palette__hint">{t('Aucun résultat pour « {query} ».', { query: query.trim() })}</p>
           ) : groups.map((g) => (
             <section key={g.kind} className="palette__group">
-              <h3>{g.label}</h3>
+              <h3>{t(g.label)}</h3>
               <ul>
                 {g.items.map((r) => {
                   index += 1;
@@ -171,16 +179,16 @@ export default function SearchPalette({ campaign, multiple, onClose, onNavigate 
                         )}
                         <span className="palette__text">
                           <span className="palette__title">
-                            {r.kind === 'comment' || r.kind === 'entry_comment' ? <>Commentaire de {plain(r.title) || '?'}</>
-                              : r.kind === 'document' && r.doc_kind === 'campaign' ? 'Fiche de campagne'
-                                : <Highlight text={r.title || 'Sans titre'} />}
-                            {r.status === 'mort' && <span className="palette__tag">mort</span>}
+                            {r.kind === 'comment' || r.kind === 'entry_comment' ? t('Commentaire de {name}', { name: plain(r.title) || '?' })
+                              : r.kind === 'document' && r.doc_kind === 'campaign' ? t('Fiche de campagne')
+                                : <Highlight text={r.title || t('Sans titre')} />}
+                            {r.status === 'mort' && <span className="palette__tag">{NPC_STATUS.mort.label.toLowerCase()}</span>}
                           </span>
                           <span className="palette__sub">
-                            {r.kind === 'comment' ? `sur « ${docLabel(r)} »`
-                              : r.kind === 'entry_comment' ? `sur ${ENTRY_LABEL[r.entry_kind] || ''} « ${r.entry_name || '?'} »`
+                            {r.kind === 'comment' ? t('sur « {name} »', { name: docLabel(r) })
+                              : r.kind === 'entry_comment' ? (ENTRY_COMMENT[r.entry_kind] || ((name) => t('sur « {name} »', { name })))(r.entry_name || '?')
                               : r.kind === 'place' ? `${r.place_kind_label || placeKind(r.place_kind).label}${r.sub ? `, ${r.sub}` : ''}`
-                                : isEntity ? (r.sub || (r.kind === 'npc' ? 'PNJ' : 'Faction')) : ''}
+                                : isEntity ? (r.sub || (r.kind === 'npc' ? t('PNJ') : t('Faction'))) : ''}
                             {scope === 'all' && multiple && <span className="palette__campaign">{r.campaign}</span>}
                           </span>
                           {r.snippet && plain(r.snippet).trim() && (

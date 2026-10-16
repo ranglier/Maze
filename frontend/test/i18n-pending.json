@@ -1,15 +1,6 @@
 {
   "common": [],
-  "admin": [
-    "components/AdminPage.jsx",
-    "components/CampaignMenu.jsx",
-    "components/ClaudeSection.jsx",
-    "components/FoundrySection.jsx",
-    "components/ImagesSection.jsx",
-    "components/SearchPalette.jsx",
-    "components/SessionNotices.jsx",
-    "session.js"
-  ],
+  "admin": [],
   "scenarios": [
     "components/CommentsPanel.jsx",
     "components/DocDialogs.jsx",
