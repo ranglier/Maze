@@ -28,6 +28,10 @@ Website, with screenshots: https://ranglier.github.io/Maze/
 - **Real-time collaboration**: several GMs edit the same page and see each other's cursors. Offline edits are merged on reconnection; what cannot be merged is kept in the page history.
 - Comment threads anchored to passages, and a version history with named versions and one-click restore.
 
+**Timeline (optional)**
+- A per-campaign timeline, off by default: ordered events with a free-text date ("742.M41", "Session 4"), a title, a rich description (GM secret boxes, `@` mentions) and tags. No calendar: you set the order by hand.
+- Shown as a vertical list or a horizontal timeline (evenly spaced, in order); each NPC, faction and place sheet lists the events that mention it. Turning it off hides it without deleting anything.
+
 **Everything else**
 - Global full-text search (Ctrl+K), image library, campaign export and import (`.zip`), phone layout.
 - Two roles: administrator and GM (assigned campaigns only); scrypt passwords, login throttling.
@@ -228,7 +232,7 @@ The script fetches the code (`main`, or the branch given as argument), tags the 
 
 ## Integrations
 
-**Claude connector (MCP).** Maze includes a remote MCP server (`/mcp`) with its own OAuth 2.1 authorisation: Claude can search and read your campaigns and, if you allow it, edit NPCs, factions, places, relations and scenario pages, comment, add images and pin places on maps. In Administration > Connecteur Claude, generate the client ID and secret, enable access and open campaigns read-only or read-write; then add a custom connector on claude.ai with `https://maze.example.org/mcp` and those credentials. Each authorisation needs an administrator's password, actions are logged, and pages keep their version from before Claude's change.
+**Claude connector (MCP).** Maze includes a remote MCP server (`/mcp`) with its own OAuth 2.1 authorisation: Claude can search and read your campaigns and, if you allow it, edit NPCs, factions, places, relations, scenario pages and timeline events, comment, add images and pin places on maps. In Administration > Connecteur Claude, generate the client ID and secret, enable access and open campaigns read-only or read-write; then add a custom connector on claude.ai with `https://maze.example.org/mcp` and those credentials. Each authorisation needs an administrator's password, actions are logged, and pages keep their version from before Claude's change.
 
 **Foundry VTT module.** Your instance serves the `maze-sync` module (Foundry 13 and 14): install it with the manifest URL `https://maze.example.org/foundry/module.json` and give it a read-only token from Administration > Foundry VTT. It imports a campaign, or what one scenario needs: a journal per NPC, faction and place (secrets on a GM-only page), a scene per interactive map with a note per pin, and Dark Heresy actors. Import is one-way and repeatable; pages edited in Foundry are kept unless you choose to replace them.
 

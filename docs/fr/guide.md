@@ -25,7 +25,7 @@ Premier module livré : **PNJ et factions**, sous forme de carte interactive (gr
 
 ## Recherche globale
 
-- **Ctrl+K** (ou le champ « Rechercher » en haut de l'écran ; Ctrl+Maj+F fonctionne aussi dans l'éditeur, où Ctrl+K crée un lien) : PNJ, factions, fiches rédigées (titre et texte) et commentaires.
+- **Ctrl+K** (ou le champ « Rechercher » en haut de l'écran ; Ctrl+Maj+F fonctionne aussi dans l'éditeur, où Ctrl+K crée un lien) : PNJ, factions, fiches rédigées (titre et texte), commentaires et événements de la chronologie (si elle est activée).
 - Accents et majuscules ignorés, un début de mot suffit ; résultats regroupés par type avec l'extrait trouvé surligné, navigation au clavier.
 - Un résultat ouvre la fiche PNJ ou faction sur la carte, la fiche rédigée sur le passage trouvé (surligné quelques secondes) ou le fil de commentaires.
 - Portée : la campagne en cours ou toutes ses campagnes. Index plein texte SQLite (FTS5) tenu à jour automatiquement.
@@ -61,9 +61,22 @@ Premier module livré : **PNJ et factions**, sous forme de carte interactive (gr
 - **Modifications qui ne peuvent pas être fusionnées** : si la fiche a été remplacée pendant la coupure (restauration d'une version ou d'une sauvegarde, modification par Claude, image supprimée), si une modification dépasse 2 Mo (collage géant), si la fiche a été supprimée ou l'accès retiré, le texte tel qu'il était dans le navigateur est gardé dans l'historique de la fiche (version « Modifications hors ligne de <nom> »), ou à défaut dans le navigateur (boutons Copier et Télécharger), même si l'on a quitté la fiche entre-temps. Un avis reste affiché jusqu'à ce qu'on le ferme, y compris après un rechargement. Sur un poste partagé, un texte gardé dans le navigateur n'est montré qu'à son compte une fois connecté (jamais sur l'écran de connexion ni à un autre compte), il est de nouveau envoyé dans l'historique à la connexion suivante de ce compte puis retiré du navigateur, la déconnexion avertit s'il en reste (enregistrer, télécharger ou abandonner), et il est effacé au bout de 7 jours (date indiquée dans l'avis).
 - **Mise à jour de Maze pendant qu'un onglet est ouvert** : si elle change la structure des fiches (nouveau type de bloc, nouvel attribut), un onglet resté sur l'ancienne interface ne peut plus se connecter aux fiches (il supprimerait chez tous les MJ les blocs qu'il ne connaît pas) : il garde son texte non envoyé comme ci-dessus et se recharge de lui-même ; si un formulaire de fiche a une saisie en cours, un bandeau invite à la recopier puis à recharger. Les mises à jour qui ne touchent pas à la structure des fiches ne déconnectent personne.
 
+## Chronologie (module facultatif)
+
+- Une chronologie par campagne : la liste des événements de l'univers ou de la campagne, dans l'ordre que l'on choisit. **Désactivée par défaut** : tant qu'elle l'est, Maze n'en montre rien (ni onglet, ni section sur les fiches, ni résultat de recherche).
+- **Activer** : menu de la campagne (en haut à gauche) > Chronologie. Le réglage vaut pour la campagne, donc pour tous ses MJ.
+- **Un événement** : une date en texte libre (« 742.M41 », « vers l'an 850 », « Séance 4 », ou rien), un titre, une description écrite avec l'éditeur des champs longs (encadrés Accroche et Secret, mentions @ des PNJ, factions, lieux et fiches rédigées) et des étiquettes. Il n'y a pas de calendrier : Maze ne trie jamais par date, l'ordre est celui de la liste.
+- **Ajouter, insérer, réordonner** : ajouter un événement le place à la fin ; on peut aussi l'insérer avant un événement existant. L'ordre se change par glisser-déposer dans la liste.
+- **Deux présentations** : la liste verticale (lecture et édition) et la frise horizontale, où les cartes des événements se suivent à intervalles réguliers dans l'ordre de la liste (une frise « ordinale » : l'écart entre deux cartes ne représente pas une durée). Sur téléphone, la liste est la présentation la plus lisible.
+- **Mentions** : chaque fiche PNJ, faction et lieu citée (@) dans un événement affiche une section « Chronologie » avec les événements qui la citent ; un clic ramène à l'événement. Renommer la fiche met la mention à jour, supprimer la fiche la retire de cette section.
+- **Recherche** (Ctrl+K) : titre, date, texte et étiquettes des événements, quand la chronologie est activée.
+- **Désactiver sans perte** : désactiver la chronologie la masque seulement ; les événements restent en base, dans l'export de la campagne et dans les sauvegardes, et réapparaissent tels quels à la réactivation.
+- **Export / import** : les événements suivent la campagne, dans leur ordre, avec leurs mentions réécrites vers les fiches importées ; l'activation est conservée. Une archive d'avant la chronologie s'importe toujours (chronologie vide et désactivée).
+- **Claude** (connecteur) : outils `list_events`, `create_event` et `update_event` (insertion avant un événement, déplacement) ; Claude ne supprime pas d'événement et n'écrit que si la chronologie est activée et la campagne ouverte en écriture. `get_campaign` indique si la chronologie est activée et combien elle compte d'événements. Les nouveaux outils apparaissent dans une nouvelle conversation de claude.ai.
+
 ## Export et import d'une campagne
 
-- Menu de la campagne (en haut à gauche) > **Exporter** : archive `.zip` contenant `campaign.json` (PNJ, factions, appartenances, liens et leurs natures, positions sur la carte, fiche de campagne, scénarios et sous-pages) et les images.
+- Menu de la campagne (en haut à gauche) > **Exporter** : archive `.zip` contenant `campaign.json` (PNJ, factions, appartenances, liens et leurs natures, positions sur la carte, fiche de campagne, scénarios et sous-pages, chronologie) et les images.
 - **Importer une campagne** (même menu, écran d'accueil ou Administration > Campagnes) : crée une nouvelle campagne, attribuée à la personne qui l'importe ; si le nom est déjà pris par une campagne qu'elle voit, il est suffixé « (importée) » (les campagnes des autres comptes ne comptent pas : rien ne révèle leurs noms). Les identifiants sont renouvelés et les références réécrites (liens, mentions @, images dans les fiches).
 - Accessible aux MJ pour leurs propres campagnes. L'historique d'édition en temps réel et l'historique des versions ne sont pas exportés : les fiches repartent de leur dernier texte enregistré. Les modèles de fiches (communs à l'instance) non plus ; ils sont en revanche dans les sauvegardes complètes.
 - Garde-fous à l'import : `campaign.json` de 25 Mo au plus (une campagne de 1000 PNJ en fait 1,3 Mo ; l'export prévient avant de produire une archive qui dépasserait cette limite, et donc ne pourrait pas être réimportée), lu sans croire la taille annoncée par l'archive ; archive refusée si `campaign.json` est anormalement compressé (plus de 100 fois au-delà de 1 Mo : une vraie campagne l'est 4 à 40 fois) ou contient plus de 500 000 objets ; images de 50 Mo au plus.
@@ -503,6 +516,7 @@ Schéma de l'éditeur (`frontend/src/editor/schema.js`) : toute modification des
       search.py         recherche globale (index plein texte FTS5)
       versions.py       historique des versions des fiches rédigées
       places.py         lieux (arborescence, liens avec les PNJ et factions)
+      timeline.py       chronologie (événements, ordre, mentions)
       templates.py      modèles de fiches enregistrés par les MJ
       schemas.py        validation des données (Pydantic)
       entries.py        registre des champs des PNJ, factions et lieux (source unique)
@@ -544,6 +558,9 @@ Schéma de l'éditeur (`frontend/src/editor/schema.js`) : toute modification des
 | PATCH, DELETE | /api/relations/{id}, /api/images/{id} | Modifier, supprimer |
 | GET, POST | /api/campaigns/{id}/documents | Arbre des fiches rédigées, création |
 | GET, PATCH, DELETE | /api/documents/{id} | Fiche rédigée (PATCH content remplace le texte et réinitialise l'édition en cours) |
+| GET, POST | /api/campaigns/{id}/events | Chronologie : événements dans l'ordre, création (`before_id` facultatif : insérer avant cet événement, sinon à la fin) |
+| PATCH, DELETE | /api/events/{id} | Modifier un événement (`base_revision` facultatif : 409 avec l'état actuel s'il a changé), supprimer |
+| PUT | /api/campaigns/{id}/events/order | Ordre complet de la chronologie (`ids`) |
 | GET | /api/campaigns/{id}/export | Archive .zip d'une campagne |
 | POST | /api/campaigns/import | Import d'une archive (corps brut), crée une nouvelle campagne |
 | GET, POST | /api/documents/{id}/comments | Fils de commentaires d'une fiche, nouveau fil ou réponse |
