@@ -27,10 +27,11 @@ from starlette.routing import Route
 from . import auth, db, i18n, imaging, limits, versions
 from .i18n import msg
 from .connector import _require_json
-from .api import IMAGE_FIELD, TABLES, _store_images, get_or_404, in_tx, parse_body, path_id, settings, threaded, touch_campaign, tx
+from .api import (IMAGE_FIELD, TABLES, _store_images, delete_gallery_images, get_or_404, in_tx, parse_body, path_id,
+                  settings, threaded, touch_campaign, tx)
 from .documents import UNSAVED_EDITS, has_unsaved_edits
-from .htmlimg import doc_image_id, remove_imgs
-from .schemas import LibraryAssign, LibraryUpdate
+from .htmlimg import doc_image_id, img_tags, remove_imgs
+from .schemas import ImagesDelete, LibraryAssign, LibraryUpdate
 
 DOC_IMAGE = re.compile(r'data-doc-image="(\d+)"')
 MAX_FILES = limits.LIBRARY_FILES
@@ -175,9 +176,14 @@ def delete_library(request: Request) -> Response:
     lid = path_id(request)
     with tx(request) as conn:
         row = get_or_404(conn, "library_images", lid, "Image")
-        conn.execute("DELETE FROM library_images WHERE id = ?", (lid,))
+        delete_library_rows(conn, [row])
     imaging.delete_files(settings(request).media_dir, row["file"], row["thumb"])
     return Response(status_code=204)
+
+
+def delete_library_rows(conn: sqlite3.Connection, rows: list[dict[str, Any]]) -> None:
+    """Retire des images de la bibliothèque (fichiers à supprimer par l'appelant, après la transaction)."""
+    conn.executemany("DELETE FROM library_images WHERE id = ?", [(r["id"],) for r in rows])
 
 
 def copy_to_gallery(media_dir: Path, conn_factory, source_file: str, campaign_id: int, kind: str, entity_id: int,
@@ -243,24 +249,96 @@ def delete_document_image(request: Request) -> Response:
     (état précédent gardé dans l'historique ; les éditeurs ouverts rechargent la fiche)."""
     user = auth.require_admin(request)
     iid = path_id(request)
-    touched: list[int] = []
     with tx(request) as conn:
         row = get_or_404(conn, "document_images", iid, "Image")
-        docs = conn.execute("SELECT id, content FROM documents WHERE campaign_id = ? AND content LIKE ?",
-                            (row["campaign_id"], f'%data-doc-image="{iid}"%')).fetchall()
-        for doc in docs:
-            if has_unsaved_edits(conn, doc["id"]):
-                raise HTTPException(409, msg("Une fiche qui affiche cette image est en cours d'écriture. {detail}",
-                                             detail=UNSAVED_EDITS))
-            versions.snapshot(conn, doc["id"], label="Avant suppression d'une image")
-            versions.replace_content(conn, doc["id"], strip_doc_image(doc["content"], iid), user["id"])
-            touched.append(doc["id"])
+        touched, editing = strip_from_documents(conn, row["campaign_id"], {iid}, user["id"],
+                                                "Avant suppression d'une image")
+        if editing:
+            raise HTTPException(409, msg("Une fiche qui affiche cette image est en cours d'écriture. {detail}",
+                                         detail=UNSAVED_EDITS))
         conn.execute("DELETE FROM document_images WHERE id = ?", (iid,))
+    _reset_documents(request, touched)
+    imaging.delete_files(settings(request).media_dir, row["file"], row["thumb"])
+    return JSONResponse({"deleted": iid, "documents": touched})
+
+
+def strip_from_documents(conn: sqlite3.Connection, campaign_id: int, image_ids: set[int], user_id: int,
+                         label: str) -> tuple[list[int], set[int]]:
+    """Retire ces illustrations du texte des fiches de la campagne qui les affichent : une version (label) puis un seul
+    remplacement du contenu par fiche. Une fiche aux frappes pas encore enregistrées (has_unsaved_edits) n'est pas
+    touchée, et les illustrations qu'elle affiche ne sont retirées d'aucune fiche : elles sont renvoyées (editing),
+    l'appelant ne doit pas les supprimer. Renvoie (fiches modifiées, illustrations bloquées) ; l'appelant recharge les
+    éditeurs ouverts sur les fiches modifiées (_reset_documents) après la transaction."""
+    shown: dict[int, tuple[str, set[int]]] = {}
+    for doc in conn.execute("SELECT id, content FROM documents WHERE campaign_id = ? AND content LIKE ? ORDER BY id",
+                            (campaign_id, '%data-doc-image="%')):
+        cited = {i for _, _, attrs in img_tags(doc["content"]) if (i := doc_image_id(attrs)) in image_ids}
+        if cited:
+            shown[doc["id"]] = (doc["content"], cited)
+    busy = {doc_id for doc_id in shown if has_unsaved_edits(conn, doc_id)}
+    editing = {i for doc_id in busy for i in shown[doc_id][1]}
+    removable = image_ids - editing
+    touched: list[int] = []
+    for doc_id, (content, cited) in shown.items():
+        if doc_id in busy or not cited & removable:
+            continue
+        versions.snapshot(conn, doc_id, label=label)
+        versions.replace_content(conn, doc_id, remove_imgs(content, lambda attrs: doc_image_id(attrs) in removable),
+                                 user_id)
+        touched.append(doc_id)
+    return touched, editing
+
+
+def _reset_documents(request: Request, touched: list[int]) -> None:
+    """Contenu remplacé par le serveur : les éditeurs ouverts sur ces fiches rechargent."""
     hub = getattr(request.app.state, "hub", None)
     if hub is not None and touched:
         hub.close_documents(touched, "reset")
-    imaging.delete_files(settings(request).media_dir, row["file"], row["thumb"])
-    return JSONResponse({"deleted": iid, "documents": touched})
+
+
+SOURCES = ("library", "gallery", "document", "map")
+SOURCE_TABLE = {"library": "library_images", "gallery": "images", "document": "document_images", "map": "maps"}
+
+
+@threaded
+def delete_images(request: Request) -> Response:
+    """Suppression groupée (Administration > Images) : bibliothèque, galeries, illustrations, fonds de cartes, en
+    une transaction. Un élément absent ou d'une autre campagne est ignoré (skipped « missing ») ; une illustration
+    affichée par une fiche aux frappes pas encore enregistrées est laissée, avec sa fiche (skipped « editing »)."""
+    user = auth.require_admin(request)
+    _require_json(request)
+    cid = path_id(request)
+    data = parse_body(request, ImagesDelete)
+    items = list(dict.fromkeys((i.source, i.id) for i in data.items))   # doublons ignorés, ordre gardé
+    with tx(request) as conn:
+        get_or_404(conn, "campaigns", cid, "Campagne")
+        rows: dict[str, dict[int, dict[str, Any]]] = {}
+        for source in SOURCES:
+            ids = [i for s, i in items if s == source]
+            found = conn.execute(
+                f"SELECT * FROM {SOURCE_TABLE[source]} WHERE campaign_id = ? AND id IN ({','.join('?' * len(ids))})",
+                (cid, *ids)).fetchall() if ids else []
+            rows[source] = {r["id"]: db.row_to_dict(r) for r in found}
+        touched, editing = strip_from_documents(conn, cid, set(rows["document"]), user["id"],
+                                                "Avant suppression d'images")
+        for iid in editing:
+            del rows["document"][iid]
+        delete_library_rows(conn, list(rows["library"].values()))
+        delete_gallery_images(conn, list(rows["gallery"].values()))
+        conn.executemany("DELETE FROM document_images WHERE id = ?", [(i,) for i in rows["document"]])
+        conn.executemany("DELETE FROM maps WHERE id = ?", [(i,) for i in rows["map"]])   # épingles en cascade
+        if rows["map"]:
+            touch_campaign(conn, cid)
+    _reset_documents(request, touched)
+    media_dir = settings(request).media_dir
+    for source in SOURCES:
+        for r in rows[source].values():
+            imaging.delete_files(media_dir, r["file"], r["thumb"], r.get("preview") or "")
+    skipped = [{"source": s, "id": i, "reason": "editing" if s == "document" and i in editing else "missing"}
+               for s, i in items if i not in rows[s]]
+    by_source = {source: len(rows[source]) for source in SOURCES}
+    return JSONResponse({"deleted": sum(by_source.values()), "by_source": by_source, "documents": touched,
+                         "skipped": skipped})
 
 
 def _in_journal(conn: sqlite3.Connection, campaign_id: int, rows: list[sqlite3.Row]) -> set[int]:
@@ -311,6 +389,7 @@ routes = [
     Route("/api/admin/campaigns/{id:int}/images", list_images),
     Route("/api/admin/campaigns/{id:int}/library", upload_library, methods=["POST"]),
     Route("/api/admin/campaigns/{id:int}/images/clean", clean_orphans, methods=["POST"]),
+    Route("/api/admin/campaigns/{id:int}/images/delete", delete_images, methods=["POST"]),
     Route("/api/admin/library/{id:int}", update_library, methods=["PATCH"]),
     Route("/api/admin/library/{id:int}", delete_library, methods=["DELETE"]),
     Route("/api/admin/library/{id:int}/assign", assign_library, methods=["POST"]),

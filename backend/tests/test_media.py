@@ -56,6 +56,159 @@ class MediaAdminTest(unittest.TestCase):
         self.assertTrue(self.media(pasted["url"]).exists())
         self.assertFalse(self.media(unused["url"]).exists())
 
+    # --- Suppression groupée (POST /api/admin/campaigns/{id}/images/delete) ---------------------------------
+
+    def batch_campaign(self, name: str) -> dict:
+        """Campagne garnie de chaque sorte d'image : bibliothèque, galeries (couverture), illustrations, carte."""
+        from tests.test_maps import form, jpeg
+        s = self.s
+        _, camp = s.call("POST", "/api/campaigns", {"name": name})
+        cid = camp["id"]
+        body, ctype = multipart([("l1.png", png_bytes((1, 1, 1))), ("l2.png", png_bytes((2, 2, 2)))])
+        s.call("POST", f"/api/admin/campaigns/{cid}/library", raw=body, content_type=ctype)
+        _, npc = s.call("POST", f"/api/campaigns/{cid}/npcs", {"name": "Galerie"})
+        body, ctype = multipart([(f"g{i}.png", png_bytes((10 * i, 0, 0))) for i in range(1, 4)])
+        _, npc = s.call("POST", f"/api/npcs/{npc['id']}/images", raw=body, content_type=ctype)
+        _, faction = s.call("POST", f"/api/campaigns/{cid}/factions", {"name": "Seule"})
+        body, ctype = multipart([("f.png", png_bytes((0, 90, 0)))])
+        _, faction = s.call("POST", f"/api/factions/{faction['id']}/images", raw=body, content_type=ctype)
+        _, doc = s.call("POST", f"/api/campaigns/{cid}/documents", {"title": "Scène"})
+        shown, shown2, hidden = (self.doc_image(doc["id"]) for _ in range(3))
+        s.call("PATCH", f"/api/documents/{doc['id']}", {"content": (
+            f'<p>texte</p><img src="{shown["url"]}" data-doc-image="{shown["id"]}"><p>milieu</p>'
+            f'<img src="{shown2["url"]}" data-doc-image="{shown2["id"]}"><p>fin</p>')})
+        _, place = s.call("POST", f"/api/campaigns/{cid}/places", {"name": "Port"})
+        body, ctype = form({"name": "Côte"}, ("cote.jpg", jpeg((800, 500))))
+        _, carte = s.call("POST", f"/api/campaigns/{cid}/maps", raw=body, content_type=ctype)
+        self.assertEqual(s.call("PUT", f"/api/maps/{carte['id']}/pins/{place['id']}", {"x": 0.5, "y": 0.5})[0], 200)
+        _, listing = s.call("GET", f"/api/admin/campaigns/{cid}/images")
+        return {"cid": cid, "npc": npc, "faction": faction, "doc": doc, "shown": shown, "shown2": shown2,
+                "hidden": hidden, "map": carte, "listing": listing["images"]}
+
+    def versions_of(self, doc_id: int) -> list[dict]:
+        return self.s.call("GET", f"/api/documents/{doc_id}/versions")[1]["versions"]
+
+    def test_batch_delete_mixed(self):
+        s = self.s
+        c = self.batch_campaign("Grand ménage")
+        cid, npc, faction, doc = c["cid"], c["npc"], c["faction"], c["doc"]
+        library = [i for i in c["listing"] if i["source"] == "library"]
+        gallery = npc["images"]
+        self.assertEqual(npc["portrait_image_id"], gallery[0]["id"])
+        before = len(self.versions_of(doc["id"]))
+        _, doc_before = s.call("GET", f"/api/documents/{doc['id']}")
+        items = ([{"source": "library", "id": i["id"]} for i in library]
+                 + [{"source": "gallery", "id": gallery[0]["id"]}, {"source": "gallery", "id": gallery[1]["id"]},
+                    {"source": "gallery", "id": faction["images"][0]["id"]}]
+                 + [{"source": "document", "id": c[k]["id"]} for k in ("shown", "shown2", "hidden")]
+                 + [{"source": "map", "id": c["map"]["id"]}, {"source": "library", "id": library[0]["id"]}])  # doublon
+        code, out = s.call("POST", f"/api/admin/campaigns/{cid}/images/delete", {"items": items})
+        self.assertEqual(code, 200, out)
+        self.assertEqual(out, {"deleted": 9, "by_source": {"library": 2, "gallery": 3, "document": 3, "map": 1},
+                               "documents": [doc["id"]], "skipped": []})
+        # Fichiers retirés du disque (carte : fond et miniature).
+        for url in ([i["url"] for i in library] + [gallery[0]["url"], gallery[1]["url"], faction["images"][0]["url"]]
+                    + [c[k]["url"] for k in ("shown", "shown2", "hidden")]
+                    + [c["map"]["url"], c["map"]["thumb_url"]]):
+            self.assertFalse(self.media(url).exists(), url)
+        self.assertTrue(self.media(gallery[2]["url"]).exists())
+        # Couverture : l'image restante de la galerie ; galerie vidée : plus de couverture.
+        _, npc_after = s.call("GET", f"/api/npcs/{npc['id']}")
+        self.assertEqual(npc_after["portrait_image_id"], gallery[2]["id"])
+        self.assertEqual([i["id"] for i in npc_after["images"]], [gallery[2]["id"]])
+        _, faction_after = s.call("GET", f"/api/factions/{faction['id']}")
+        self.assertIsNone(faction_after["emblem_image_id"])
+        # Une seule version pour la fiche, texte sans les illustrations.
+        hist = self.versions_of(doc["id"])
+        self.assertEqual(len(hist), before + 1)
+        self.assertEqual(hist[0]["label"], "Avant suppression d'images")
+        _, doc_after = s.call("GET", f"/api/documents/{doc['id']}")
+        self.assertNotIn("<img", doc_after["content"])
+        self.assertEqual(doc_after["content"], "<p>texte</p><p>milieu</p><p>fin</p>")
+        self.assertEqual(doc_after["revision"], doc_before["revision"] + 1)
+        # Carte et épingles disparues.
+        self.assertEqual(s.call("GET", f"/api/maps/{c['map']['id']}")[0], 404)
+        _, listing = s.call("GET", f"/api/admin/campaigns/{cid}/images")
+        self.assertEqual([(i["source"], i["id"]) for i in listing["images"]], [("gallery", gallery[2]["id"])])
+        import contextlib
+        import sqlite3
+        with contextlib.closing(sqlite3.connect(Path(s.tmp.name) / "maze.db")) as conn:
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM map_pins WHERE map_id = ?", (c["map"]["id"],))
+                             .fetchone()[0], 0)
+
+    def test_batch_delete_missing_and_foreign(self):
+        s = self.s
+        c = self.batch_campaign("Ici")
+        other = self.batch_campaign("Ailleurs")
+        lib = next(i for i in other["listing"] if i["source"] == "library")
+        foreign = [{"source": "library", "id": lib["id"]}, {"source": "gallery", "id": other["npc"]["images"][0]["id"]},
+                   {"source": "document", "id": other["shown"]["id"]}, {"source": "map", "id": other["map"]["id"]}]
+        missing = [{"source": "library", "id": 999999}, {"source": "map", "id": 999999}]
+        mine = next(i for i in c["listing"] if i["source"] == "library")
+        code, out = s.call("POST", f"/api/admin/campaigns/{c['cid']}/images/delete",
+                           {"items": foreign + missing + [{"source": "library", "id": mine["id"]}]})
+        self.assertEqual(code, 200, out)
+        self.assertEqual((out["deleted"], out["by_source"]["library"], out["documents"]), (1, 1, []))
+        self.assertEqual(out["skipped"], [{**i, "reason": "missing"} for i in foreign + missing])
+        _, listing = s.call("GET", f"/api/admin/campaigns/{other['cid']}/images")
+        self.assertEqual(len(listing["images"]), len(other["listing"]))
+        _, doc = s.call("GET", f"/api/documents/{other['doc']['id']}")
+        self.assertIn(f'data-doc-image="{other["shown"]["id"]}"', doc["content"])
+        self.assertTrue(self.media(other["map"]["url"]).exists())
+        # Campagne absente : 404.
+        self.assertEqual(s.call("POST", "/api/admin/campaigns/999999/images/delete",
+                                {"items": [{"source": "library", "id": 1}]})[0], 404)
+
+    def test_batch_delete_skips_document_being_edited(self):
+        s = self.s
+        c = self.batch_campaign("En cours d'écriture")
+        doc = c["doc"]
+        ws = s.admin.live(doc["id"], 950 + doc["id"])
+        recv_until(ws, "welcome")
+        ws.send(bytes([0]) + b"frappe pas encore enregistree")
+        self.assertEqual(recv(ws)[0], 3)
+        ws.close()
+        _, doc_before = s.call("GET", f"/api/documents/{doc['id']}")
+        before = len(self.versions_of(doc["id"]))
+        lib = next(i for i in c["listing"] if i["source"] == "library")
+        items = [{"source": "document", "id": c["shown"]["id"]}, {"source": "document", "id": c["hidden"]["id"]},
+                 {"source": "library", "id": lib["id"]}]
+        code, out = s.call("POST", f"/api/admin/campaigns/{c['cid']}/images/delete", {"items": items})
+        self.assertEqual(code, 200, out)
+        self.assertEqual(out["skipped"], [{"source": "document", "id": c["shown"]["id"], "reason": "editing"}])
+        self.assertEqual((out["deleted"], out["by_source"], out["documents"]),
+                         (2, {"library": 1, "gallery": 0, "document": 1, "map": 0}, []))
+        self.assertTrue(self.media(c["shown"]["url"]).exists())
+        self.assertFalse(self.media(c["hidden"]["url"]).exists())
+        self.assertFalse(self.media(lib["url"]).exists())
+        _, doc_after = s.call("GET", f"/api/documents/{doc['id']}")
+        self.assertEqual((doc_after["content"], doc_after["revision"]), (doc_before["content"], doc_before["revision"]))
+        self.assertEqual(len(self.versions_of(doc["id"])), before)
+
+    def test_batch_delete_refusals(self):
+        s = self.s
+        c = self.batch_campaign("Refus")
+        cid = c["cid"]
+        url = f"/api/admin/campaigns/{cid}/images/delete"
+        lib = next(i for i in c["listing"] if i["source"] == "library")
+        s.call("POST", "/api/admin/users", {"username": "mjlot", "password": "motdepasse-mjlot", "role": "mj",
+                                            "campaign_ids": [cid]})
+        mj = s.client()
+        mj.login("mjlot", "motdepasse-mjlot")
+        self.assertEqual(mj.call("POST", url, {"items": [{"source": "library", "id": lib["id"]}]})[0], 403)
+        self.assertEqual(s.call("POST", url, raw=b'{"items":[{"source":"library","id":1}]}',
+                                content_type="text/plain")[0], 415)
+        self.assertEqual(s.call("POST", url)[0], 415)
+        for body in ({"items": []}, {"items": [{"source": "library", "id": i} for i in range(1, 202)]},
+                     {"items": [{"source": "autre", "id": 1}]}, {}):
+            code, err = s.call("POST", url, body)
+            self.assertEqual(code, 422, (body, err))   # validation Pydantic habituelle
+        self.assertTrue(self.media(lib["url"]).exists())
+        # 200 éléments : la limite est admise.
+        code, out = s.call("POST", url, {"items": [{"source": "library", "id": lib["id"]}]
+                                         + [{"source": "map", "id": 900000 + i} for i in range(199)]})
+        self.assertEqual((code, out["deleted"], len(out["skipped"])), (200, 1, 199))
+
     def test_library_and_listing(self):
         s = self.s
         _, camp = s.call("POST", "/api/campaigns", {"name": "Bibliothèque"})

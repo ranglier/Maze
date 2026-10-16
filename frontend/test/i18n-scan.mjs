@@ -33,7 +33,7 @@ const ZONE_RULES = {
     'components/mentionEntities.js'],
   admin: ['components/AdminPage.jsx', 'components/ClaudeSection.jsx', 'components/ImagesSection.jsx',
     'components/FoundrySection.jsx', 'components/CampaignMenu.jsx', 'components/SessionNotices.jsx',
-    'components/SearchPalette.jsx', 'session.js'],
+    'components/SearchPalette.jsx', 'session.js', 'imageSelection.js'],
   scenarios: ['components/ScenariosView.jsx', 'components/scenarios/', 'editor/', 'components/DocDialogs.jsx',
     'components/HistoryPanel.jsx', 'components/CommentsPanel.jsx', 'components/ScenarioFilter.jsx',
     'components/TimelineView.jsx', 'timeline.js'],

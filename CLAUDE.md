@@ -72,8 +72,8 @@ Order: database > server > interface > tests. Every REST call of the interface i
 **Images and library**
 - DB: `016_library_images.sql`.
 - Server: `imaging.py` (WebP, thumbnails, atomic writes), `mediafiles.py` (allowed extensions), `media_admin.py` (Administration > Images, library), `image_copy.py` (reuse an image), `api.py` (gallery upload), `fetch.py` (download for the connector).
-- Interface: `components/Gallery.jsx`, `ImagePicker.jsx`, `ImagesSection.jsx`, `Lightbox.jsx`.
-- Tests: `test_media`, `test_api` (`ImagesTest`), `test_backup` (`AtomicImageTest`).
+- Interface: `components/Gallery.jsx`, `ImagePicker.jsx`, `ImagesSection.jsx` (multiple selection, bulk delete, sort; pure logic in `imageSelection.js`), `Lightbox.jsx`.
+- Tests: `test_media`, `test_api` (`ImagesTest`), `test_backup` (`AtomicImageTest`); node `imageSelection.test.mjs`; e2e `images-suppression`.
 
 **Search**
 - DB: `008_search.sql`, `014_rich_fields.sql`, `028_search_legacy_fields.sql` (FTS5 triggers).

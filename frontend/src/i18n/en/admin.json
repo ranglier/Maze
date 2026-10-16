@@ -28,6 +28,7 @@
   "Ajout d’une image": "Add an image",
   "Ajouter une légende": "Add a caption",
   "Ajouter à la fiche": "Add to sheet",
+  "Ajouter à la sélection": "Add to selection",
   "Ajoutée le": "Added",
   "Ajout…": "Adding…",
   "Appartenance à une faction": "Faction membership",
@@ -127,6 +128,10 @@
   "Dernière vérification": "Last check",
   "Des modifications ne sont pas enregistrées. Elles seront perdues.": "Some changes are not saved. They will be lost.",
   "Description": "Description",
+  "Dont {n} image masquée par le filtre ou la recherche actuels.": {
+    "one": "Including {n} image hidden by the current filter or search.",
+    "other": "Including {n} images hidden by the current filter or search."
+  },
   "Déconnecter": "Disconnect",
   "Déconnecter Claude": "Disconnect Claude",
   "Définir un nouveau mot de passe": "Set a new password",
@@ -135,6 +140,7 @@
   "Désactiver": "Turn off",
   "Désactiver la chronologie": "Turn off the timeline",
   "Désactivé": "Disabled",
+  "Désélectionner": "Deselect",
   "Elle n’est plus dans le texte mais figure dans l’historique de la fiche : une version restaurée s’afficherait sans elle.": "It is no longer in the text but appears in the page history: a restored version would be shown without it.",
   "Elle n’est plus utilisée dans le texte de la fiche. Elle sera supprimée du serveur.": "It is no longer used in the text of the page. It will be deleted from the server.",
   "Elle sera retirée de la bibliothèque et supprimée du serveur. Les copies déjà faites sur des fiches restent.": "It will be removed from the library and deleted from the server. Copies already made on sheets remain.",
@@ -186,6 +192,7 @@
     "one": "Images from before an interrupted restore are kept in {folder} ({n} file, {size}, {date}): Maze never deletes them. Check that all the sheet images are present, then delete this folder by hand: {command}.",
     "other": "Images from before an interrupted restore are kept in {folder} ({n} files, {size}, {date}): Maze never deletes them. Check that all the sheet images are present, then delete this folder by hand: {command}."
   },
+  "Images sélectionnées": "Selected images",
   "Importer": "Import",
   "Importer une campagne": "Import a campaign",
   "Importée": "Imported",
@@ -289,6 +296,9 @@
   "Page": "Page",
   "Paramètres > Connecteurs > Ajouter un connecteur personnalisé": "Settings > Connectors > Add custom connector",
   "Paramètres avancés": "Advanced settings",
+  "Plus anciennes": "Oldest",
+  "Plus lourdes": "Largest",
+  "Plus récentes": "Newest",
   "Portrait": "Portrait",
   "Portrait modifié": "Portrait changed",
   "Portée de la recherche": "Search scope",
@@ -310,6 +320,7 @@
   "Restaurer": "Restore",
   "Restaurer cette sauvegarde": "Restore this backup",
   "Retirer de la bibliothèque une fois ajoutée": "Remove from the library once added",
+  "Retirer de la sélection": "Remove from selection",
   "Retouche d’une image": "Retouch an image",
   "Retrait de la bibliothèque": "Remove from the library",
   "Retrait d’un lieu": "Unlink a place",
@@ -336,6 +347,7 @@
   "Sorte d’images": "Image type",
   "Suppression d’un lien": "Delete a relationship",
   "Suppression d’une image": "Delete an image",
+  "Suppression… {done}/{total}": "Deleting… {done}/{total}",
   "Supprimer cette campagne": "Delete this campaign",
   "Supprimer cette image": "Delete this image",
   "Supprimer la campagne": "Delete campaign",
@@ -343,19 +355,28 @@
   "Supprimer le compte": "Delete account",
   "Supprimer le compte « {name} »": "Delete the account “{name}”",
   "Supprimer les illustrations inutilisées": "Delete unused illustrations",
+  "Supprimer les images sélectionnées": "Delete the selected images",
   "Supprimer {name}": "Delete {name}",
+  "Supprimer {n} image": {
+    "one": "Delete {n} image",
+    "other": "Delete {n} images"
+  },
   "Supprimer « {name} »": "Delete “{name}”",
   "Sur claude.ai : {path}.": "On claude.ai: {path}.",
   "Suspendre l’accès": "Suspend access",
+  "Sélectionner": "Select",
+  "Sélectionner « {title} »": "Select \"{title}\"",
   "Taille": "Size",
   "Terminée le {date}": "Finished on {date}",
   "Textes gardés dans ce navigateur": "Texts kept in this browser",
   "Tous les PNJ, factions, relations et images de cette campagne seront définitivement supprimés.": "All NPCs, factions, relationships and images of this campaign will be permanently deleted.",
   "Tout le contenu de cette campagne ({content}, relations) sera définitivement supprimé.": "All the content of this campaign ({content}, relationships) will be permanently deleted.",
+  "Tout sélectionner ({n})": "Select all ({n})",
   "Toutes": "All",
   "Toutes les données actuelles (campagnes, fiches, images, comptes) seront remplacées par celles de {name}. L’état actuel est d’abord sauvegardé automatiquement (archive « avant-restauration ») pour pouvoir revenir en arrière. Les comptes présents dans les deux gardent leur mot de passe, leur rôle et leur état (actif ou désactivé) d’aujourd’hui ; ceux de la sauvegarde supprimés depuis reviennent désactivés. Toutes les sessions seront fermées : les autres MJ devront se reconnecter, vous restez connecté.": "All current data (campaigns, sheets, images, accounts) will be replaced by the data in {name}. The current state is backed up automatically first (“avant-restauration” archive) so you can go back. Accounts present in both keep today's password, role and status (active or disabled); accounts from the backup deleted since then come back disabled. All sessions will be closed: the other GMs will have to sign in again, you stay signed in.",
   "Toutes les images d’une campagne : galeries des fiches, illustrations des fiches rédigées, fonds des cartes interactives et bibliothèque. Déposez dans la bibliothèque les images à classer plus tard, par vous ou par Claude (connecteur).": "All the images of a campaign: sheet galleries, page illustrations, interactive map backgrounds and the library. Put images in the library to sort them out later, yourself or with Claude (connector).",
   "Toutes mes campagnes": "All my campaigns",
+  "Trier les images": "Sort images",
   "Type de lieux modifié": "Place type changed",
   "Télécharger": "Download",
   "Télécharger puis se déconnecter": "Download, then sign out",
@@ -392,6 +413,10 @@
   "doc|Fiche": "Page",
   "doc|fiche": "page",
   "doc|la fiche": "the page",
+  "dont {n} masquée par le filtre": {
+    "one": "including {n} hidden by the filter",
+    "other": "including {n} hidden by the filter"
+  },
   "entry|Fiche": "Sheet",
   "image|Légende": "Caption",
   "inconnu": "unknown",
@@ -433,6 +458,10 @@
     "one": "{n} campaign",
     "other": "{n} campaigns"
   },
+  "{n} carte interactive sera supprimée avec ses épingles (les lieux restent).": {
+    "one": "{n} interactive map will be deleted with its pins (the places remain).",
+    "other": "{n} interactive maps will be deleted with their pins (the places remain)."
+  },
   "{n} compte": {
     "one": "{n} account",
     "other": "{n} accounts"
@@ -453,6 +482,18 @@
     "one": "{n} page",
     "other": "{n} pages"
   },
+  "{n} fond de carte interactive": {
+    "one": "{n} interactive map background",
+    "other": "{n} interactive map backgrounds"
+  },
+  "{n} illustration affichée dans {docs} sera retirée du texte (version gardée dans l’historique).": {
+    "one": "{n} illustration shown in {docs} will be removed from the text (version kept in the history).",
+    "other": "{n} illustrations shown in {docs} will be removed from the text (version kept in the history)."
+  },
+  "{n} illustration de fiche rédigée": {
+    "one": "{n} page illustration",
+    "other": "{n} page illustrations"
+  },
   "{n} illustration de fiche rédigée n’est plus citée nulle part, ni dans le texte ni dans l’historique des fiches. Elle sera supprimée du serveur.": {
     "one": "{n} page illustration is no longer used anywhere, neither in the text nor in the page history. It will be deleted from the server.",
     "other": "{n} page illustrations are no longer used anywhere, neither in the text nor in the page history. They will be deleted from the server."
@@ -460,6 +501,10 @@
   "{n} illustration inutilisée.": {
     "one": "{n} unused illustration.",
     "other": "{n} unused illustrations."
+  },
+  "{n} illustration laissée : une fiche rédigée qui l’affiche est en cours d’écriture": {
+    "one": "{n} illustration kept: a page that shows it is being edited",
+    "other": "{n} illustrations kept: a page that shows them is being edited"
   },
   "{n} illustration supprimée": {
     "one": "{n} illustration deleted",
@@ -469,9 +514,29 @@
     "one": "{n} image",
     "other": "{n} images"
   },
+  "{n} image ({size}) sera supprimée du serveur :": {
+    "one": "{n} image ({size}) will be deleted from the server:",
+    "other": "{n} images ({size}) will be deleted from the server:"
+  },
   "{n} image ajoutée à la bibliothèque": {
     "one": "{n} image added to the library",
     "other": "{n} images added to the library"
+  },
+  "{n} image de galerie de fiche": {
+    "one": "{n} sheet gallery image",
+    "other": "{n} sheet gallery images"
+  },
+  "{n} image de la bibliothèque": {
+    "one": "{n} library image",
+    "other": "{n} library images"
+  },
+  "{n} image supprimée": {
+    "one": "{n} image deleted",
+    "other": "{n} images deleted"
+  },
+  "{n} image sélectionnée · {size}": {
+    "one": "{n} image selected · {size}",
+    "other": "{n} images selected · {size}"
   },
   "{n} image, {size} sur le disque pour « {campaign} ».": {
     "one": "{n} image, {size} on disk for “{campaign}”.",
@@ -488,6 +553,10 @@
   "{n} modification disponible.": {
     "one": "{n} change available.",
     "other": "{n} changes available."
+  },
+  "{n} portrait, emblème ou illustration de fiche sera remplacé par l’image suivante de sa galerie.": {
+    "one": "{n} portrait, emblem or sheet illustration will be replaced by the next image of its gallery.",
+    "other": "{n} portraits, emblems or sheet illustrations will be replaced by the next image of their gallery."
   },
   "{n} quotidienne": {
     "one": "{n} daily",
