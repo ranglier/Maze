@@ -32,7 +32,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response, StreamingResponse
 from starlette.routing import Route
 
-from . import auth, db, defaults, entries, i18n, imaging, places
+from . import auth, db, defaults, entries, i18n, imaging, places, timeline
 from .i18n import msg
 from .admin import MAX_IMPORT_MB
 from .api import in_tx, path_id, scoped, settings, threaded, tx
@@ -51,7 +51,7 @@ MAX_RATIO = 100
 RATIO_FROM = 1024 * 1024
 MAX_OBJECTS = 500_000
 MAX_IMAGE = 50 * 1024 * 1024
-MAX_EVENTS = 5000            # événements de chronologie importés par campagne (comme timeline.MAX_EVENTS)
+MAX_EVENTS = timeline.MAX_EVENTS   # événements de chronologie importés par campagne
 MAX_EVENT_TEXT = 200_000     # description d'un événement (comme un champ long de fiche)
 MEDIA_NAME = FILE_NAME_RE  # extensions des fichiers produits par Maze (mediafiles)
 MENTION = re.compile(r'data-mention="(npc|faction|place|doc):(\d+)"')
@@ -707,19 +707,8 @@ def _import_rows(db_path: Path, data: dict[str, Any], valid: set[str], user_id: 
                 **values, "campaign_id": cid, "sort_order": position, "title": title[:200],
                 "date_label": date_label[:200], "description": description, "tags": values.get("tags", [])[:100]})
             position += 1
-            _sync_event_mentions(conn, event_id, description)  # PROVISOIRE : timeline.sync_event_mentions
+            timeline.sync_event_mentions(conn, event_id, description)
         return cid
-
-
-def _sync_event_mentions(conn: sqlite3.Connection, event_id: int, html: str) -> None:
-    """PROVISOIRE (en attendant timeline.py) : fiches citées par un événement, limitées à sa campagne."""
-    conn.execute("DELETE FROM timeline_mentions WHERE event_id = ?", (event_id,))
-    cid = conn.execute("SELECT campaign_id FROM timeline_events WHERE id = ?", (event_id,)).fetchone()[0]
-    tables = {"npc": "npcs", "faction": "factions", "place": "places", "doc": "documents"}
-    for kind, tid in {(k, int(i)) for k, i in MENTION.findall(html)}:
-        if conn.execute(f"SELECT 1 FROM {tables[kind]} WHERE id = ? AND campaign_id = ?", (tid, cid)).fetchone():
-            conn.execute("INSERT INTO timeline_mentions (event_id, target_kind, target_id) VALUES (?, ?, ?)",
-                         (event_id, kind, tid))
 
 
 # --- Routes ----------------------------------------------------------------------------------
