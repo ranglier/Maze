@@ -277,6 +277,7 @@ GitHub Actions (`.github/workflows/ci.yml`) runs all of this on every push and p
     deploy/                   update.sh, maze-updater.sh, systemd units, Caddy example
     docs/                     ARCHITECTURE.md, fr/guide.md
     site/                     presentation website (GitHub Pages) and its screenshot script, see site/README.md
+    CLAUDE.md                 map of features to files, commands and pitfalls, for coding assistants and newcomers
 
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (French) is the reference for how things work and why.
 
