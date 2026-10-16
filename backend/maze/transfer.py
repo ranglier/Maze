@@ -32,7 +32,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response, StreamingResponse
 from starlette.routing import Route
 
-from . import auth, db, defaults, entries, i18n, imaging, places, timeline
+from . import auth, db, defaults, entries, i18n, imaging, places, schemas, timeline
 from .i18n import msg
 from .admin import MAX_IMPORT_MB
 from .api import in_tx, path_id, scoped, settings, threaded, tx
@@ -705,10 +705,17 @@ def _import_rows(db_path: Path, data: dict[str, Any], valid: set[str], user_id: 
             description = MENTION.sub(mention, description[:MAX_EVENT_TEXT])
             event_id = db.insert(conn, "timeline_events", {
                 **values, "campaign_id": cid, "sort_order": position, "title": title[:200],
-                "date_label": date_label[:200], "description": description, "tags": values.get("tags", [])[:100]})
+                "date_label": date_label[:200], "description": description, "tags": _event_tags(values.get("tags"))})
             position += 1
             timeline.sync_event_mentions(conn, event_id, description)
         return cid
+
+
+def _event_tags(tags: Any) -> list[str]:
+    """Étiquettes d'un événement importé, nettoyées comme par l'API (schemas._clean_tags : 30 au plus, sans doublon)."""
+    if not isinstance(tags, list):
+        return []
+    return schemas._clean_tags([t for t in tags[:1000] if isinstance(t, str)]) or []
 
 
 # --- Routes ----------------------------------------------------------------------------------

@@ -356,7 +356,8 @@ def update_campaign(request: Request) -> Response:
     cid = path_id(request)
     with tx(request) as conn:
         scoped(conn, request, "campaigns", cid, "Campagne")
-        db.update(conn, "campaigns", cid, data.model_dump(exclude_unset=True))
+        # null ignoré (revue de la chronologie : {"timeline_enabled": null} désactivait le module).
+        db.update(conn, "campaigns", cid, data.model_dump(exclude_unset=True, exclude_none=True))
         row = scoped(conn, request, "campaigns", cid, "Campagne")
     return JSONResponse(row)
 

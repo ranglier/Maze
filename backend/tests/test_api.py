@@ -1723,7 +1723,10 @@ class TimelineTransferTest(unittest.TestCase):
                 "campaign": {"name": "Modifiée", "timeline_enabled": 7},
                 "timeline_events": [{"id": 1, "title": "  "}, "pas un objet", {"id": 2, "sort_order": "x"},
                                     {"id": 3, "title": "Seul", "tags": "pas une liste", "sort_order": 5,
-                                     "revision": 99}]})
+                                     "revision": 99},
+                                    # Étiquettes nettoyées comme par l'API (revue) : doublons, longueur, nombre.
+                                    {"id": 4, "title": "Étiquetée", "sort_order": 6,
+                                     "tags": json.dumps(["Rite", "rite", "x" * 5000, 3] + [f"t{i}" for i in range(100)])}]})
             self.assertEqual(code, 201, odd)
             conn = sqlite3.connect(os.path.join(s.tmp.name, "maze.db"))
             try:
@@ -1732,9 +1735,13 @@ class TimelineTransferTest(unittest.TestCase):
                                                   (camp["id"],)).fetchone(), (0,))
                 self.assertEqual(conn.execute("SELECT COUNT(*) FROM timeline_events WHERE campaign_id = ?",
                                               (old["id"],)).fetchone(), (0,))
-                self.assertEqual(conn.execute("SELECT title, sort_order, tags, revision FROM timeline_events "
-                                              "WHERE campaign_id = ?", (odd["id"],)).fetchall(),
-                                 [("Seul", 1, "[]", 0)])
+                rows = conn.execute("SELECT title, sort_order, tags, revision FROM timeline_events "
+                                    "WHERE campaign_id = ? ORDER BY sort_order", (odd["id"],)).fetchall()
+                self.assertEqual(rows[0], ("Seul", 1, "[]", 0))
+                tags = json.loads(rows[1][2])
+                self.assertEqual((rows[1][0], len(tags), tags[0]), ("Étiquetée", 30, "Rite"))
+                self.assertNotIn("rite", tags)
+                self.assertLessEqual(max(len(t) for t in tags), 50)
             finally:
                 conn.close()
         finally:

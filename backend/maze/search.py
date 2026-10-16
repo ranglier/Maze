@@ -59,6 +59,10 @@ def search(request: Request) -> Response:
                        snippet(search_index, 5, ?, ?, '…', 14) AS snippet
                   FROM search_index
                  WHERE search_index MATCH ? AND campaign_id IN ({marks})
+                   -- Chronologie désactivée : ses événements ne sont pas cherchés (ils prendraient la place des
+                   -- autres résultats dans la limite MAX_RESULTS).
+                   AND (kind <> 'event'
+                        OR campaign_id IN (SELECT id FROM campaigns WHERE timeline_enabled = 1))
                  ORDER BY bm25(search_index, 0, 0, 0, 0, 8.0, 1.0)
                  LIMIT {MAX_RESULTS}""",
             (HL_START, HL_END, HL_START, HL_END, query, *campaigns)).fetchall()

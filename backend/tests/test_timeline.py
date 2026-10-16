@@ -63,6 +63,10 @@ class TimelineTest(unittest.TestCase):
         self.assertEqual(self.s.call("PATCH", f"/api/campaigns/{cid}", {"timeline_enabled": "peut-être"})[0], 422)
         # Création de campagne : le drapeau reste désactivé (pas un champ de création).
         self.assertIs(self.s.call("POST", "/api/campaigns", {"name": "Autre"})[1]["timeline_enabled"], False)
+        # null ignoré : ne désactive pas le module (revue).
+        code, camp = self.s.call("PATCH", f"/api/campaigns/{cid}", {"timeline_enabled": None, "name": None})
+        self.assertEqual(code, 200)
+        self.assertIs(camp["timeline_enabled"], True)
 
     def test_crud(self):
         cid = self.campaign()
@@ -225,6 +229,8 @@ class TimelineTest(unittest.TestCase):
     def test_search(self):
         cid = self.campaign("Recherche")
         lea_camp = self.campaign("Cachée")
+        for c in (cid, lea_camp):
+            self.s.call("PATCH", f"/api/campaigns/{c}", {"timeline_enabled": True})
         ev = self.event(cid, "Couronnement", date_label="Hiver 742", tags=["dynastie"],
                         description='<p>Le <strong>sacre</strong> de la reine.</p>'
                                     '<div data-callout="secret"><p>x</p></div>')
@@ -252,6 +258,24 @@ class TimelineTest(unittest.TestCase):
         self.assertNotIn(hidden["id"], [r["id"] for r in data["results"] if r["kind"] == "event"])
         self.s.call("DELETE", f"/api/events/{ev['id']}")
         self.assertEqual(search("abdication"), [])
+
+    def test_search_disabled_timeline(self):
+        """Chronologie désactivée : ses événements ne sont pas cherchés et ne prennent pas la place des autres
+        résultats dans la limite de la recherche (revue)."""
+        cid = self.campaign("Dragons")
+        for i in range(45):
+            self.event(cid, f"Dragon {i}")
+        npc = self.s.call("POST", f"/api/campaigns/{cid}/npcs", {"name": "Le vieux dragon"})[1]
+
+        def kinds():
+            code, data = self.s.call("GET", f"/api/search?q=dragon&campaign={cid}")
+            self.assertEqual(code, 200)
+            return [(r["kind"], r["id"]) for r in data["results"]]
+        found = kinds()
+        self.assertIn(("npc", npc["id"]), found)
+        self.assertNotIn("event", {k for k, _ in found})
+        self.s.call("PATCH", f"/api/campaigns/{cid}", {"timeline_enabled": True})
+        self.assertIn("event", {k for k, _ in kinds()})
 
     def test_campaign_delete_cascades(self):
         cid = self.campaign("Éphémère")

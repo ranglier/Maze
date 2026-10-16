@@ -960,6 +960,17 @@ class ConnectorTest(unittest.TestCase):
         self.assertEqual(moved["revision"], changed["revision"])   # déplacer ne change pas la révision
         ok, err = self.tool(token, "update_event", event_id=first["id"])
         self.assertIn("Rien à modifier", err)
+        # Déplacement invalide : refusé AVANT toute écriture (revue : le titre restait modifié).
+        for bad in (999999, first["id"]):
+            ok, err = self.tool(token, "update_event", event_id=first["id"], title="Modifié malgré l'erreur",
+                                before_id=bad)
+            self.assertFalse(ok)
+        ok, one = self.tool(token, "list_events", campaign_id=w, event_id=first["id"])
+        self.assertNotEqual(one["event"]["title"], "Modifié malgré l'erreur")
+        # Déplacement seul avec une révision périmée : refusé.
+        ok, err = self.tool(token, "update_event", event_id=first["id"], base_revision=first["revision"], to_end=True)
+        self.assertFalse(ok)
+        self.assertIn("modifié entre-temps", err)
 
         ok, overview = self.tool(token, "get_campaign", campaign_id=w)
         self.assertEqual(overview["timeline"], {"enabled": True, "events": 3})

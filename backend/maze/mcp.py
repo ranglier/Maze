@@ -828,7 +828,9 @@ def _check_timeline_write(ctx: Context, cid: int) -> None:
 
 async def _event_result(ctx: Context, cid: int, event_id: int) -> dict[str, Any]:
     events = await _events(ctx, cid)
-    position, event = next((i, e) for i, e in enumerate(events) if e["id"] == event_id)
+    position, event = next(((i, e) for i, e in enumerate(events) if e["id"] == event_id), (None, None))
+    if event is None:   # supprimé entre l'écriture et la relecture (par un MJ)
+        raise ToolError("Événement introuvable dans cette campagne")
     return _event_out(event, position, _event_mentions(ctx, cid, [event_id]).get(event_id, []))
 
 
@@ -858,17 +860,29 @@ async def update_event(ctx: Context, args: dict[str, Any]) -> Any:
         raise ToolError("Indiquer before_id ou to_end, pas les deux")
     if not body and before_id is None and not to_end:
         raise ToolError("Rien à modifier : title, date_label, description, tags, before_id ou to_end")
-    if body:
-        if args.get("base_revision") is not None:
-            body["base_revision"] = _int(args, "base_revision")
-        await ctx.api("PATCH", f"/api/events/{eid}", body, write=True)
+    base_revision = _int(args, "base_revision", required=False)
+    ids: list[int] | None = None
     if before_id is not None or to_end:
-        ids = [e["id"] for e in await _events(ctx, cid) if e["id"] != eid]
+        # Déplacement vérifié AVANT toute écriture (revue : un before_id faux ne doit pas laisser le PATCH
+        # enregistré derrière un message d'erreur).
         if before_id == eid:
             raise ToolError("before_id : un autre événement que celui qu'on déplace")
+        events = await _events(ctx, cid)
+        current = next((e for e in events if e["id"] == eid), None)
+        if current is None:
+            raise ToolError("Événement introuvable dans cette campagne")
+        if not body and base_revision is not None and base_revision != current["revision"]:
+            # Le déplacement seul ne passe pas par le PATCH : même contrôle de révision ici.
+            raise ToolError(f"Événement modifié entre-temps (révision {current['revision']}) : relire avec list_events")
+        ids = [e["id"] for e in events if e["id"] != eid]
         if before_id is not None and before_id not in ids:
             raise ToolError("before_id : événement introuvable dans cette campagne")
         ids.insert(ids.index(before_id) if before_id is not None else len(ids), eid)
+    if body:
+        if base_revision is not None:
+            body["base_revision"] = base_revision
+        await ctx.api("PATCH", f"/api/events/{eid}", body, write=True)
+    if ids is not None:
         await ctx.api("PUT", f"/api/campaigns/{cid}/events/order", {"ids": ids}, write=True)
     return await _event_result(ctx, cid, eid)
 
