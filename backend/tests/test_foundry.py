@@ -16,8 +16,11 @@ import urllib.request
 import zipfile
 from pathlib import Path
 
+from maze import foundry
 from maze.foundry_html import clean, field_html, markdown_to_html
-from tests.test_api import ADMIN_PASSWORD, Server, multipart, png_bytes, rewind_schema, undo_entry_revision
+from tests.test_api import (
+    ADMIN_PASSWORD, Server, multipart, png_bytes, rewind_schema, undo_entry_revision, undo_user_locale,
+)
 from tests.test_maps import form, jpeg
 
 
@@ -112,6 +115,31 @@ class HtmlTest(unittest.TestCase):
                                                         "<em>d</em></p>"),
                          ("*non fermé et **pas plus", "<p>*non fermé et **pas plus</p>")]:
             self.assertEqual(markdown_to_html(md, lambda name: None), html, md)
+
+
+class WorldLabelsTest(unittest.TestCase):
+    """Noms créés dans le monde (dossiers, pages) renvoyés par l'export (foundry.WORLD_LABELS) : mêmes clés et textes
+    que lang/<langue>.json du module, dont il se sert à défaut (export d'une version de Maze qui ne les renvoie pas)."""
+
+    @staticmethod
+    def module_strings(lang: str) -> dict[str, str]:
+        flat: dict[str, str] = {}
+
+        def walk(obj: dict, prefix: str) -> None:
+            for key, value in obj.items():
+                if isinstance(value, dict):
+                    walk(value, f"{prefix}{key}.")
+                else:
+                    flat[f"{prefix}{key}"] = value
+
+        walk(json.loads((foundry.MODULE_DIR / "lang" / f"{lang}.json").read_text(encoding="utf-8"))["MAZE_SYNC"], "")
+        return flat
+
+    def test_same_texts_as_module(self):
+        fr, en = self.module_strings("fr"), self.module_strings("en")
+        self.assertEqual({key: fr[key] for key in foundry.WORLD_LABELS}, foundry.WORLD_LABELS)
+        self.assertEqual(foundry.world_labels("fr"), foundry.WORLD_LABELS)
+        self.assertEqual(foundry.world_labels("en"), {key: en[key] for key in foundry.WORLD_LABELS})
 
 
 class FoundryApiTest(unittest.TestCase):
@@ -394,6 +422,7 @@ class FoundryApiTest(unittest.TestCase):
         self.assertEqual(code, 200)
         manifest = json.loads(raw)
         self.assertEqual(manifest["id"], "maze-sync")
+        self.assertEqual(manifest["title"], "Maze Sync")   # titre neutre, affiché tel quel dans toutes les langues
         self.assertEqual(manifest["manifest"], f"{self.s.base}/foundry/module.json")
         self.assertEqual(manifest["download"], f"{self.s.base}/foundry/maze-sync.zip")
         code, headers, raw = self.fetch("/foundry/maze-sync.zip")
@@ -402,7 +431,7 @@ class FoundryApiTest(unittest.TestCase):
             names = set(zf.namelist())
             inner = json.loads(zf.read("module.json"))
             license_text = zf.read("LICENSE").decode("utf-8")
-        self.assertEqual(names, {"module.json", "scripts/maze-sync.mjs", "styles/maze-sync.css", "LICENSE"})
+        self.assertEqual(names, {"module.json", "scripts/maze-sync.mjs", "styles/maze-sync.css", "lang/fr.json", "lang/en.json", "LICENSE"})
         # Licence : chemin relatif au module (format du manifeste de Foundry), texte de la licence MIT joint à l'archive.
         self.assertEqual((manifest["license"], inner["license"]), ("LICENSE", "LICENSE"))
         self.assertIn("MIT License", license_text)
@@ -496,6 +525,7 @@ class FoundryTokenLifecycleTest(unittest.TestCase):
             conn.execute("UPDATE users SET active = 0 WHERE id = ?", (self.admin2["id"],))
             conn.execute("ALTER TABLE mcp_log DROP COLUMN campaign_name")   # colonne de la migration 024
             undo_entry_revision(conn)   # migration 025
+            undo_user_locale(conn)   # migration 030
             rewind_schema(conn, 22)
         db.migrate(db_path)
         with sqlite3.connect(db_path) as conn:

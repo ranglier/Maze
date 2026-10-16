@@ -1,5 +1,6 @@
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
+import { t } from './i18n/core.js';
 
 marked.setOptions({ gfm: true, breaks: true });
 
@@ -47,7 +48,9 @@ export function renderMarkdown(text, resolve) {
   const withLinks = text.replace(/\[\[([^\]\n]{1,120})\]\]/g, (_, raw) => {
     const name = raw.trim();
     const target = resolve?.(name);
-    if (!target) return `<span class="wikilink missing" title="Aucune fiche à ce nom">${escapeHtml(name)}</span>`;
+    if (!target) {
+      return `<span class="wikilink missing" title="${escapeHtml(t('Aucune fiche à ce nom'))}">${escapeHtml(name)}</span>`;
+    }
     return `<a href="#" class="wikilink" data-node="${target}">${escapeHtml(name)}</a>`;
   });
   active = true;

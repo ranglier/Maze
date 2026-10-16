@@ -1,5 +1,6 @@
 // Client HTTP de l'API Maze.
 import { SCHEMA_VERSION, STALE_EVENT } from './editor/schemaVersion.js';
+import { getLocale, t } from './i18n/core.js';
 
 export class ApiError extends Error {
   constructor(status, detail, errors, data) {
@@ -19,24 +20,29 @@ function staleCheck(status, data) {
   }
 }
 
+// Messages traduits au moment de l'erreur (fonctions appelées par formatDetail, pas au chargement du module).
+// Erreurs 422 : le serveur traduit l'en-tête (« Données invalides ») ; le détail du premier champ est composé ici.
 const FIELD_LABELS = {
-  username: 'Identifiant', password: 'Mot de passe', new_password: 'Nouveau mot de passe',
-  name: 'Nom', color: 'Couleur', title: 'Fonction', summary: 'Résumé', tags: 'Étiquettes',
+  username: () => t('Identifiant'), password: () => t('Mot de passe'), new_password: () => t('Nouveau mot de passe'),
+  name: () => t('Nom'), color: () => t('Couleur'), title: () => t('Fonction'), summary: () => t('Résumé'),
+  tags: () => t('Étiquettes'),
 };
 
 function formatDetail(detail, errors) {
-  if (!errors?.length) return detail || 'Erreur inattendue';
+  if (!errors?.length) return detail || t('Erreur inattendue');
   const e = errors[0];
-  const field = FIELD_LABELS[e.loc?.[e.loc.length - 1]] || e.loc?.[e.loc.length - 1];
+  const key = e.loc?.[e.loc.length - 1];
+  const field = FIELD_LABELS[key]?.() || key;
   const messages = {
-    string_too_short: e.loc?.includes('password') || e.loc?.includes('new_password')
-      ? '8 caractères minimum' : 'champ obligatoire',
-    string_pattern_mismatch: e.loc?.includes('username')
-      ? 'lettres, chiffres, point, tiret ou tiret bas (2 à 40 caractères)' : 'format invalide',
-    string_too_long: 'texte trop long',
-    missing: 'champ obligatoire',
+    string_too_short: () => (e.loc?.includes('password') || e.loc?.includes('new_password')
+      ? t('8 caractères minimum') : t('champ obligatoire')),
+    string_pattern_mismatch: () => (e.loc?.includes('username')
+      ? t('lettres, chiffres, point, tiret ou tiret bas (2 à 40 caractères)') : t('format invalide')),
+    string_too_long: () => t('texte trop long'),
+    missing: () => t('champ obligatoire'),
   };
-  return `${field ? field + ' : ' : ''}${messages[e.type] || e.msg}`;
+  const message = messages[e.type]?.() || e.msg;
+  return field ? t('{field} : {message}', { field, message }) : message;
 }
 
 /** Envoi d'un fichier en corps brut (ou d'un formulaire si contentType est nul) avec suivi de
@@ -46,6 +52,7 @@ function uploadRaw(url, file, contentType, onProgress) {
     const xhr = new XMLHttpRequest();
     xhr.open('POST', url);
     xhr.setRequestHeader(VERSION_HEADER, String(SCHEMA_VERSION));
+    xhr.setRequestHeader('Accept-Language', getLocale());
     if (contentType) xhr.setRequestHeader('Content-Type', contentType);
     xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress?.(e.loaded / e.total); };
     xhr.onload = () => {
@@ -54,10 +61,10 @@ function uploadRaw(url, file, contentType, onProgress) {
       if (xhr.status >= 200 && xhr.status < 300) resolve(data);
       else {
         staleCheck(xhr.status, data);
-        reject(new ApiError(xhr.status, data?.detail || `Erreur ${xhr.status}`, undefined, data));
+        reject(new ApiError(xhr.status, data?.detail || t('Erreur {status}', { status: xhr.status }), undefined, data));
       }
     };
-    xhr.onerror = () => reject(new ApiError(0, 'Connexion au serveur impossible'));
+    xhr.onerror = () => reject(new ApiError(0, t('Connexion au serveur impossible')));
     xhr.send(file);
   });
 }
@@ -70,10 +77,12 @@ export function onUnauthorized(fn) {
   unauthorizedHandler = fn;
 }
 
-/** `schemaHeader: false` : sans en-tête de version (version nommée gardée par session.rescueEdits). */
+/** `schemaHeader: false` : sans en-tête de version (version nommée gardée par session.rescueEdits).
+ * Accept-Language : langue de l'interface, pour que les messages du serveur la suivent (même avant connexion). */
 async function request(method, path, body, { schemaHeader = true } = {}) {
-  const options = { method, headers: schemaHeader ? { [VERSION_HEADER]: String(SCHEMA_VERSION) } : {},
-    credentials: 'same-origin' };
+  const headers = { 'Accept-Language': getLocale() };
+  if (schemaHeader) headers[VERSION_HEADER] = String(SCHEMA_VERSION);
+  const options = { method, headers, credentials: 'same-origin' };
   if (body instanceof FormData) {
     options.body = body;
   } else if (body !== undefined) {
@@ -84,7 +93,7 @@ async function request(method, path, body, { schemaHeader = true } = {}) {
   try {
     res = await fetch(path, options);
   } catch {
-    throw new ApiError(0, 'Serveur injoignable. Vérifiez votre connexion.');
+    throw new ApiError(0, t('Serveur injoignable. Vérifiez votre connexion.'));
   }
   if (res.status === 401 && !path.startsWith('/api/auth/')) unauthorizedHandler();
   if (!res.ok) {
@@ -111,6 +120,8 @@ export const api = {
   logout: () => request('POST', '/api/auth/logout'),
   changePassword: (current_password, new_password) =>
     request('POST', '/api/auth/password', { current_password, new_password }),
+  // Langue de l'interface du compte : 'fr', 'en'… ou '' (automatique : navigateur, puis langue de l'instance).
+  setLocale: (locale) => request('PUT', '/api/auth/locale', { locale }),
 
   admin: {
     users: () => request('GET', '/api/admin/users'),
@@ -253,7 +264,7 @@ export const api = {
   /** Enregistrement de dernière minute (changement de page, fermeture d'onglet). */
   saveDocumentBeacon: (id, data) => fetch(`/api/documents/${id}`, {
     method: 'PATCH', keepalive: true, credentials: 'same-origin',
-    headers: { 'Content-Type': 'application/json', [VERSION_HEADER]: String(SCHEMA_VERSION) },
+    headers: { 'Content-Type': 'application/json', 'Accept-Language': getLocale(), [VERSION_HEADER]: String(SCHEMA_VERSION) },
     body: JSON.stringify(data),
   }).catch(() => {}),
 
@@ -293,9 +304,10 @@ export async function exportCampaign(id, confirm) {
   } catch { /* vérification indisponible : export direct */ }
   if (check && !check.importable) {
     const yes = await confirm({
-      title: 'Archive impossible à réimporter',
-      message: `${check.message}. Elle reste lisible (campaign.json et images), mais Maze refusera de l’importer.`,
-      confirmLabel: 'Exporter quand même',
+      title: t('Archive impossible à réimporter'),
+      message: t('{reason}. Elle reste lisible (campaign.json et images), mais Maze refusera de l’importer.',
+        { reason: check.message }),
+      confirmLabel: t('Exporter quand même'),
     });
     if (!yes) return false;
   }

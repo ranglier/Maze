@@ -33,7 +33,7 @@ from starlette.responses import FileResponse, JSONResponse, Response
 from starlette.routing import Route
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from . import auth, db, entries
+from . import auth, db, entries, i18n
 from .api import instance_id, parse_body, path_id, settings, threaded, tx
 from .connector import digest, public_base
 from .foundry_html import field_html
@@ -49,6 +49,36 @@ MODULE_DIR = Path(__file__).resolve().parent / "foundry_module"
 # dépôt hors de l'image.
 LICENSE_FILES = (MODULE_DIR.parents[1] / "LICENSE", MODULE_DIR.parents[2] / "LICENSE")
 STATUS_LABELS = {"vivant": "Vivant", "mort": "Mort", "disparu": "Disparu", "inconnu": "Inconnu"}
+# Langue des pages composées ici (intitulés des rubriques, statuts, « passage secret »…) : celle des pages du monde,
+# choisie par le module et envoyée dans le paramètre `lang` de l'export (réglage « Langue des pages importées » du
+# monde, sinon langue retenue au premier import, jamais celle du poste du MJ qui importe), sinon MAZE_DEFAULT_LOCALE ;
+# traductions dans maze/i18n/<langue>/foundry.json. Les données des MJ (noms, types de lieux, natures de lien) ne
+# sont jamais traduites. Changer de langue change le HTML, donc l'empreinte (`hash`) des pages : à l'import suivant, le
+# module réécrit les pages non modifiées dans Foundry et signale les autres (« Modifiés dans Foundry »).
+#
+# Noms créés par le module dans le monde (dossiers, pages « Fiche » et « Secrets (MJ) », lien de la biographie d'un
+# acteur) : renvoyés par l'export dans la même langue (`labels`, clés de lang/<langue>.json du module, paramètres
+# {campaign}, {label}, {name} remplis par le module), car Foundry ne charge que la langue du poste du MJ. Traduits
+# avec le contexte « foundry » (i18n.ptr, clés « foundry|Fiche »…) : « Fiche » et « PNJ » ont ailleurs une autre
+# traduction. Textes français identiques à lang/fr.json du module (vérifié par tests.test_foundry).
+WORLD_LABELS = {
+    "Folder.Root": "{campaign} - {label}",
+    "Folder.Maps": "Cartes",
+    "Folder.NoFaction": "Sans faction",
+    "Folder.Removed": "Retirés de Maze",
+    "Kind.npc": "PNJ",
+    "Kind.faction": "Factions",
+    "Kind.place": "Lieux",
+    "Page.Sheet": "Fiche",
+    "Page.Secrets": "Secrets (MJ)",
+    "Page.Maps": "Cartes",
+    "Page.ActorLink": "Fiche de {name} (Maze)",
+}
+
+
+def world_labels(locale: str) -> dict[str, str]:
+    """Noms des dossiers et des pages créés dans le monde, dans la langue des pages (voir WORLD_LABELS)."""
+    return {key: i18n.ptr("foundry", text, locale) for key, text in WORLD_LABELS.items()}
 
 
 # --- CORS ------------------------------------------------------------------------------------------
@@ -134,8 +164,9 @@ class _Page:
     """Page « Fiche » d'un journal et page « Secrets » réservée au MJ : rubriques publiques d'un côté, secrets,
     liens secrets et notes du MJ de l'autre (en blocs secrets de Foundry, au cas où la page serait partagée)."""
 
-    def __init__(self, key: str):
+    def __init__(self, key: str, locale: str = i18n.SOURCE_LOCALE):
         self.key = key
+        self.locale = locale
         self.count = 0
         self.parts: list[str] = []
         self.secret_parts: list[str] = []
@@ -166,7 +197,7 @@ class _Page:
     def add_moved(self) -> None:
         """Passages secrets trouvés dans les rubriques publiques, en fin de page réservée au MJ."""
         for title, found in self.moved:
-            self.add(f"{title} : passage secret", "".join(found), secret=True)
+            self.add(i18n.tr("{title} : passage secret", self.locale, title=title), "".join(found), secret=True)
         self.moved = []
 
     def html(self) -> str:
@@ -180,8 +211,9 @@ def _link(kind: str, entity_id: int, name: str) -> str:
     return f'<a data-maze="{kind}:{entity_id}">{escape(name)}</a>'
 
 
-def _facts(rows: list[tuple[str, str]]) -> str:
-    items = "".join(f"<li><p><strong>{escape(label)} :</strong> {value}</p></li>" for label, value in rows if value)
+def _facts(rows: list[tuple[str, str]], locale: str = i18n.SOURCE_LOCALE) -> str:
+    items = "".join(f"<li><p><strong>{i18n.tr('{label} :', locale, label=escape(label))}</strong> {value}</p></li>"
+                    for label, value in rows if value)
     return f"<ul>{items}</ul>" if items else ""
 
 
@@ -282,11 +314,19 @@ def scenarios_of(conn: sqlite3.Connection, cid: int, cast: bool = True) -> list[
     return out
 
 
-def build_export(conn: sqlite3.Connection, cid: int, version: str, instance: str) -> dict[str, Any]:
+def build_export(conn: sqlite3.Connection, cid: int, version: str, instance: str,
+                 locale: str = i18n.SOURCE_LOCALE) -> dict[str, Any]:
     campaign = db.row_to_dict(conn.execute("SELECT * FROM campaigns WHERE id = ?", (cid,)).fetchone())
     if campaign is None:
         raise HTTPException(404, "Campagne introuvable")
     q = lambda sql, *args: db.rows_to_dicts(conn.execute(sql, args).fetchall())  # noqa: E731
+
+    def tr(text: str, **params: Any) -> str:
+        """Intitulé des pages dans la langue de l'export (les paramètres, déjà en HTML, sont insérés tels quels)."""
+        return i18n.tr(text, locale, **params)
+
+    def label_of(f: entries.EntryField) -> str:
+        return tr(f.foundry_label or f.label)
     kinds = q("SELECT key, label, image FROM place_kinds WHERE campaign_id = ? ORDER BY sort_order, id", cid)
     rtypes = {r["key"]: r for r in q("SELECT key, label, directed FROM relation_types WHERE campaign_id = ?", cid)}
     factions = q("SELECT * FROM factions WHERE campaign_id = ? ORDER BY sort_order, lower(name), id", cid)
@@ -363,11 +403,12 @@ def build_export(conn: sqlite3.Connection, cid: int, version: str, instance: str
 
             who = f"{ref(src)} → {ref(tgt)}" if r["directed"] else ref(tgt if src == (kind, eid) else src)
             desc = f". {escape(r['description'].strip())}" if r["description"].strip() else ""
-            items.append(f"<strong>{escape(label)}</strong> : {who}{desc}")
+            items.append(tr("{label} : {value}", label=f"<strong>{escape(label)}</strong>", value=f"{who}{desc}"))
         return items
 
     def place_items(kind: str, eid: int) -> list[str]:
-        return [link("place", pl["place_id"]) + (f" : {escape(pl['role'])}" if pl["role"].strip() else "")
+        return [tr("{label} : {value}", label=link("place", pl["place_id"]), value=escape(pl["role"]))
+                if pl["role"].strip() else link("place", pl["place_id"])
                 for pl in places_of[(kind, eid)] if ("place", pl["place_id"]) in names]
 
     def public_rich(page: _Page, title: str, text: str) -> None:
@@ -381,7 +422,7 @@ def build_export(conn: sqlite3.Connection, cid: int, version: str, instance: str
     # (relations, membres, sous-lieux…), rubriques secrètes (chacune suivie de ses listes secrètes) ; les anciens
     # champs invisibles dans Maze (people, age) ne sont plus publiés.
     fact_value: dict[str, Callable[[Any], str]] = {
-        "status": lambda v: STATUS_LABELS.get(v, v),
+        "status": lambda v: escape(tr(STATUS_LABELS[v])) if v in STATUS_LABELS else escape(v),
         "place_kind": lambda v: escape(kind_label.get(v, v)),
         "parent": lambda v: link("place", v) if v in place_ids else "",
         "tags": lambda v: escape(", ".join(v)),
@@ -389,22 +430,23 @@ def build_export(conn: sqlite3.Connection, cid: int, version: str, instance: str
 
     def facts(kind: str, row: dict[str, Any], extra: list[tuple[str, str]]) -> str:
         def item(f: entries.EntryField) -> tuple[str, str]:
-            return f.foundry_label or f.label, fact_value.get(f.type, escape)(row[f.key])
+            return label_of(f), fact_value.get(f.type, escape)(row[f.key])
         own = entries.foundry_fields(kind, "fact")
-        return _facts([item(f) for f in own if f.type != "tags"] + extra + [item(f) for f in own if f.type == "tags"])
+        return _facts([item(f) for f in own if f.type != "tags"] + extra + [item(f) for f in own if f.type == "tags"],
+                      locale)
 
     def texts(kind: str, row: dict[str, Any], page: _Page, lists: list[tuple[str, str]],
               secret_lists: dict[str, list[tuple[str, str]]] | None = None) -> None:
         for f in entries.foundry_fields(kind, "read"):
-            title = f.foundry_label or f.label
+            title = label_of(f)
             body = page.public(title, row[f.key], resolve)
             page.add(title, f'<blockquote class="maze-read">{body}</blockquote>' if body else "")
         for f in entries.foundry_fields(kind, "public"):
-            public_rich(page, f.foundry_label or f.label, row[f.key])
+            public_rich(page, label_of(f), row[f.key])
         for title, body in lists:
             page.add(title, body)
         for f in entries.foundry_fields(kind, "secret"):
-            secret_rich(page, f.foundry_label or f.label, row[f.key])
+            secret_rich(page, label_of(f), row[f.key])
             for title, body in (secret_lists or {}).get(f.key, []):
                 page.add(title, body, secret=True)
         page.add_moved()
@@ -412,18 +454,20 @@ def build_export(conn: sqlite3.Connection, cid: int, version: str, instance: str
     out_npcs = []
     for n in npcs:
         key = ("npc", n["id"])
-        page = _Page(f"npc:{n['id']}")
+        page = _Page(f"npc:{n['id']}", locale)
         cover = n["portrait_image_id"]
-        factions_html = [link("faction", m["faction_id"]) + (f" ({escape(m['role'])})" if m["role"].strip() else "")
-                         + (" - chef" if m["is_leader"] else "") for m in factions_of[n["id"]]]
+        factions_html = []
+        for m in factions_of[n["id"]]:
+            item = link("faction", m["faction_id"]) + (f" ({escape(m['role'])})" if m["role"].strip() else "")
+            factions_html.append(tr("{faction} - chef", faction=item) if m["is_leader"] else item)
         page.parts.append(cover_html(cover, n["name"]))
-        page.parts.append(facts("npc", n, [("Factions", ", ".join(factions_html)),
-                                           ("Lieux", ", ".join(place_items("npc", n["id"])))]))
-        texts("npc", n, page, [("Relations", _list(relation_items("npc", n["id"], False)))],
-              {"secrets": [("Relations secrètes", _list(relation_items("npc", n["id"], True)))]})
-        bio = _Page(f"npc-bio:{n['id']}")
+        page.parts.append(facts("npc", n, [(tr("Factions"), ", ".join(factions_html)),
+                                           (tr("Lieux"), ", ".join(place_items("npc", n["id"])))]))
+        texts("npc", n, page, [(tr("Relations"), _list(relation_items("npc", n["id"], False)))],
+              {"secrets": [(tr("Relations secrètes"), _list(relation_items("npc", n["id"], True)))]})
+        bio = _Page(f"npc-bio:{n['id']}", locale)
         for f in entries.foundry_fields("npc", "public"):
-            public_rich(bio, f.foundry_label or f.label, n[f.key])
+            public_rich(bio, label_of(f), n[f.key])
         group = factions_of[n["id"]][0]["faction_id"] if factions_of[n["id"]] else None
         entry = {"id": n["id"], "created": n["created_at"], "name": n["name"], "title": n["title"],
                  "status": n["status"], "group": group, "cover": cover, "images": gallery[key], "html": page.html(),
@@ -435,16 +479,21 @@ def build_export(conn: sqlite3.Connection, cid: int, version: str, instance: str
     out_factions = []
     for f in factions:
         key = ("faction", f["id"])
-        page = _Page(f"faction:{f['id']}")
+        page = _Page(f"faction:{f['id']}", locale)
         cover = f["emblem_image_id"]
         leaders = [link("npc", m["npc_id"]) for m in members_of[f["id"]] if m["is_leader"]]
         page.parts.append(cover_html(cover, f["name"]))
-        page.parts.append(facts("faction", f, [("Chef", ", ".join(leaders)),
-                                               ("Lieux", ", ".join(place_items("faction", f["id"])))]))
-        members = _list([link("npc", m["npc_id"]) + (f" : {escape(m['role'])}" if m["role"].strip() else "")
-                         + (" (chef)" if m["is_leader"] else "") for m in members_of[f["id"]]])
-        texts("faction", f, page, [("Membres", members), ("Relations", _list(relation_items("faction", f["id"], False)))],
-              {"secrets": [("Relations secrètes", _list(relation_items("faction", f["id"], True)))]})
+        page.parts.append(facts("faction", f, [(tr("Chef"), ", ".join(leaders)),
+                                               (tr("Lieux"), ", ".join(place_items("faction", f["id"])))]))
+        member_items = []
+        for m in members_of[f["id"]]:
+            item = link("npc", m["npc_id"])
+            if m["role"].strip():
+                item = tr("{label} : {value}", label=item, value=escape(m["role"]))
+            member_items.append(tr("{member} (chef)", member=item) if m["is_leader"] else item)
+        texts("faction", f, page, [(tr("Membres"), _list(member_items)),
+                                   (tr("Relations"), _list(relation_items("faction", f["id"], False)))],
+              {"secrets": [(tr("Relations secrètes"), _list(relation_items("faction", f["id"], True)))]})
         entry = {"id": f["id"], "created": f["created_at"], "name": f["name"], "kind": f["kind"], "color": f["color"],
                  "cover": cover, "images": gallery[key], "html": page.html(), "secret_html": page.secret_html()}
         entry["hash"] = _digest(entry)
@@ -453,16 +502,17 @@ def build_export(conn: sqlite3.Connection, cid: int, version: str, instance: str
     out_places = []
     for p in places:
         key = ("place", p["id"])
-        page = _Page(f"place:{p['id']}")
+        page = _Page(f"place:{p['id']}", locale)
         cover = p["image_id"]
         parent = p["parent_id"] if p["parent_id"] in place_ids else None
         page.parts.append(cover_html(cover, p["name"]))
         page.parts.append(facts("place", p, []))
-        present_html = _list([link(pl["entity_kind"], pl["entity_id"])
-                              + (f" : {escape(pl['role'])}" if pl["role"].strip() else "")
+        present_html = _list([tr("{label} : {value}", label=link(pl["entity_kind"], pl["entity_id"]),
+                                 value=escape(pl["role"])) if pl["role"].strip()
+                              else link(pl["entity_kind"], pl["entity_id"])
                               for pl in present[p["id"]] if (pl["entity_kind"], pl["entity_id"]) in names])
-        texts("place", p, page, [("Sous-lieux", _list([link("place", c["id"]) for c in children[p["id"]]])),
-                                 ("Présents", present_html)])
+        texts("place", p, page, [(tr("Sous-lieux"), _list([link("place", c["id"]) for c in children[p["id"]]])),
+                                 (tr("Présents"), present_html)])
         entry = {"id": p["id"], "created": p["created_at"], "name": p["name"], "parent": parent, "kind": p["kind"],
                  "has_children": bool(children[p["id"]]), "cover": cover, "images": gallery[key],
                  "html": page.html(), "secret_html": page.secret_html()}
@@ -485,6 +535,9 @@ def build_export(conn: sqlite3.Connection, cid: int, version: str, instance: str
         "format": FORMAT,
         "maze_version": version,
         "instance": instance,
+        # Langue des pages (celle demandée si le serveur la connaît) et noms à créer dans le monde dans cette langue.
+        "locale": locale,
+        "labels": world_labels(locale),
         "campaign": {"id": campaign["id"], "name": campaign["name"], "description": campaign["description"],
                      "updated_at": campaign["updated_at"]},
         "place_kinds": [{"key": k["key"], "label": k["label"], "icon": k["image"] or None} for k in kinds],
@@ -524,12 +577,14 @@ def _list_campaigns(request: Request) -> dict[str, Any]:
 def export_campaign(request: Request) -> Response:
     cid = path_id(request)
     cfg = settings(request)
+    # Langue des pages du monde choisie par le module (?lang=en), sinon MAZE_DEFAULT_LOCALE (voir WORLD_LABELS).
+    locale = i18n.chosen_locale(request.query_params.get("lang"), request.scope)
 
     def work() -> dict[str, Any]:
         if cid not in token_campaigns(request):
             raise HTTPException(404, "Campagne introuvable")
         with db.transaction(cfg.db_path, write=False) as conn:
-            return build_export(conn, cid, cfg.version, instance_id(request))
+            return build_export(conn, cid, cfg.version, instance_id(request), locale)
 
     return JSONResponse(work())
 

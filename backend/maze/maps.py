@@ -19,7 +19,8 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 
-from . import db, imaging
+from . import db, i18n, imaging
+from .i18n import msg
 from .api import in_tx, parse, parse_body, path_id, scoped, settings, threaded, touch_campaign, tx
 from .image_copy import SOURCES
 from .schemas import ImageCopy, MapCopy, MapOrder, MapUpdate, PinSet
@@ -85,13 +86,15 @@ def _check_place(conn: sqlite3.Connection, campaign_id: int, place_id: int | Non
         raise HTTPException(400, "Ce lieu n'existe pas dans cette campagne")
 
 
-def _default_name(conn: sqlite3.Connection, campaign_id: int, place_id: int | None, original: str) -> str:
+def _default_name(conn: sqlite3.Connection, campaign_id: int, place_id: int | None, original: str,
+                  locale: str = i18n.SOURCE_LOCALE) -> str:
+    """Nom d'une carte créée sans nom, dans la langue de celui qui la crée (maze.i18n, seeds.json)."""
     if place_id is not None:
         row = conn.execute("SELECT name FROM places WHERE id = ?", (place_id,)).fetchone()
         if row:
-            return f"Carte de {row[0]}"[:120]
+            return i18n.tr("Carte de {name}", locale, name=row[0])[:120]
     stem = original.rsplit(".", 1)[0].strip()
-    return (stem or "Nouvelle carte")[:120]
+    return (stem or i18n.tr("Nouvelle carte", locale))[:120]
 
 
 # --- Images de fond ------------------------------------------------------------------------------
@@ -101,7 +104,7 @@ async def _upload(request: Request, campaign_id: int) -> tuple[imaging.StoredIma
     cfg = settings(request)
     limit = cfg.max_upload_mb * 1024 * 1024
     if int(request.headers.get("content-length") or 0) > limit * 2:
-        raise HTTPException(413, f"Envoi trop volumineux (max {cfg.max_upload_mb} Mo)")
+        raise HTTPException(413, msg("Envoi trop volumineux (max {size} Mo)", size=cfg.max_upload_mb))
     form = await request.form(max_files=1, max_fields=5)
     try:
         upload = form.get("file")
@@ -109,7 +112,7 @@ async def _upload(request: Request, campaign_id: int) -> tuple[imaging.StoredIma
             raise HTTPException(400, "Aucun fichier reçu (champ 'file')")
         raw = await upload.read(limit + 1)
         if len(raw) > limit:
-            raise HTTPException(413, f"{upload.filename} dépasse {cfg.max_upload_mb} Mo")
+            raise HTTPException(413, msg("{name} dépasse {size} Mo", name=upload.filename or "", size=cfg.max_upload_mb))
         fields = {k: str(v) for k, v in form.items() if isinstance(v, str)}
         name = (upload.filename or "")[:200]
     finally:
@@ -118,7 +121,7 @@ async def _upload(request: Request, campaign_id: int) -> tuple[imaging.StoredIma
         img = await run_in_threadpool(imaging.process_upload, raw, cfg.media_dir, campaign_id, imaging.MAP_SIDE,
                                       imaging.MAP_PREVIEW_SIDE)
     except imaging.ImageError as exc:
-        raise HTTPException(400, f"{name} : {exc}") from exc
+        raise HTTPException(400, msg("{name} : {error}", name=name, error=i18n.message(exc))) from exc
     return img, name, fields
 
 
@@ -135,28 +138,28 @@ async def _copy(request: Request, row: dict[str, Any], campaign_id: int) -> imag
         return await run_in_threadpool(imaging.copy_stored, settings(request).media_dir, row["file"], row["thumb"],
                                        campaign_id, row["width"], row["height"], row.get("preview") or "")
     except imaging.ImageError as exc:
-        raise HTTPException(404, str(exc)) from exc
+        raise HTTPException(404, i18n.message(exc)) from exc
 
 
 def _optional_int(value: str | None, what: str) -> int | None:
     if value is None or value.strip() in ("", "null"):
         return None
     if not value.strip().isdigit():
-        raise HTTPException(400, f"{what} : identifiant attendu")
+        raise HTTPException(400, msg("{field} : identifiant attendu", field=what))
     return int(value)
 
 
 def insert_map(conn: sqlite3.Connection, campaign_id: int, img: imaging.StoredImage, name: str | None,
-               place_id: int | None, original_name: str) -> int:
+               place_id: int | None, original_name: str, locale: str = i18n.SOURCE_LOCALE) -> int:
     """Enregistre une nouvelle carte (image déjà sur le disque) ; renvoie son identifiant."""
     _check_place(conn, campaign_id, place_id)
     if conn.execute("SELECT COUNT(*) FROM maps WHERE campaign_id = ?", (campaign_id,)).fetchone()[0] >= MAX_MAPS:
-        raise HTTPException(400, f"{MAX_MAPS} cartes au plus par campagne")
+        raise HTTPException(400, msg("{max} cartes au plus par campagne", max=MAX_MAPS))
     order = conn.execute("SELECT COALESCE(MAX(sort_order), -1) + 1 FROM maps WHERE campaign_id = ?",
                          (campaign_id,)).fetchone()[0]
     new_id = db.insert(conn, "maps", {
         "campaign_id": campaign_id, "place_id": place_id,
-        "name": (name or "").strip()[:120] or _default_name(conn, campaign_id, place_id, original_name),
+        "name": (name or "").strip()[:120] or _default_name(conn, campaign_id, place_id, original_name, locale),
         "file": img.file, "thumb": img.thumb, "preview": img.preview, "original_name": original_name[:200],
         "width": img.width, "height": img.height, "sort_order": order,
     })
@@ -198,7 +201,7 @@ async def create_map(request: Request) -> Response:
 
         def _work(conn: sqlite3.Connection):
             scoped(conn, request, "campaigns", cid, "Campagne")
-            new_id = insert_map(conn, cid, img, fields.get("name"), place_id, original)
+            new_id = insert_map(conn, cid, img, fields.get("name"), place_id, original, i18n.request_locale(request.scope))
             out = map_detail(conn, new_id)
             return out
         out = await in_tx(request, _work)
@@ -223,7 +226,8 @@ async def copy_map(request: Request) -> Response:
         def _work(conn: sqlite3.Connection):
             scoped(conn, request, "campaigns", cid, "Campagne")
             name = data.name or row.get("caption") or (row["name"] if data.source == "map" else None)
-            new_id = insert_map(conn, cid, img, name, data.place_id, row.get("original_name") or "")
+            new_id = insert_map(conn, cid, img, name, data.place_id, row.get("original_name") or "",
+                                i18n.request_locale(request.scope))
             out = map_detail(conn, new_id)
             return out
         out = await in_tx(request, _work)

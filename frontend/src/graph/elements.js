@@ -1,4 +1,5 @@
 import { NEUTRAL_RING } from '../constants.js';
+import { t } from '../i18n/core.js';
 import { typeIndex, typeOf } from '../relationTypes.js';
 import { initialsAvatar, nodeId } from '../util.js';
 
@@ -28,6 +29,7 @@ export function npcRingColors(graph) {
  *   nodes   fiches citées (affichées normalement)
  *   context voisins directs affichés en retrait, ou null
  * Toutes les autres fiches sont masquées.
+ * Libellés traduits ici (« Dirigeant ») : appeler à nouveau quand la langue change (useLocale() dans les dépendances).
  */
 export function buildElements(graph, filters, scope = null) {
   const outOfScope = (id) => scope && !scope.nodes.has(id) && !scope.context?.has(id);
@@ -94,7 +96,7 @@ export function buildElements(graph, filters, scope = null) {
         source: nodeId('npc', m.npc_id),
         target: nodeId('faction', m.faction_id),
         color: factionColor.get(m.faction_id) || NEUTRAL_RING,
-        label: m.is_leader ? (m.role || 'Dirigeant') : m.role,
+        label: m.is_leader ? (m.role || t('Dirigeant')) : m.role,
       },
       classes: classes.join(' '),
     });

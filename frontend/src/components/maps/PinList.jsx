@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { t } from '../../i18n/index.js';
 import { PlaceIcon } from '../PlacesView.jsx';
 import { Icon } from '../ui.jsx';
 import { TOUCH } from '../../viewport.js';
@@ -48,33 +49,34 @@ export default function PinList({ places, pinned, represented, armed, selected, 
           style={{ '--depth': depth }}
           onDragStart={(e) => { e.dataTransfer.setData(DRAG_TYPE, String(p.id)); e.dataTransfer.effectAllowed = 'copy'; }}
           onClick={() => (isPinned ? onReveal(p.id) : onArm(p.id))}
-          title={isPinned ? 'Sur la carte : cliquer pour la montrer' : 'Glisser sur la carte, ou cliquer puis cliquer sur la carte'}>
+          title={isPinned ? t('Sur la carte : cliquer pour la montrer') : t('Glisser sur la carte, ou cliquer puis cliquer sur la carte')}>
           <PlaceIcon kind={p.kind} size={14} />
           <span className="pin-list__name">{p.name}</span>
-          {isPinned && <Icon name="pin" size={14} title="Épinglé sur cette carte" />}
+          {isPinned && <Icon name="pin" size={14} title={t('Épinglé sur cette carte')} />}
         </button>
       </li>
     );
   };
 
   return (
-    <aside className="doc-tree pin-list" aria-label="Lieux à placer">
+    <aside className="doc-tree pin-list" aria-label={t('Lieux à placer')}>
       <p className="pin-list__help">
         {TOUCH
-          ? 'Touchez un lieu, puis l’endroit de la carte où le poser. Faites glisser une épingle pour la déplacer.'
-          : 'Glissez un lieu sur la carte, ou cliquez-le puis cliquez sur la carte. Glissez une épingle pour la déplacer.'}
-        {' '}Les sous-lieux d’un lieu épinglé apparaissent dans son anneau : inutile de les épingler.</p>
-      <input type="search" className="input" placeholder="Rechercher un lieu…" value={query} onChange={(e) => setQuery(e.target.value)}
-        aria-label="Rechercher un lieu" />
+          ? t('Touchez un lieu, puis l’endroit de la carte où le poser. Faites glisser une épingle pour la déplacer.')
+          : t('Glissez un lieu sur la carte, ou cliquez-le puis cliquez sur la carte. Glissez une épingle pour la déplacer.')}
+        {' '}{t('Les sous-lieux d’un lieu épinglé apparaissent dans son anneau : inutile de les épingler.')}</p>
+      <input type="search" className="input" placeholder={t('Rechercher un lieu…')} value={query} onChange={(e) => setQuery(e.target.value)}
+        aria-label={t('Rechercher un lieu')} />
       {places.length === 0 ? (
-        <p className="muted pin-list__empty">Aucun lieu dans cette campagne. <a href={`#/c/${campaignId}/lieux`}>Créez-en dans l’index des lieux.</a></p>
+        <p className="muted pin-list__empty">{t('Aucun lieu dans cette campagne.')}{' '}
+          <a href={`#/c/${campaignId}/lieux`}>{t('Créez-en dans l’index des lieux.')}</a></p>
       ) : (
         <>
-          {repName && <div className="doc-tree__section"><span>Dans {repName}</span></div>}
+          {repName && <div className="doc-tree__section"><span>{t('Dans {name}', { name: repName })}</span></div>}
           <ul className="doc-tree__list">{filter(rows.main).map(row)}</ul>
           {rows.rest.length > 0 && (
             <>
-              <div className="doc-tree__section"><span>Autres lieux</span></div>
+              <div className="doc-tree__section"><span>{t('Autres lieux')}</span></div>
               <ul className="doc-tree__list">{filter(rows.rest).map(row)}</ul>
             </>
           )}

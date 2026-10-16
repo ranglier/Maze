@@ -1,5 +1,6 @@
 import { fmtDate } from '../AdminPage.jsx';
 import { Icon } from '../ui.jsx';
+import { t, tn } from '../../i18n/index.js';
 import { DOC_STATUS, childrenOf } from './docs.js';
 
 /** Scénarios de la fiche de campagne, ou sous-pages d'une fiche, en cartes ; bouton de création. */
@@ -7,27 +8,29 @@ export function DocChildren({ isRoot, readMode, docs, items, onCreate, onGo }) {
   return (
     <section className="doc-children">
       <div className="doc-children__head">
-        <h2>{isRoot ? 'Scénarios' : 'Sous-pages'}</h2>
+        <h2>{isRoot ? t('Scénarios') : t('Sous-pages')}</h2>
         {!readMode && (
           <button type="button" className="btn btn--small btn--ghost" onClick={onCreate}>
-            <Icon name="plus" size={14} /> {isRoot ? 'Nouveau scénario' : 'Nouvelle sous-page'}
+            <Icon name="plus" size={14} /> {isRoot ? t('Nouveau scénario') : t('Nouvelle sous-page')}
           </button>
         )}
       </div>
       {items.length === 0 ? (
         <p className="muted">
-          {isRoot ? 'Aucun scénario pour l’instant.' : 'Découpez le scénario en actes, scènes ou annexes avec des sous-pages.'}
+          {isRoot ? t('Aucun scénario pour l’instant.') : t('Découpez le scénario en actes, scènes ou annexes avec des sous-pages.')}
         </p>
       ) : (
         <ul className="doc-cards">
           {items.map((c) => (
             <li key={c.id}>
               <button type="button" onClick={() => onGo(c.id)}>
-                <span className="doc-cards__title">{c.title || 'Sans titre'}</span>
+                <span className="doc-cards__title">{c.title || t('Sans titre')}</span>
                 <span className={`status-chip status--${c.status}`}><span className="status-dot" />{DOC_STATUS[c.status]?.label}</span>
                 <span className="doc-cards__meta">
-                  {childrenOf(docs, c.id).length > 0 && `${childrenOf(docs, c.id).length} sous-page(s), `}
-                  modifié le {fmtDate(c.updated_at)}
+                  {childrenOf(docs, c.id).length > 0
+                    ? tn('{n} sous-page, modifié le {date}', '{n} sous-pages, modifié le {date}', childrenOf(docs, c.id).length,
+                      { date: fmtDate(c.updated_at) })
+                    : t('modifié le {date}', { date: fmtDate(c.updated_at) })}
                 </span>
               </button>
             </li>
@@ -43,13 +46,13 @@ export function DocLinks({ links, docs, onGo }) {
   if (!links?.length) return null;
   return (
     <section className="doc-children doc-links">
-      <div className="doc-children__head"><h2>Fiches qui renvoient ici</h2></div>
+      <div className="doc-children__head"><h2>{t('Fiches qui renvoient ici')}</h2></div>
       <ul className="doc-links__list">
         {links.map((l) => (
           <li key={l.id}>
             <button type="button" className="doc-links__item" onClick={() => onGo(l.id)}>
               <Icon name="book" size={14} />
-              <span>{l.kind === 'campaign' ? 'Fiche de campagne' : (docs?.find((d) => d.id === l.id)?.title || l.title || 'Sans titre')}</span>
+              <span>{l.kind === 'campaign' ? t('Fiche de campagne') : (docs?.find((d) => d.id === l.id)?.title || l.title || t('Sans titre'))}</span>
             </button>
           </li>
         ))}

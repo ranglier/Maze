@@ -1,5 +1,6 @@
 import { api } from './api.js';
 import { STALE_EVENT } from './editor/schemaVersion.js';
+import { t } from './i18n/core.js';
 
 /*
  * Ce qui ne doit jamais se perdre en silence (lot 3 de l'audit) :
@@ -39,10 +40,12 @@ export async function confirmDiscard(confirm) {
   if (!unsaved.size) return true;
   const names = [...unsaved.values()].filter(Boolean);
   const ok = await confirm({
-    title: 'Abandonner la saisie en cours ?',
-    message: `${names.length ? `Les modifications de « ${names.join(' », « ')} » ne sont pas enregistrées.`
-      : 'Des modifications ne sont pas enregistrées.'} Elles seront perdues.`,
-    confirmLabel: 'Abandonner',
+    title: t('Abandonner la saisie en cours ?'),
+    message: names.length
+      ? t('Les modifications de {names} ne sont pas enregistrées. Elles seront perdues.',
+        { names: names.map((name) => t('« {title} »', { title: name })).join(', ') })
+      : t('Des modifications ne sont pas enregistrées. Elles seront perdues.'),
+    confirmLabel: t('Abandonner'),
   });
   if (ok) {
     unsaved.clear();
@@ -153,7 +156,7 @@ window.addEventListener('storage', (e) => { if (e.key === LOST_KEY || e.key === 
 
 const withTimeout = (promise, ms) => Promise.race([
   promise,
-  new Promise((_, reject) => { setTimeout(() => reject(new Error('le serveur ne répond pas')), ms); }),
+  new Promise((_, reject) => { setTimeout(() => reject(new Error(t('le serveur ne répond pas'))), ms); }),
 ]);
 
 /** Version nommée envoyée sans en-tête de version de schéma : un instantané de l'historique, que le serveur
@@ -179,7 +182,8 @@ async function send(entry) {
  * d'abord dans ce navigateur, puis comme version nommée de la fiche (« Modifications hors ligne de <nom> »).
  */
 export async function rescueEdits({ docId, campaignId, created, title, html, reason, author }) {
-  const label = `Modifications hors ligne de ${author || 'quelqu’un'}`.slice(0, 120);
+  // Nom de la version, dans la langue de celui qui écrivait (gardé tel quel dans l'historique de la fiche).
+  const label = t('Modifications hors ligne de {name}', { name: author || t('quelqu’un') }).slice(0, 120);
   const entry = { id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, docId, campaignId, created, title, html,
     reason, label, at: new Date().toISOString(), status: 'saving',
     user: account ? { id: account.id, username: account.username } : null, instance: account?.instance ?? null };
@@ -220,9 +224,9 @@ async function stillThere(entry) {
     // Même campagne, et même date de création que la fiche d'où vient le texte (gardée avec lui).
     const reused = (entry.campaignId != null && Number(doc.campaign_id) !== Number(entry.campaignId))
       || (entry.created && doc.created_at !== entry.created);
-    return reused ? 'la fiche a été supprimée' : null;
+    return reused ? t('la fiche a été supprimée') : null;
   } catch (err) {
-    return err.status === 404 ? 'la fiche a été supprimée, ou votre accès retiré' : (err.message || String(err));
+    return err.status === 404 ? t('la fiche a été supprimée, ou votre accès retiré') : (err.message || String(err));
   }
 }
 

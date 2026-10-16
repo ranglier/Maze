@@ -1,3 +1,4 @@
+import { t } from '../i18n/index.js';
 import { Icon, Modal } from './ui.jsx';
 
 /**
@@ -16,7 +17,7 @@ export default function MoveDialog({ title, intro, options, onPick, onClose }) {
               aria-current={o.current ? 'true' : undefined} onClick={() => onPick(o.id)}>
               <Icon name={o.icon || 'page'} size={16} />
               <span className="move-list__label">{o.label}</span>
-              {o.current && <span className="move-list__tag">actuel</span>}
+              {o.current && <span className="move-list__tag">{t('actuel')}</span>}
             </button>
           </li>
         ))}

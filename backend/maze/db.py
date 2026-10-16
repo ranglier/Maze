@@ -20,6 +20,8 @@ from collections.abc import Callable, Iterator
 import anyio
 import anyio.to_thread
 
+from .i18n import msg
+
 log = logging.getLogger("maze")
 T = TypeVar("T")
 
@@ -168,8 +170,8 @@ SCHEMA_TABLE = """CREATE TABLE IF NOT EXISTS schema_migrations (
     checksum   TEXT NOT NULL DEFAULT '',
     applied_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 )"""
-RESTORE_HINT = ("restaurez la sauvegarde d'avant la mise à jour (archive « -maj » de <data>/backups, "
-                "python -m maze.backup --restore) ou relancez la version de Maze qui a migré cette base")
+# Message traduit (schema_problem) : sur une seule ligne, comme les clés des catalogues (maze/i18n).
+RESTORE_HINT = "restaurez la sauvegarde d'avant la mise à jour (archive « -maj » de <data>/backups, python -m maze.backup --restore) ou relancez la version de Maze qui a migré cette base"  # noqa: E501
 
 
 class MigrationError(RuntimeError):
@@ -211,25 +213,27 @@ def applied_migrations(conn: sqlite3.Connection) -> dict[int, str] | None:
 
 def schema_problem(conn: sqlite3.Connection, files: list[tuple[int, str, Path]] | None = None) -> str | None:
     """Raison pour laquelle ce code ne doit pas ouvrir cette base (plus récente que lui, ou migrée par une autre
-    branche), ou None. Utilisée au démarrage (migrate) et avant une restauration (backup)."""
+    branche), ou None. Utilisée au démarrage (migrate) et avant une restauration (backup). Message `msg` : texte
+    français pour le journal du démarrage, traduit dans la langue de l'administrateur quand une restauration le
+    renvoie à l'interface."""
     files = migration_files() if files is None else files
     known = {n: name for n, name, _ in files}
     latest = max(known, default=0)
     version = conn.execute("PRAGMA user_version").fetchone()[0]
     applied = applied_migrations(conn)
+    hint = msg(RESTORE_HINT)
     if applied is None:
         if version > latest:
-            return (f"base au schéma {version}, plus récent que ce code (dernière migration connue : {latest:03d}) : "
-                    f"{RESTORE_HINT}")
+            return msg("base au schéma {version}, plus récent que ce code (dernière migration connue : {latest}) : {hint}",  # noqa: E501
+                       version=version, latest=f"{latest:03d}", hint=hint)
         return None
     unknown = sorted(name for n, name in applied.items() if known.get(n) != name)
     if unknown:
-        return (f"la base contient des migrations inconnues de ce code ({', '.join(unknown)}) : base issue d'une "
-                f"version plus récente de Maze ou d'une autre branche ; {RESTORE_HINT}")
+        return msg("la base contient des migrations inconnues de ce code ({names}) : base issue d'une version plus récente de Maze ou d'une autre branche ; {hint}",  # noqa: E501
+                   names=", ".join(unknown), hint=hint)
     if version > max(applied, default=0):
-        return (f"base au schéma {version} alors que la dernière migration enregistrée est "
-                f"{max(applied, default=0):03d} : une version de Maze qui n'enregistre pas ses migrations l'a "
-                f"migrée ; {RESTORE_HINT}")
+        return msg("base au schéma {version} alors que la dernière migration enregistrée est {last} : une version de Maze qui n'enregistre pas ses migrations l'a migrée ; {hint}",  # noqa: E501
+                   version=version, last=f"{max(applied, default=0):03d}", hint=hint)
     return None
 
 

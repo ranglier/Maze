@@ -27,6 +27,7 @@ from starlette.routing import Route
 
 from . import auth, db, entries
 from .api import TABLES, parse_body, path_id, scoped, threaded, touch_campaign, tx
+from .versions import labels_out
 from .schemas import CommentUpdate, EntryCommentCreate, EntryVersionCreate, NpcStatus, VersionUpdate
 
 MERGE_INTERVAL = timedelta(minutes=10)
@@ -191,7 +192,8 @@ def _list_versions(kind: str):
                 f"SELECT {VERSION_FIELDS} FROM entry_versions WHERE {_col(kind)} = ? ORDER BY id DESC", (entry["id"],))]
         for r in rows:
             r["is_current"] = r.pop("digest") == digest
-        return JSONResponse({"current": {"name": entry["name"], "updated_at": entry.get("updated_at")}, "versions": rows})
+        return JSONResponse({"current": {"name": entry["name"], "updated_at": entry.get("updated_at")},
+                             "versions": labels_out(request, rows)})
     return handler
 
 
@@ -202,7 +204,7 @@ def _get_version(kind: str):
             entry = _entry(conn, request, kind)
             out = _version(conn, kind, entry["id"], path_id(request, "vid"))
         out["is_current"] = out.pop("digest") == _digest(state_of(kind, entry))
-        return JSONResponse(out)
+        return JSONResponse(labels_out(request, [out])[0])
     return handler
 
 

@@ -1,6 +1,7 @@
 import { useContext, useEffect, useState } from 'react';
 import { api } from '../../api.js';
 import { NPC_STATUS, placeKind } from '../../constants.js';
+import { t } from '../../i18n/index.js';
 import { initialsAvatar } from '../../util.js';
 import { KindsContext, PlaceIcon } from '../PlacesView.jsx';
 import { Icon } from '../ui.jsx';
@@ -24,11 +25,11 @@ export default function PlacePanel({ placeId, campaignId, byId, places, path, pi
   const avatar = (l) => l.thumb || (l.entity_kind === 'npc' ? initialsAvatar(l.name, '#5d6b80') : null);
 
   return (
-    <aside className="map-panel" aria-label={`Lieu : ${base.name}`}
+    <aside className="map-panel" aria-label={t('Lieu : {name}', { name: base.name })}
       onPointerDown={(e) => e.stopPropagation()} onPointerUp={(e) => e.stopPropagation()}>
       <div className="map-panel__head">
         {lineage.length > 0 && (
-          <nav className="map-panel__lineage" aria-label="Lieux parents">
+          <nav className="map-panel__lineage" aria-label={t('Lieux parents')}>
             {lineage.map((p, i) => (
               <span key={p.id}>
                 <button type="button" onClick={() => onPath(path.slice(0, i + 1))}>{p.name}</button>
@@ -37,7 +38,7 @@ export default function PlacePanel({ placeId, campaignId, byId, places, path, pi
             ))}
           </nav>
         )}
-        <button type="button" className="icon-btn icon-btn--small map-panel__close" onClick={onClose} aria-label="Fermer" title="Fermer (Échap)">
+        <button type="button" className="icon-btn icon-btn--small map-panel__close" onClick={onClose} aria-label={t('Fermer')} title={t('Fermer (Échap)')}>
           <Icon name="close" size={16} />
         </button>
         <p className="place__kind"><PlaceIcon kind={base.kind} size={14} /> {kind.label}</p>
@@ -48,12 +49,12 @@ export default function PlacePanel({ placeId, campaignId, byId, places, path, pi
         {base.summary && <p className="map-panel__summary">{base.summary}</p>}
         {ownMaps.map((m) => (
           <button key={m.id} type="button" className="btn btn--primary btn--block" onClick={() => onEnter(m)}>
-            <Icon name="map" size={16} /> Entrer : {m.name}
+            <Icon name="map" size={16} /> {t('Entrer : {name}', { name: m.name })}
           </button>
         ))}
         {kids.length > 0 && (
           <section className="map-panel__section">
-            <h3>Sous-lieux <span className="count">{kids.length}</span></h3>
+            <h3>{t('Sous-lieux')} <span className="count">{kids.length}</span></h3>
             <ul className="map-panel__list">
               {kids.map((k) => (
                 <li key={k.id}>
@@ -68,7 +69,7 @@ export default function PlacePanel({ placeId, campaignId, byId, places, path, pi
         )}
         {place && !place.error && place.links.length + place.nested_links.length > 0 && (
           <section className="map-panel__section">
-            <h3>Présents ici <span className="count">{place.links.length}</span></h3>
+            <h3>{t('Présents ici')} <span className="count">{place.links.length}</span></h3>
             <ul className="map-panel__list map-panel__people">
               {place.links.map((l) => (
                 <li key={l.id}>
@@ -82,21 +83,21 @@ export default function PlacePanel({ placeId, campaignId, byId, places, path, pi
               ))}
             </ul>
             {place.nested_links.length > 0 && (
-              <p className="muted map-panel__nested">et {place.nested_links.length} dans ses sous-lieux</p>
+              <p className="muted map-panel__nested">{t('et {n} dans ses sous-lieux', { n: place.nested_links.length })}</p>
             )}
           </section>
         )}
         {place?.error && <p className="panel__error">{place.error}</p>}
       </div>
       <div className="map-panel__foot">
-        <a className="btn btn--ghost" href={`#/c/${campaignId}/lieux/${placeId}`}><Icon name="page" size={16} /> Ouvrir la fiche</a>
+        <a className="btn btn--ghost" href={`#/c/${campaignId}/lieux/${placeId}`}><Icon name="page" size={16} /> {t('Ouvrir la fiche')}</a>
         {editing && (pinned ? (
           <button type="button" className="btn btn--ghost btn--danger-text" onClick={onRemovePin}>
-            <Icon name="trash" size={16} /> Retirer l’épingle
+            <Icon name="trash" size={16} /> {t('Retirer l’épingle')}
           </button>
         ) : (
-          <button type="button" className="btn btn--ghost" onClick={onArm} title="Lui donner sa propre épingle sur cette carte">
-            <Icon name="pin" size={16} /> Épingler
+          <button type="button" className="btn btn--ghost" onClick={onArm} title={t('Lui donner sa propre épingle sur cette carte')}>
+            <Icon name="pin" size={16} /> {t('Épingler')}
           </button>
         ))}
       </div>

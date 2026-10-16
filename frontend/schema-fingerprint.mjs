@@ -13,6 +13,7 @@
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { i18nCatalogsPlugin } from './i18n-catalogs.mjs';
 
 const attrsOf = (spec) => Object.fromEntries(Object.keys(spec.attrs || {}).sort()
   .map((name) => [name, 'default' in spec.attrs[name] ? spec.attrs[name].default : '(obligatoire)']));
@@ -43,7 +44,7 @@ export async function schemaFingerprint(build, root = path.dirname(fileURLToPath
     absWorkingDir: root,
     stdin: { contents: "export { schema } from './src/editor/schema.js';", resolveDir: root, loader: 'js' },
     bundle: true, write: false, format: 'esm', platform: 'node', nodePaths, logLevel: 'silent',
-    outdir: path.join(root, 'schema-check'),
+    outdir: path.join(root, 'schema-check'), plugins: [i18nCatalogsPlugin()],
   });
   const code = result.outputFiles[0].text;
   const { schema } = await import(`data:text/javascript;base64,${Buffer.from(code).toString('base64')}`);

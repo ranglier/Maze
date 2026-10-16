@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api.js';
 import GraphView from '../graph/GraphView.jsx';
 import { DEFAULT_FILTERS, buildElements } from '../graph/elements.js';
-import { NPC_STATUS } from '../constants.js';
+import { KIND_LABEL, NPC_STATUS } from '../constants.js';
 import { nodeId, normalize, parseNodeId, storage } from '../util.js';
 import { typeIndex } from '../relationTypes.js';
 import CreateDialog from './CreateDialog.jsx';
@@ -14,6 +14,7 @@ import { subtreeIds } from './PlacesView.jsx';
 import { AddToMap, MapPicker, ScenarioBanner } from './ScenarioFilter.jsx';
 import { castOf, neighborsOf, scenariosOf } from '../cast.js';
 import { Icon, useConfirm, useToast } from './ui.jsx';
+import { pt, t, useLocale } from '../i18n/index.js';
 import { confirmDiscard } from '../session.js';
 import { TOUCH, isLandscapePhone, isPhone } from '../viewport.js';
 
@@ -32,7 +33,8 @@ const panelInset = () => {
   if (isPhone()) return { bottom: Math.round((document.querySelector('.stage')?.clientHeight || window.innerHeight) * 0.62) };
   return { right: 440 };
 };
-const TAP_VERB = TOUCH ? 'Touchez' : 'Cliquez sur';
+// Verbe de l'encart d'une carte de lieu (ScenarioBanner, zone scenarios, accorde et traduit le texte complet).
+const PLACE_VERB = 'présente'; // i18n-ignore
 const nextFrame = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
 
 function loadFilters(cid) {
@@ -81,6 +83,7 @@ export default function Workspace({
   const graphRef = useRef(null);
   const toast = useToast();
   const confirm = useConfirm();
+  const locale = useLocale();
 
   const setFilters = (f) => { setFiltersState(f); storage.set(`maze:filters:${cid}`, JSON.stringify(f)); };
 
@@ -199,8 +202,9 @@ export default function Workspace({
   }, [graph, mode, cast, neighbors, scenarioMap, placeItem, placesData]);
 
   // La carte des factions n'a pas de menu de filtres : les réglages des autres cartes ne s'y appliquent pas.
+  // Langue dans les dépendances : libellés traduits par buildElements (« Dirigeant »).
   const elements = useMemo(() => (view ? buildElements(view.graph, mode === 'factions' ? DEFAULT_FILTERS : filters, view.scope) : []),
-    [view, filters, mode]);
+    [view, filters, mode, locale]); // eslint-disable-line react-hooks/exhaustive-deps
   const types = useMemo(() => typeIndex(graph), [graph]);
   const mapKey = `${mode}-${scenario || place || ''}`;
 
@@ -220,7 +224,7 @@ export default function Workspace({
   }, [graph]);
   const shown = useMemo(() => new Set(elements.filter((e) => e.group === 'nodes').map((e) => e.data.id)), [elements]);
 
-  const nodeName = useCallback((id) => lookup.byNode.get(id)?.name || 'Fiche supprimée', [lookup]);
+  const nodeName = useCallback((id) => lookup.byNode.get(id)?.name || t('Fiche supprimée'), [lookup]);
   const resolveRef = useCallback((name) => lookup.byName.get(normalize(name)), [lookup]);
   const describe = useCallback((id) => {
     const e = lookup.byNode.get(id);
@@ -229,7 +233,8 @@ export default function Workspace({
       const status = e.status !== 'vivant' ? NPC_STATUS[e.status].label : null;
       return { title: e.name, subtitle: [e.title, status].filter(Boolean).join(', '), text: e.summary };
     }
-    return { title: e.name, subtitle: e.kind, text: e.summary };
+    // e.kind : sorte de fiche (« faction », clé interne), affichée traduite.
+    return { title: e.name, subtitle: KIND_LABEL[e.kind], text: e.summary };
   }, [lookup]);
 
   // --- Navigation -----------------------------------------------------------
@@ -249,7 +254,7 @@ export default function Workspace({
     }
     const r = graph.relations.find((x) => `rel-${x.id}` === id);
     if (r && !(shown.has(nodeId(r.source_kind, r.source_id)) && shown.has(nodeId(r.target_kind, r.target_id)))) {
-      toast('Cette relation relie une fiche absente de cette carte.', 'info');
+      toast(t('Cette relation relie une fiche absente de cette carte.'), 'info');
       return;
     }
     if (!(await select({ type: 'edge', id }))) return;
@@ -299,7 +304,7 @@ export default function Workspace({
         await api.savePositions(cid, nodes);
       }
     } catch (err) {
-      toast(`Positions non enregistrées : ${err.message}`, 'error');
+      toast(t('Positions non enregistrées : {message}', { message: err.message }), 'error');
     }
   }, [cid, graph, scenarioMap, toast]);
 
@@ -334,9 +339,9 @@ export default function Workspace({
 
   const autoLayout = async () => {
     const ok = await confirm({
-      title: 'Réorganiser la carte',
-      message: 'Les fiches seront replacées automatiquement selon leurs liens. Vos placements manuels sur cette carte seront remplacés.',
-      confirmLabel: 'Réorganiser',
+      title: t('Réorganiser la carte'),
+      message: t('Les fiches seront replacées automatiquement selon leurs liens. Vos placements manuels sur cette carte seront remplacés.'),
+      confirmLabel: t('Réorganiser'),
     });
     if (!ok) return;
     setBusy(true);
@@ -356,8 +361,8 @@ export default function Workspace({
     ? graph?.relations.find((r) => `rel-${r.id}` === selection.id) : null;
   const selectedNode = selection?.type === 'node' && lookup.byNode.has(selection.id) ? parseNodeId(selection.id) : null;
   const panelOpen = Boolean(selectedNode || selectedRelation);
-  const mapLabel = mode === 'scenario' ? (scenarioDoc?.title || 'Sans titre')
-    : mode === 'place' ? `Lieu : ${placeItem?.name || '…'}` : 'Carte des factions';
+  const mapLabel = mode === 'scenario' ? (scenarioDoc?.title || t('Sans titre'))
+    : mode === 'place' ? t('Lieu : {name}', { name: placeItem?.name || '…' }) : t('Carte des factions');
   const hiddenDead = view?.scope && !filters.showDead
     ? view.graph.npcs.filter((n) => n.status === 'mort' && view.scope.nodes.has(nodeId('npc', n.id))).length : 0;
 
@@ -365,8 +370,8 @@ export default function Workspace({
   let mapAction = null;
   if (mode === 'scenario' && selectedNode && cast) {
     mapAction = cast.nodes.has(selection.id)
-      ? { label: 'Retirer de la carte du scénario', icon: 'minus', onClick: () => removeFromMap(selection.id) }
-      : { label: 'Ajouter à la carte du scénario', icon: 'plus', onClick: () => setOnMap(selection.id, 'added') };
+      ? { label: t('Retirer de la carte du scénario'), icon: 'minus', onClick: () => removeFromMap(selection.id) }
+      : { label: t('Ajouter à la carte du scénario'), icon: 'plus', onClick: () => setOnMap(selection.id, 'added') };
   }
 
   const createFrom = (kind, position) => setDialog({ type: 'create', kind, position });
@@ -376,7 +381,7 @@ export default function Workspace({
       <header className="topbar">
         {header}
         <div className="topbar__right">
-        <div className="toolbar" role="toolbar" aria-label="Outils de la carte">
+        <div className="toolbar" role="toolbar" aria-label={t('Outils de la carte')}>
           <MapPicker data={docMentions} selected={mode === 'scenario' ? scenario : null} label={mapLabel} onPick={pickMap} />
           <span className="toolbar__sep" />
           {mode === 'scenario' && cast && (
@@ -384,29 +389,29 @@ export default function Workspace({
           )}
           {mode === 'scenario' && (
             <button type="button" className="btn btn--ghost" onClick={() => createFrom('npc')}>
-              <Icon name="person" size={16} /><span className="btn__label">PNJ</span>
+              <Icon name="person" size={16} /><span className="btn__label">{t('PNJ')}</span>
             </button>
           )}
           {mode !== 'place' && (
             <button type="button" className="btn btn--ghost" onClick={() => createFrom('faction')}>
-              <Icon name="banner" size={16} /><span className="btn__label">Faction</span>
+              <Icon name="banner" size={16} /><span className="btn__label">{t('Faction')}</span>
             </button>
           )}
           <button type="button" className={`btn ${link ? 'btn--primary' : 'btn--ghost'}`} aria-pressed={Boolean(link)}
             disabled={shown.size < 2}
             onClick={() => setLink(link ? null : { source: selectedNode ? selection.id : null })}>
-            <Icon name="link" size={16} /><span className="btn__label">Lier</span>
+            <Icon name="link" size={16} /><span className="btn__label">{t('Lier')}</span>
           </button>
           <span className="toolbar__sep" />
           {graph && mode !== 'factions' && <FilterMenu graph={view?.graph || graph} filters={filters} onFilters={setFilters} />}
-          <button type="button" className="icon-btn" onClick={() => graphRef.current?.fit()} title="Voir toute la carte" aria-label="Voir toute la carte">
+          <button type="button" className="icon-btn" onClick={() => graphRef.current?.fit()} title={t('Voir toute la carte')} aria-label={t('Voir toute la carte')}>
             <Icon name="fit" />
           </button>
-          <button type="button" className="icon-btn" onClick={autoLayout} title="Réorganiser automatiquement" aria-label="Réorganiser automatiquement"
+          <button type="button" className="icon-btn" onClick={autoLayout} title={t('Réorganiser automatiquement')} aria-label={t('Réorganiser automatiquement')}
             disabled={busy || shown.size < 2}>
             <Icon name="layout" />
           </button>
-          <button type="button" className="icon-btn" title="Exporter la carte en image" aria-label="Exporter la carte en image"
+          <button type="button" className="icon-btn" title={t('Exporter la carte en image')} aria-label={t('Exporter la carte en image')}
             onClick={() => graphRef.current?.exportPng(`${`${campaign.name}-${mapLabel}`.replace(/[^\p{L}\p{N}]+/gu, '-')}.png`)}>
             <Icon name="download" />
           </button>
@@ -437,36 +442,37 @@ export default function Workspace({
           />
         )}
         {!view && !badScenario && !scenarioMap?.error && !(mode === 'place' && placesData && !placeItem) && (
-          <div className="stage__loading" aria-busy="true">Chargement de la carte…</div>
+          <div className="stage__loading" aria-busy="true">{pt('graph', 'Chargement de la carte…')}</div>
         )}
-        {busy && <div className="stage__busy" role="status"><span className="spinner" /> Réorganisation…</div>}
+        {busy && <div className="stage__busy" role="status"><span className="spinner" /> {t('Réorganisation…')}</div>}
 
         {mode === 'scenario' && scenarioDoc && cast && (
           <ScenarioBanner
-            title={scenarioDoc.title || 'Sans titre'} count={cast.nodes.size} verb="" hiddenCount={hiddenDead}
+            title={scenarioDoc.title || t('Sans titre')} count={cast.nodes.size} verb="" hiddenCount={hiddenDead}
             neighbors={neighbors} onNeighbors={setNeighbors}
-            openLabel="Ouvrir le scénario" onOpenDoc={() => onNavigate(`#/c/${cid}/scenarios/${scenarioDoc.id}`)}
+            openLabel={t('Ouvrir le scénario')} onOpenDoc={() => onNavigate(`#/c/${cid}/scenarios/${scenarioDoc.id}`)}
           />
         )}
         {mode === 'scenario' && cast && cast.nodes.size === 0 && (
           <div className="empty-state">
-            <h2>Carte vide</h2>
-            <p>Citez des PNJ et des factions dans « {scenarioDoc?.title || 'Sans titre'} » ou ses pages en tapant @ suivi d’un nom :
-              ils apparaissent ici. Vous pouvez aussi ajouter une fiche de la campagne, ou {TOUCH ? 'toucher deux fois le fond de la carte' : 'double-cliquer'} pour créer un PNJ.</p>
+            <h2>{t('Carte vide')}</h2>
+            <p>{TOUCH
+              ? t('Citez des PNJ et des factions dans « {title} » ou ses pages en tapant @ suivi d’un nom : ils apparaissent ici. Vous pouvez aussi ajouter une fiche de la campagne, ou toucher deux fois le fond de la carte pour créer un PNJ.', { title: scenarioDoc?.title || t('Sans titre') })
+              : t('Citez des PNJ et des factions dans « {title} » ou ses pages en tapant @ suivi d’un nom : ils apparaissent ici. Vous pouvez aussi ajouter une fiche de la campagne, ou double-cliquer pour créer un PNJ.', { title: scenarioDoc?.title || t('Sans titre') })}</p>
             <div className="empty-state__actions">
               <AddToMap graph={graph} cast={cast.nodes} excluded={cast.excluded} onAdd={addToMap} />
               <button type="button" className="btn btn--primary" onClick={() => createFrom('npc')}>
-                <Icon name="person" size={16} /> Créer un PNJ
+                <Icon name="person" size={16} /> {t('Créer un PNJ')}
               </button>
             </div>
           </div>
         )}
         {badScenario && (
           <div className="empty-state">
-            <h2>Carte introuvable</h2>
-            <p>Ce scénario n’existe plus.</p>
+            <h2>{t('Carte introuvable')}</h2>
+            <p>{t('Ce scénario n’existe plus.')}</p>
             <div className="empty-state__actions">
-              <button type="button" className="btn btn--primary" onClick={() => pickMap(null)}>Carte des factions</button>
+              <button type="button" className="btn btn--primary" onClick={() => pickMap(null)}>{t('Carte des factions')}</button>
             </div>
           </div>
         )}
@@ -474,7 +480,7 @@ export default function Workspace({
 
         {mode === 'place' && placeItem && view && (
           <ScenarioBanner
-            icon="pin" verb="présente" openLabel="Ouvrir le lieu" clearLabel="Carte des factions"
+            icon="pin" verb={PLACE_VERB} openLabel={t('Ouvrir le lieu')} clearLabel={t('Carte des factions')}
             title={placeItem.name} count={view.scope.nodes.size} hiddenCount={hiddenDead}
             neighbors={neighbors} onNeighbors={setNeighbors}
             onOpenDoc={() => onNavigate(`#/c/${cid}/lieux/${placeItem.id}`)}
@@ -483,29 +489,28 @@ export default function Workspace({
         )}
         {mode === 'place' && view && view.scope.nodes.size === 0 && (
           <div className="empty-state">
-            <h2>Personne ici</h2>
-            <p>Aucun PNJ ni faction n’est relié à « {placeItem.name} » ni à ses sous-lieux. Modifiez la fiche du lieu pour en ajouter.</p>
+            <h2>{t('Personne ici')}</h2>
+            <p>{t('Aucun PNJ ni faction n’est relié à « {name} » ni à ses sous-lieux. Modifiez la fiche du lieu pour en ajouter.', { name: placeItem.name })}</p>
           </div>
         )}
         {mode === 'place' && placesData && !placeItem && (
           <div className="scenario-banner" role="status">
-            <span>Ce lieu n’existe plus.</span>
-            <button type="button" className="btn btn--small btn--ghost" onClick={() => pickMap(null)}>Carte des factions</button>
+            <span>{t('Ce lieu n’existe plus.')}</span>
+            <button type="button" className="btn btn--small btn--ghost" onClick={() => pickMap(null)}>{t('Carte des factions')}</button>
           </div>
         )}
 
         {mode === 'factions' && graph && graph.factions.length === 0 && (
           <div className="empty-state">
-            <h2>Aucune faction</h2>
-            <p>La carte des factions montre les grandes puissances de la campagne et leurs liens. Les PNJ apparaissent sur la carte
-              de chaque scénario, et tous sont rangés dans l’onglet Personnages.</p>
+            <h2>{t('Aucune faction')}</h2>
+            <p>{t('La carte des factions montre les grandes puissances de la campagne et leurs liens. Les PNJ apparaissent sur la carte de chaque scénario, et tous sont rangés dans l’onglet Personnages.')}</p>
             <div className="empty-state__actions">
               <button type="button" className="btn btn--primary" onClick={() => createFrom('faction')}>
-                <Icon name="banner" size={16} /> Créer une faction
+                <Icon name="banner" size={16} /> {t('Créer une faction')}
               </button>
               {scenarios.length > 0 && (
                 <button type="button" className="btn btn--ghost" onClick={() => pickMap(scenarios[0].id)}>
-                  <Icon name="book" size={16} /> Carte d’un scénario
+                  <Icon name="book" size={16} /> {t('Carte d’un scénario')}
                 </button>
               )}
             </div>
@@ -516,9 +521,11 @@ export default function Workspace({
           <div className="link-banner" role="status">
             <Icon name="link" size={16} />
             {link.source
-              ? <span>{TAP_VERB} la fiche à relier à <strong>{nodeName(link.source)}</strong></span>
-              : <span>{TAP_VERB} la première fiche à relier</span>}
-            <button type="button" className="btn btn--small btn--ghost" onClick={() => setLink(null)}>Annuler</button>
+              ? <span>{TOUCH
+                ? t('Touchez la fiche à relier à {name}', { name: <strong>{nodeName(link.source)}</strong> })
+                : t('Cliquez sur la fiche à relier à {name}', { name: <strong>{nodeName(link.source)}</strong> })}</span>
+              : <span>{TOUCH ? t('Touchez la première fiche à relier') : t('Cliquez sur la première fiche à relier')}</span>}
+            <button type="button" className="btn btn--small btn--ghost" onClick={() => setLink(null)}>{t('Annuler')}</button>
           </div>
         )}
 

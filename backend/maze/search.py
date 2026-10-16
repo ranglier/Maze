@@ -10,7 +10,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 
-from . import auth
+from . import auth, defaults, i18n
 from .api import threaded, tx
 
 MAX_RESULTS = 40
@@ -46,6 +46,7 @@ def search(request: Request) -> Response:
     query = fts_query(request.query_params.get("q", "")[:200])
     if query is None:
         return JSONResponse({"results": []})
+    locale = i18n.request_locale(request.scope)   # libellé de repli d'un type de lieu disparu
     with tx(request) as conn:
         campaigns = _campaign_ids(conn, user, request.query_params.get("campaign"))
         if not campaigns:
@@ -92,7 +93,8 @@ def search(request: Request) -> Response:
                 if place is None:
                     continue
                 item.update(sub=place["parent"] or "", place_kind=place["kind"],
-                            place_kind_label=place["kind_label"] or "Lieu", place_kind_icon=place["kind_icon"] or "pin",
+                            place_kind_label=place["kind_label"] or defaults.place_kind_label("lieu", locale),
+                            place_kind_icon=place["kind_icon"] or "pin",
                             place_kind_image=f"/media/{place['kind_image']}" if place["kind_image"] else None,
                             thumb=f"/media/{place['thumb']}" if place["thumb"] else None)
             elif r["kind"] == "entry_comment":

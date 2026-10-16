@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { api, exportCampaign } from '../api.js';
 import { Field, Icon, Modal, useAction, useConfirm, useToast } from './ui.jsx';
 import { useSheet } from '../viewport.js';
+import { t, tn } from '../i18n/index.js';
 
 export function CampaignDialog({ campaign, onClose, onSaved }) {
   const run = useAction();
@@ -11,25 +12,25 @@ export function CampaignDialog({ campaign, onClose, onSaved }) {
     e.preventDefault();
     const data = { name, description };
     const saved = await run(() => (campaign ? api.updateCampaign(campaign.id, data) : api.createCampaign(data)),
-      campaign ? 'Campagne renommée' : 'Campagne créée');
+      campaign ? t('Campagne renommée') : t('Campagne créée'));
     if (saved) onSaved(saved);
   };
   return (
-    <Modal title={campaign ? 'Modifier la campagne' : 'Nouvelle campagne'} onClose={onClose}
+    <Modal title={campaign ? t('Modifier la campagne') : t('Nouvelle campagne')} onClose={onClose}
       footer={(
         <>
-          <button type="button" className="btn btn--ghost" onClick={onClose}>Annuler</button>
+          <button type="button" className="btn btn--ghost" onClick={onClose}>{t('Annuler')}</button>
           <button type="submit" form="campaign-form" className="btn btn--primary" disabled={!name.trim()}>
-            {campaign ? 'Enregistrer' : 'Créer la campagne'}
+            {campaign ? t('Enregistrer') : t('Créer la campagne')}
           </button>
         </>
       )}>
       <form id="campaign-form" onSubmit={submit}>
-        <Field label="Nom" htmlFor="campaign-name">
+        <Field label={t('Nom')} htmlFor="campaign-name">
           <input id="campaign-name" value={name} maxLength={200} required onChange={(e) => setName(e.target.value)}
-            placeholder="Les Brumes d'Ys" />
+            placeholder={t('Les Brumes d’Ys')} />
         </Field>
-        <Field label="Description" htmlFor="campaign-desc" hint="Univers, ton, joueurs… facultatif.">
+        <Field label={t('Description')} htmlFor="campaign-desc" hint={t('Univers, ton, joueurs… facultatif.')}>
           <textarea id="campaign-desc" rows={3} value={description} onChange={(e) => setDescription(e.target.value)} />
         </Field>
       </form>
@@ -50,8 +51,11 @@ export function useCampaignImport(onImported) {
     setProgress(0);
     try {
       const created = await api.importCampaign(file, setProgress);
-      toast(`Campagne « ${created.name} » importée : ${created.npc_count} PNJ, ${created.faction_count} factions, `
-        + `${created.document_count} fiche(s) rédigée(s).`, 'success');
+      toast(t('Campagne « {name} » importée : {content}.', {
+        name: created.name,
+        content: [tn('{n} PNJ', '{n} PNJ', created.npc_count), tn('{n} faction', '{n} factions', created.faction_count),
+          tn('{n} fiche rédigée', '{n} fiches rédigées', created.document_count)].join(', '),
+      }), 'success');
       onImported?.(created);
     } catch (err) {
       toast(err.message, 'error');
@@ -66,7 +70,8 @@ export function useCampaignImport(onImported) {
   return { pick: () => fileRef.current?.click(), input, progress };
 }
 
-export const importLabel = (progress) => (progress === null ? 'Importer une campagne' : `Import… ${Math.round(progress * 100)} %`);
+export const importLabel = (progress) => (progress === null ? t('Importer une campagne')
+  : t('Import… {percent} %', { percent: Math.round(progress * 100) }));
 
 export default function CampaignMenu({ campaigns, current, onSwitch, onChanged, onDeleted }) {
   const [open, setOpen] = useState(false);
@@ -89,12 +94,12 @@ export default function CampaignMenu({ campaigns, current, onSwitch, onChanged, 
   const remove = async () => {
     setOpen(false);
     const ok = await confirm({
-      title: `Supprimer « ${current.name} »`,
-      message: 'Tous les PNJ, factions, relations et images de cette campagne seront définitivement supprimés.',
-      confirmLabel: 'Supprimer la campagne',
+      title: t('Supprimer « {name} »', { name: current.name }),
+      message: t('Tous les PNJ, factions, relations et images de cette campagne seront définitivement supprimés.'),
+      confirmLabel: t('Supprimer la campagne'),
     });
     if (!ok) return;
-    const done = await run(() => api.deleteCampaign(current.id), 'Campagne supprimée');
+    const done = await run(() => api.deleteCampaign(current.id), t('Campagne supprimée'));
     if (done !== undefined) onDeleted(current.id);
   };
 
@@ -106,7 +111,7 @@ export default function CampaignMenu({ campaigns, current, onSwitch, onChanged, 
       </button>
       {open && (
         <div className="popover popover--left" role="menu">
-          <p className="popover__title">Campagnes</p>
+          <p className="popover__title">{t('Campagnes')}</p>
           <ul className="campaign-menu__list">
             {campaigns.map((c) => (
               <li key={c.id}>
@@ -114,25 +119,27 @@ export default function CampaignMenu({ campaigns, current, onSwitch, onChanged, 
                   className={c.id === current?.id ? 'is-active' : ''}
                   onClick={() => { setOpen(false); onSwitch(c.id); }}>
                   <span>{c.name}</span>
-                  <span className="campaign-menu__count">{c.npc_count} PNJ, {c.faction_count} factions</span>
+                  <span className="campaign-menu__count">
+                    {tn('{n} PNJ', '{n} PNJ', c.npc_count)}, {tn('{n} faction', '{n} factions', c.faction_count)}
+                  </span>
                 </button>
               </li>
             ))}
           </ul>
           <div className="popover__group popover__group--actions">
             <button type="button" role="menuitem" onClick={() => { setOpen(false); setDialog({}); }}>
-              <Icon name="plus" size={15} /> Nouvelle campagne
+              <Icon name="plus" size={15} /> {t('Nouvelle campagne')}
             </button>
             {current && (
               <button type="button" role="menuitem" onClick={() => { setOpen(false); setDialog({ campaign: current }); }}>
-                <Icon name="edit" size={15} /> Renommer « {current.name} »
+                <Icon name="edit" size={15} /> {t('Renommer « {name} »', { name: current.name })}
               </button>
             )}
             {current && (
               <a role="menuitem" href={api.campaignExportUrl(current.id)} download
                 onClick={(e) => { e.preventDefault(); setOpen(false); exportCampaign(current.id, confirm); }}
-                title="Archive .zip : PNJ, factions, liens, scénarios et images, à importer dans un autre Maze">
-                <Icon name="download" size={15} /> Exporter « {current.name} »
+                title={t('Archive .zip : PNJ, factions, liens, scénarios et images, à importer dans un autre Maze')}>
+                <Icon name="download" size={15} /> {t('Exporter « {name} »', { name: current.name })}
               </a>
             )}
             <button type="button" role="menuitem" disabled={importer.progress !== null}
@@ -141,7 +148,7 @@ export default function CampaignMenu({ campaigns, current, onSwitch, onChanged, 
             </button>
             {current && (
               <button type="button" role="menuitem" className="danger-text" onClick={remove}>
-                <Icon name="trash" size={15} /> Supprimer cette campagne
+                <Icon name="trash" size={15} /> {t('Supprimer cette campagne')}
               </button>
             )}
           </div>

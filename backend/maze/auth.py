@@ -56,11 +56,12 @@ def verify_dummy(password: str) -> None:
 
 # --- Utilisateur courant -----------------------------------------------------
 
-PUBLIC_USER_FIELDS = ("id", "username", "display_name", "role")
+PUBLIC_USER_FIELDS = ("id", "username", "display_name", "role", "locale")
 
 
 def public_user(user: dict[str, Any]) -> dict[str, Any]:
-    return {k: user[k] for k in PUBLIC_USER_FIELDS}
+    # locale (migration 030) : vide = « Automatique » ; absente d'un compte lu avant la migration (tests).
+    return {k: user.get(k, "") if k == "locale" else user[k] for k in PUBLIC_USER_FIELDS}
 
 
 def load_session_user(db_path: Path, session: dict[str, Any]) -> dict[str, Any] | None:

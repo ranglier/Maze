@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api } from '../api.js';
+import { pt, t } from '../i18n/index.js';
 import { KindsContext, PlacesTabs } from './PlacesView.jsx';
 import { Icon, useAction, useConfirm } from './ui.jsx';
 import { isPhone } from '../viewport.js';
@@ -97,12 +98,12 @@ export default function MapsView({ campaign, header, trailing, mapId, focusPlace
 
   const removeMap = async () => {
     const yes = await confirm({
-      title: `Supprimer la carte « ${current.name} »`,
-      message: 'L’image de fond et les épingles seront supprimées. Les lieux eux-mêmes ne sont pas touchés.',
-      confirmLabel: 'Supprimer',
+      title: t('Supprimer la carte « {name} »', { name: current.name }),
+      message: t('L’image de fond et les épingles seront supprimées. Les lieux eux-mêmes ne sont pas touchés.'),
+      confirmLabel: t('Supprimer'),
     });
     if (!yes) return;
-    if (await run(() => api.deleteMap(current.id), 'Carte supprimée') === undefined) return;
+    if (await run(() => api.deleteMap(current.id), t('Carte supprimée')) === undefined) return;
     setDialog(null);
     setEditing(false);
     await loadMaps();
@@ -121,7 +122,7 @@ export default function MapsView({ campaign, header, trailing, mapId, focusPlace
           <div className="topbar__right">
           <div className="toolbar">
             {maps?.length > 0 && (
-              <select className="input maps__select" value={currentId || ''} aria-label="Carte affichée"
+              <select className="input maps__select" value={currentId || ''} aria-label={t('Carte affichée')}
                 onChange={(e) => go(Number(e.target.value))}>
                 {maps.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
               </select>
@@ -134,18 +135,18 @@ export default function MapsView({ campaign, header, trailing, mapId, focusPlace
                   if (editing) closeDrawer();
                   setEditing((v) => !v); setArmed(null);
                 }}
-                title={editing ? 'Terminer la mise en place des lieux' : 'Placer, déplacer ou retirer des lieux sur la carte'}>
-                <Icon name={editing ? 'check' : 'edit'} size={16} /><span className="btn__label">{editing ? 'Terminer' : 'Placer les lieux'}</span>
+                title={editing ? t('Terminer la mise en place des lieux') : t('Placer, déplacer ou retirer des lieux sur la carte')}>
+                <Icon name={editing ? 'check' : 'edit'} size={16} /><span className="btn__label">{editing ? t('Terminer') : t('Placer les lieux')}</span>
               </button>
             )}
             {current && (
               <button type="button" className="btn btn--ghost" onClick={() => setDialog('settings')}
-                title="Réglages de la carte : nom, lieu représenté, aspect des épingles, image de fond">
-                <Icon name="image" size={16} /><span className="btn__label">Réglages</span>
+                title={t('Réglages de la carte : nom, lieu représenté, aspect des épingles, image de fond')}>
+                <Icon name="image" size={16} /><span className="btn__label">{t('Réglages')}</span>
               </button>
             )}
             <button type="button" className="btn btn--ghost" onClick={() => setDialog('new')} disabled={!tree}>
-              <Icon name="plus" size={16} /><span className="btn__label">Carte</span>
+              <Icon name="plus" size={16} /><span className="btn__label">{pt('maps', 'Carte')}</span>
             </button>
             <span className="toolbar__sep" />
           </div>
@@ -159,18 +160,17 @@ export default function MapsView({ campaign, header, trailing, mapId, focusPlace
               onReveal={(id) => { closeDrawer(); reveal(id); }} campaignId={cid} />
           )}
           <main className="maps__main">
-            {!maps || !tree ? <div className="doc-loading" aria-busy="true">Chargement…</div>
+            {!maps || !tree ? <div className="doc-loading" aria-busy="true">{t('Chargement…')}</div>
               : maps.length === 0 ? (
                 <div className="maps__empty">
                   <Icon name="map" size={34} />
-                  <h2>Aucune carte pour l’instant</h2>
-                  <p>Importez une image de fond (carte d’un secteur, d’une région, d’une ville) puis placez-y vos lieux.
-                    Choisir un lieu montre ses sous-lieux en anneau ; une carte peut aussi représenter un lieu, pour y « entrer ».</p>
+                  <h2>{t('Aucune carte pour l’instant')}</h2>
+                  <p>{t('Importez une image de fond (carte d’un secteur, d’une région, d’une ville) puis placez-y vos lieux. Choisir un lieu montre ses sous-lieux en anneau ; une carte peut aussi représenter un lieu, pour y « entrer ».')}</p>
                   <button type="button" className="btn btn--primary" onClick={() => setDialog('new')}>
-                    <Icon name="plus" size={16} /> Créer une carte
+                    <Icon name="plus" size={16} /> {t('Créer une carte')}
                   </button>
                 </div>
-              ) : !detail || detail.id !== currentId ? <div className="doc-loading" aria-busy="true">Chargement de la carte…</div> : (
+              ) : !detail || detail.id !== currentId ? <div className="doc-loading" aria-busy="true">{t('Chargement de la carte…')}</div> : (
                 <MapCanvas key={`${detail.id}-${detail.url}`} map={detail} byId={byId} places={places} path={path} editing={editing}
                   armed={armed} center={center} ownMaps={ownMaps} trail={trail}
                   onPath={setPath} onMovePin={savePin} onPlace={place} onCancelArm={() => setArmed(null)}

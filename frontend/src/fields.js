@@ -2,22 +2,26 @@
 // Champs, libellés, secrets, historique et commentaires : registre du serveur (backend/maze/entries.py, audit M23),
 // recopié par « python -m maze.entries » dans entry-fields.generated.js (vérifié par tests.test_registry). Ici, seuls
 // les compléments de l'interface : textes d'aide, exemples, hauteur des champs (vérifiés par fields.test.mjs).
+//
+// Textes en français (clés de traduction) : libellés du registre et compléments marqués N_ ici, traduits à l'affichage
+// par t(field.label), t(field.hint), t(field.placeholder) (zone characters, en/characters.json).
 import { ENTRY_REGISTRY } from './entry-fields.generated.js';
+import { N_ } from './i18n/core.js';
 
 export { ENTRY_REGISTRY };
 
 const UI = {
   npc: {
-    title: { placeholder: 'Receleuse, capitaine de la garde…' },
-    summary: { hint: 'Une phrase, affichée au survol sur la carte.' },
+    title: { placeholder: N_('Receleuse, capitaine de la garde…') },
+    summary: { hint: N_('Une phrase, affichée au survol sur la carte.') },
   },
   faction: {
-    kind: { placeholder: 'Guilde, culte, maison noble…' },
-    summary: { hint: 'Une phrase, affichée au survol sur la carte.' },
+    kind: { placeholder: N_('Guilde, culte, maison noble…') },
+    summary: { hint: N_('Une phrase, affichée au survol sur la carte.') },
   },
   place: {
-    ambiance: { hint: 'Texte à lire aux joueurs : ce que les PJ voient, entendent, sentent.', rows: 3 },
-    description: { hint: 'Tapez @ pour citer une fiche ou un lieu, / pour insérer un bloc.', rows: 5 },
+    ambiance: { hint: N_('Texte à lire aux joueurs : ce que les PJ voient, entendent, sentent.'), rows: 3 },
+    description: { hint: N_('Tapez @ pour citer une fiche ou un lieu, / pour insérer un bloc.'), rows: 5 },
     secrets: { rows: 3 },
     notes: { rows: 4 },
   },
@@ -62,14 +66,14 @@ export const PLACE_SECTIONS = registry('place').filter((f) => f.group === 'secti
 /** Champs du formulaire d'un lieu (anciens champs exclus), dans l'ordre du registre. */
 export const PLACE_EDITABLE = registry('place').filter((f) => f.group !== 'legacy').map((f) => f.key);
 
-/** Libellés des champs d'une fiche (conflits d'enregistrement, historique). */
+/** Libellés des champs d'une fiche (conflits d'enregistrement, historique), en français : t() à l'affichage. */
 export function fieldLabels(kind) {
   return Object.fromEntries(registry(kind).map((f) => [f.key, f.label]));
 }
 
 /** Sections de texte d'une fiche (PNJ, faction ou lieu), résumé compris : commentaires et historique. */
 export function textSections(kind) {
-  const summary = { key: 'summary', label: 'Résumé' };
+  const summary = { key: 'summary', label: N_('Résumé') };
   return [summary, ...(kind === 'place' ? PLACE_SECTIONS : ENTITY_FIELDS[kind].sections)];
 }
 

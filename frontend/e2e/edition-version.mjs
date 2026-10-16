@@ -22,6 +22,7 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, write
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { i18nCatalogsPlugin } from '../i18n-catalogs.mjs';
 
 const require = createRequire(import.meta.url);
 const FRONTEND = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -77,6 +78,7 @@ async function staleBundle() {
       outdir: path.join(work, 'dist'), format: 'esm', minify: true, jsx: 'automatic', target: ['es2020'],
       nodePaths: nodeDirs, logLevel: 'error',
       define: { 'process.env.NODE_ENV': '"production"', __MAZE_SCHEMA_VERSION__: JSON.stringify(current - 1) },
+      plugins: [i18nCatalogsPlugin()],   // catalogues de traduction dans le bundle, comme build.mjs
     });
     const js = result.outputFiles.find((f) => f.path.endsWith('.js'));
     step(`Interface ancienne construite (schéma sans encadré, version ${current - 1}, ${Math.round(js.contents.length / 1024)} Ko)`);

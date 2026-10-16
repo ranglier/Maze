@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import secrets
 from dataclasses import dataclass
 from pathlib import Path
@@ -50,6 +51,19 @@ def _env_int(name: str, default: int) -> int:
     return value
 
 
+def _env_locale() -> str:
+    """MAZE_DEFAULT_LOCALE : langue de l'interface et des messages quand ni le compte ni le navigateur n'en donnent une
+    que Maze connaît (code de deux ou trois lettres, « en-US » lu « en ») ; absente ou invalide : français."""
+    raw = os.environ.get("MAZE_DEFAULT_LOCALE", "").strip()
+    if not raw:
+        return "fr"
+    code = raw.replace("_", "-").split("-")[0].lower()
+    if not re.fullmatch(r"[a-z]{2,3}", code):
+        log.warning("MAZE_DEFAULT_LOCALE=%r invalide (code de langue attendu, par exemple fr ou en) : fr", raw)
+        return "fr"
+    return code
+
+
 def _env_source_url() -> str:
     """MAZE_SOURCE_URL : adresse http(s) du code source ; absente ou invalide : dépôt de Maze (avec un avertissement)."""
     raw = os.environ.get("MAZE_SOURCE_URL", "").strip()
@@ -83,6 +97,8 @@ class Settings:
     live_max_total: int = 100
     # Code source de cette version, proposé à tous les utilisateurs.
     source_url: str = DEFAULT_SOURCE_URL
+    # Langue par défaut de l'instance (interface et messages du serveur) : après celle du compte et du navigateur.
+    default_locale: str = "fr"
 
     @property
     def db_path(self) -> Path:
@@ -130,4 +146,5 @@ def load_settings() -> Settings:
         live_max_per_user=_env_int("MAZE_LIVE_MAX_PER_USER", 12),
         live_max_total=_env_int("MAZE_LIVE_MAX_TOTAL", 100),
         source_url=_env_source_url(),
+        default_locale=_env_locale(),
     )

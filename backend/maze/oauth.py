@@ -26,7 +26,7 @@ from starlette.requests import Request
 from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from starlette.routing import Route
 
-from . import auth, connector, db, throttle
+from . import auth, connector, db, i18n, throttle
 from .api import in_tx, tx
 
 CODE_SECONDS = 300
@@ -74,9 +74,12 @@ async def protected_resource(request: Request) -> Response:
 
 # --- Page d'autorisation -------------------------------------------------------------------------
 
+# Page affichée dans le navigateur de l'administrateur : dans la langue de la requête (Accept-Language, puis
+# MAZE_DEFAULT_LOCALE ; maze.i18n, catalogue oauth.json). Les réponses du point de jeton (error_description), lues
+# par Claude, restent en français.
 PAGE = """<!doctype html>
-<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="robots" content="noindex"><title>Autoriser Claude | Maze</title>
+<html lang="{lang}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex"><title>{title}</title>
 <style>
 :root {{ color-scheme: dark; }}
 body {{ margin: 0; min-height: 100vh; display: grid; place-items: center; background: #161d29; color: #e8e2d4;
@@ -97,12 +100,16 @@ button[value=allow] {{ background: #c9a45c; border-color: #c9a45c; color: #161d2
 </style></head><body><main>{body}</main></body></html>"""
 
 
-def _page(body: str, status: int = 200, headers: dict[str, str] | None = None) -> HTMLResponse:
-    return HTMLResponse(PAGE.format(body=body), status_code=status, headers={**NO_STORE, **(headers or {})})
+def _page(request: Request, body: str, status: int = 200, headers: dict[str, str] | None = None) -> HTMLResponse:
+    locale = i18n.request_locale(request.scope)
+    page = PAGE.format(lang=locale, title=html.escape(i18n.tr("Autoriser Claude | Maze", locale)), body=body)
+    return HTMLResponse(page, status_code=status, headers={**NO_STORE, **(headers or {})})
 
 
-def _error_page(message: str) -> HTMLResponse:
-    return _page(f"<h1>Autorisation impossible</h1><p class=\"error\">{html.escape(message)}</p>", 400)
+def _error_page(request: Request, message: str) -> HTMLResponse:
+    locale = i18n.request_locale(request.scope)
+    return _page(request, f"<h1>{html.escape(i18n.tr('Autorisation impossible', locale))}</h1>"
+                          f"<p class=\"error\">{html.escape(i18n.translate(message, locale))}</p>", 400)
 
 
 def _redirect(uri: str, params: dict[str, str]) -> RedirectResponse:
@@ -120,10 +127,9 @@ def _check_request(request: Request, params: dict[str, str]) -> Response | None:
     with tx(request) as conn:
         known_client = connector.check_client(conn, params.get("client_id", ""), None)
     if not known_client:
-        return _error_page("Client inconnu. Vérifiez l'identifiant client saisi dans claude.ai "
-                           "(Maze > Administration > Connecteur Claude).")
+        return _error_page(request, "Client inconnu. Vérifiez l'identifiant client saisi dans claude.ai (Maze > Administration > Connecteur Claude).")  # noqa: E501
     if not connector.redirect_allowed(redirect_uri):
-        return _error_page("Adresse de retour non autorisée.")
+        return _error_page(request, "Adresse de retour non autorisée.")
     state = params.get("state", "")
     if params.get("response_type", "code") != "code":
         return _redirect(redirect_uri, {"error": "unsupported_response_type", "state": state})
@@ -139,34 +145,44 @@ def _check_request(request: Request, params: dict[str, str]) -> Response | None:
 
 def _consent_body(request: Request, params: dict[str, str], error: str = "", username: str = "") -> str:
     # Page servie avant toute authentification : des effectifs, jamais les noms des campagnes.
+    locale = i18n.request_locale(request.scope)
+
+    def tr(text: str, **values: object) -> str:
+        """Texte de la page, échappé (les valeurs en gras sont insérées après l'échappement)."""
+        bold = {k: f"<strong>{html.escape(str(v))}</strong>" for k, v in values.items()}
+        out = html.escape(i18n.tr(text, locale, **{k: f"\0{k}\0" for k in values}))
+        for k, v in bold.items():
+            out = out.replace(f"\0{k}\0", v)
+        return out
+
     with tx(request) as conn:
         row = connector.load_settings_row(conn)
         modes = list(connector.grants(conn).values())
     writable = modes.count("write")
     if modes:
-        campaigns = (f"<p>Campagnes ouvertes à Claude : <strong>{len(modes)}</strong>, dont <strong>{writable}</strong> "
-                     "en lecture et écriture (liste dans Administration &gt; Connecteur Claude).</p>")
+        campaigns = "<p>" + tr("Campagnes ouvertes à Claude : {count}, dont {writable} en lecture et écriture (liste dans Administration > Connecteur Claude).",  # noqa: E501
+                               count=len(modes), writable=writable) + "</p>"
     else:
-        campaigns = ("<p class=\"note\">Aucune campagne n'est encore ouverte à Claude : choisissez-les dans "
-                     "Administration &gt; Connecteur Claude.</p>")
+        campaigns = ("<p class=\"note\">" + tr("Aucune campagne n'est encore ouverte à Claude : choisissez-les dans Administration > Connecteur Claude.")  # noqa: E501
+                     + "</p>")
     target = urlparse(params.get("redirect_uri", ""))
-    destination = "Claude Code sur cet ordinateur" if target.scheme == "http" else (target.hostname or "")
+    destination = i18n.tr("Claude Code sur cet ordinateur", locale) if target.scheme == "http" else (target.hostname or "")
     paused = "" if row["enabled"] else (
-        "<p class=\"note\">L'accès est suspendu : Claude ne pourra rien lire ni modifier avant que vous ne "
-        "l'activiez dans Administration &gt; Connecteur Claude.</p>")
+        "<p class=\"note\">" + tr("L'accès est suspendu : Claude ne pourra rien lire ni modifier avant que vous ne l'activiez dans Administration > Connecteur Claude.")  # noqa: E501
+        + "</p>")
     hidden = "".join(f"<input type=\"hidden\" name=\"{k}\" value=\"{html.escape(params.get(k, ''))}\">"
                      for k in REQUEST_FIELDS)
-    err = f"<p class=\"error\">{html.escape(error)}</p>" if error else ""
-    return f"""<h1>Autoriser Claude</h1>
-<p>Claude demande à se connecter à Maze en votre nom. Il ne verra que les campagnes que vous lui avez ouvertes.</p>
-{campaigns}{paused}<p>Retour après autorisation : <strong>{html.escape(destination)}</strong></p>{err}
+    err = f"<p class=\"error\">{html.escape(i18n.translate(error, locale))}</p>" if error else ""
+    return f"""<h1>{tr("Autoriser Claude")}</h1>
+<p>{tr("Claude demande à se connecter à Maze en votre nom. Il ne verra que les campagnes que vous lui avez ouvertes.")}</p>
+{campaigns}{paused}<p>{tr("Retour après autorisation : {destination}", destination=destination)}</p>{err}
 <form method="post" action="/oauth/authorize">{hidden}
-<label for="u">Identifiant administrateur</label>
+<label for="u">{tr("Identifiant administrateur")}</label>
 <input id="u" type="text" name="username" autocomplete="username" required value="{html.escape(username)}">
-<label for="p">Mot de passe</label>
+<label for="p">{tr("Mot de passe")}</label>
 <input id="p" type="password" name="password" autocomplete="current-password" required>
-<div class="actions"><button type="submit" name="action" value="deny" formnovalidate>Refuser</button>
-<button type="submit" name="action" value="allow">Autoriser</button></div>
+<div class="actions"><button type="submit" name="action" value="deny" formnovalidate>{tr("Refuser")}</button>
+<button type="submit" name="action" value="allow">{tr("Autoriser")}</button></div>
 </form>"""
 
 
@@ -174,7 +190,7 @@ async def authorize(request: Request) -> Response:
     if request.method == "GET":
         params = dict(request.query_params)
         failure = await db.run_db(_check_request, request, params, write=False)
-        return failure or _page(await db.run_db(_consent_body, request, params, write=False))
+        return failure or _page(request, await db.run_db(_consent_body, request, params, write=False))
 
     form = await request.form(max_files=0, max_fields=20)
     params = {k: str(form.get(k, ""))[:2000] for k in (*REQUEST_FIELDS, "username", "password", "action")}
@@ -188,7 +204,7 @@ async def authorize(request: Request) -> Response:
     # Mêmes limites que la connexion à Maze, mêmes compteurs (throttle).
     refused = await throttle.admit(client, params["username"])
     if refused:
-        return _page(await db.run_db(_consent_body, request, params, refused.message), 429, refused.headers)
+        return _page(request, await db.run_db(_consent_body, request, params, refused.message), 429, refused.headers)
 
     user = await in_tx(request, lambda conn: db.row_to_dict(conn.execute(
         "SELECT * FROM users WHERE username = ? AND active = 1", (params["username"].strip(),)).fetchone()), write=False)
@@ -199,10 +215,10 @@ async def authorize(request: Request) -> Response:
         ok = await run_in_threadpool(auth.verify_password, params["password"], user["password_hash"])
     if not ok:
         await asyncio.sleep(1)
-        return _page(await db.run_db(_consent_body, request, params, "Identifiant ou mot de passe incorrect.",
+        return _page(request, await db.run_db(_consent_body, request, params, "Identifiant ou mot de passe incorrect.",
                                      params["username"]), 401)
     if user["role"] != "admin":
-        return _page(await db.run_db(_consent_body, request, params, "Seul un administrateur peut autoriser Claude.",
+        return _page(request, await db.run_db(_consent_body, request, params, "Seul un administrateur peut autoriser Claude.",
                                    params["username"]), 403)
     throttle.succeeded(client, params["username"])
     await in_tx(request, lambda conn: throttle.remember(conn, user["id"], client))

@@ -4,7 +4,7 @@ Thank you for your interest in Maze! This guide explains how to propose a change
 
 ## Ways to help
 
-- **Internationalisation.** The interface is French only. Extracting the roughly 1,000 user-facing strings into a translation layer, then adding English, is the most valuable contribution right now. Please open an issue first to agree on the approach.
+- **Translations.** The interface, the server messages and the Foundry module are in French and English. Better English wording, or a new language, is welcome: see [Translations](#translations).
 - **Bug reports.** Describe what you did, what you expected and what happened. Include the Maze version (Administration > Mise à jour), your browser and the relevant server log lines (`docker compose logs --tail 100 maze`), without passwords, tokens or campaign content you do not want to share.
 - **Game systems.** The core does not depend on any game system. The Foundry VTT module fills in actors for the Dark Heresy systems only; mappings for other systems are welcome.
 - **Documentation**, in English or French: installation on other platforms, reverse proxies other than Caddy, corrections.
@@ -14,7 +14,7 @@ Thank you for your interest in Maze! This guide explains how to propose a change
 
 Issues, pull requests and reviews can be written in **English or French**.
 
-The codebase currently follows this convention: identifiers (modules, functions, variables, API fields) are in English; comments, docstrings, log and error messages, the interface, the documentation and commit messages are in French. Follow the language of the surrounding code. New interface strings stay in French until the translation layer exists.
+The codebase currently follows this convention: identifiers (modules, functions, variables, API fields) are in English; comments, docstrings, log and error messages, the interface, the documentation and commit messages are in French. Follow the language of the surrounding code. New interface strings and server messages are written in French and translated into English in the same pull request: see [Translations](#translations).
 
 ## Development workflow
 
@@ -48,7 +48,20 @@ These rules exist because breaking one of them has already caused a bug, or woul
 - **Dependencies.** Versions are pinned exactly: `backend/requirements.txt`, `frontend/package.json`, and the lockfile `frontend/package-lock.json`, installed with `npm ci`. Discuss any new dependency in an issue first. If one is accepted, update the lockfile in the same pull request.
 - **Deployment scripts.** `deploy/update.sh`, `deploy/maze-updater.sh`, `docker-compose.yml` and the systemd units run on existing servers. A change must let the current version update itself without manual steps; if a manual step is unavoidable, say so clearly in the pull request. `backend/tests/test_deploy.py` replays these scripts with a simulated Docker.
 - **Security.** Every route that receives an object identifier must check that the object's campaign is accessible to the current account (`auth.can_access`). Request bodies are size-limited (`backend/maze/limits.py`). Never commit secrets, real campaign data or copyrighted images: tests use invented names and generated images.
+- **Translations.** No visible text outside `t()`, `tn()` or `pt()` in `frontend/src`, and every key translated into English: see [Translations](#translations). The tests fail otherwise.
 - **Documentation.** Update `docs/ARCHITECTURE.md`, and the README or the French guide (`docs/fr/guide.md`), whenever behaviour, configuration or deployment changes. Document every new environment variable in the README's Configuration table; `tests.test_docs` checks it.
+
+## Translations
+
+Maze is translated gettext style: the French text is the key, and French has no catalog. The full guide, in English, is [frontend/src/i18n/README.md](frontend/src/i18n/README.md). The rules for any change:
+
+- **Interface.** Every visible string goes through `t()` (text), `tn()` (a number decides the form: never `lien(s)`) or `pt(context, text)` (same French text, different meanings). This includes `title`, `aria-label`, `placeholder`, toasts, confirmations and error messages composed in the interface. Whole sentences with `{placeholders}`, never concatenated pieces. Translate at display time, never at module load (`N_()` marks a string translated later).
+- **Server.** Error messages are French strings; when they contain values, build them with `msg("{name} introuvable", name=...)` (or `msgn()` for plurals) instead of an f-string. User data is never translated.
+- **Keys.** The key is the exact French text, typographic apostrophe (’) included. Reuse an existing key (`common.json`) before adding one: the same key in two zones must have the same translation.
+- **Catalogs.** Add the English translation of every new string in the same pull request: `frontend/src/i18n/en/<zone>.json` (zone of the file: `node frontend/test/i18n-scan.mjs --zones`) and `backend/maze/i18n/en/*.json`. English must stay complete; `node frontend/test/i18n-scan.mjs --missing <zone>` prints what is missing, `--format` sorts the catalogs. Follow the glossary (GM, NPC, sheet, page, place, relationship, read-aloud, GM secret…).
+- **Tests.** `cd frontend && node --test "test/*.test.mjs"` (i18n tests included), `cd backend && python -m unittest tests.test_i18n`, and the browser journeys `langue` and `interface-anglaise` if you changed screens. Look at the screen in English: labels must not wrap or overflow.
+
+**Proposing a new language.** Open an issue first, then follow "Adding a language" in [frontend/src/i18n/README.md](frontend/src/i18n/README.md): one catalog folder for the interface, one for the server, a `lang/<code>.json` file and an entry in `module.json` for the Foundry module. A new language may be partial (missing entries fall back to French); say in the pull request what is translated and who can review it.
 
 ## Developer Certificate of Origin
 

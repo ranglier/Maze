@@ -17,10 +17,12 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 
-from . import auth, db, defaults, imaging, limits, throttle
+from . import auth, db, defaults, i18n, imaging, limits, throttle
 from .config import LICENSE, Settings
+from .i18n import msg, msgn
 from .schemas import (
-    CampaignCreate, CampaignUpdate, EntityOrder, FactionCreate, FactionUpdate, ImageUpdate, Login, PasswordChange, Setup,
+    CampaignCreate, CampaignUpdate, EntityOrder, FactionCreate, FactionUpdate, ImageUpdate, LocaleChange, Login,
+    PasswordChange, Setup,
     MembershipCreate, MembershipUpdate, NpcCreate, NpcUpdate, PositionsUpdate,
     RelationCreate, RelationTypeCreate, RelationTypeUpdate, RelationUpdate,
 )
@@ -118,7 +120,9 @@ def path_id(request: Request, name: str = "id") -> int:
 def get_or_404(conn: sqlite3.Connection, table: str, row_id: int, what: str) -> dict[str, Any]:
     row = db.row_to_dict(conn.execute(f"SELECT * FROM {table} WHERE id = ?", (row_id,)).fetchone())
     if row is None:
-        raise HTTPException(404, f"{what} introuvable")
+        # Message traduit à la réponse (maze.i18n) : modèle « {what} introuvable », nom de la sorte de fiche traduit
+        # lui aussi (« Campagne », « PNJ »… dans le catalogue).
+        raise HTTPException(404, msg("{what} introuvable", what=msg(what)))
     return row
 
 
@@ -139,7 +143,7 @@ def scoped(conn: sqlite3.Connection, request: Request, table: str, row_id: int, 
     Une ressource inaccessible est signalée comme introuvable, pour ne pas révéler son existence."""
     row = get_or_404(conn, table, row_id, what)
     if not auth.can_access(conn, auth.current_user(request), campaign_of(conn, table, row)):
-        raise HTTPException(404, f"{what} introuvable")
+        raise HTTPException(404, msg("{what} introuvable", what=msg(what)))
     return row
 
 
@@ -208,8 +212,10 @@ def auth_status(request: Request) -> Response:
     return JSONResponse({
         "authenticated": user is not None,
         "setup_required": auth.count_users(cfg.db_path) == 0,
-        "user": auth.public_user(user) if user else None,
+        "user": auth.public_user(user) if user else None,   # langue du compte : user.locale (vide = automatique)
         "instance": instance_id(request) if user else None,
+        # Langue par défaut de l'instance (MAZE_DEFAULT_LOCALE), après celles du compte et du navigateur.
+        "default_locale": cfg.default_locale,
         "version": cfg.version,
         # Public, même sans session (écran de connexion) : code source et licence.
         "source_url": cfg.source_url,
@@ -291,6 +297,17 @@ async def change_password(request: Request) -> Response:
     return JSONResponse({"changed": True})
 
 
+@threaded
+def change_locale(request: Request) -> Response:
+    """Langue de l'interface du compte (menu du compte > Langue) : « fr », « en »… ou vide pour suivre le navigateur.
+    Sert aussi aux messages d'erreur du serveur (maze.i18n.request_locale)."""
+    user = auth.current_user(request)
+    data = parse_body(request, LocaleChange)
+    with tx(request) as conn:
+        conn.execute("UPDATE users SET locale = ? WHERE id = ?", (data.locale, user["id"]))
+    return JSONResponse({"locale": data.locale})
+
+
 # --- Campagnes -------------------------------------------------------------
 
 @threaded
@@ -314,8 +331,11 @@ def create_campaign(request: Request) -> Response:
     data = parse_body(request, CampaignCreate)
     with tx(request) as conn:
         new_id = db.insert(conn, "campaigns", data.model_dump())
-        defaults.seed_relation_types(conn, new_id)
-        defaults.seed_place_kinds(conn, new_id)
+        # Natures de lien et types de lieux dans la langue de celui qui crée la campagne (compte, navigateur, puis
+        # MAZE_DEFAULT_LOCALE) ; clés identiques dans toutes les langues.
+        locale = i18n.request_locale(request.scope)
+        defaults.seed_relation_types(conn, new_id, locale)
+        defaults.seed_place_kinds(conn, new_id, locale)
         conn.execute("INSERT INTO campaign_members (campaign_id, user_id) VALUES (?, ?)",
                      (new_id, auth.current_user(request)["id"]))
         row = scoped(conn, request, "campaigns", new_id, "Campagne")
@@ -545,8 +565,9 @@ def revision_conflict(conn: sqlite3.Connection, kind: str, current: dict[str, An
     last = conn.execute(f"SELECT author_name FROM entry_versions WHERE {kind}_id = ? ORDER BY id DESC LIMIT 1",
                         (current["id"],)).fetchone()
     author = last["author_name"] if last else ""
-    detail = (f"Fiche modifiée entre-temps{f' par {author}' if author else ''} : "
-              "vos changements n'ont pas été enregistrés")
+    # Réponse écrite directement : `detail` traduit par I18nMiddleware (modèle reconnu dans le catalogue).
+    detail = (msg("Fiche modifiée entre-temps par {author} : vos changements n'ont pas été enregistrés", author=author)
+              if author else "Fiche modifiée entre-temps : vos changements n'ont pas été enregistrés")
     return JSONResponse({"detail": detail, "author": author, "current": entity_detail(conn, kind, current["id"])},
                         status_code=409)
 
@@ -683,7 +704,7 @@ def create_relation_type(request: Request) -> Response:
             "SELECT 1 FROM relation_types WHERE campaign_id = ? AND lower(label) = lower(?)",
             (cid, data.label)).fetchone()
         if exists:
-            raise HTTPException(409, f"La nature « {data.label} » existe déjà")
+            raise HTTPException(409, msg("La nature « {label} » existe déjà", label=data.label))
         order = conn.execute(
             "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM relation_types WHERE campaign_id = ?",
             (cid,)).fetchone()[0]
@@ -707,7 +728,7 @@ def update_relation_type(request: Request) -> Response:
                 "SELECT 1 FROM relation_types WHERE campaign_id = ? AND lower(label) = lower(?) AND id <> ?",
                 (current["campaign_id"], values["label"], tid)).fetchone()
             if clash:
-                raise HTTPException(409, f"La nature « {values['label']} » existe déjà")
+                raise HTTPException(409, msg("La nature « {label} » existe déjà", label=values["label"]))
         db.update(conn, "relation_types", tid, values, touch=False)
         row = scoped(conn, request, "relation_types", tid, "Nature de lien")
     return JSONResponse(row)
@@ -722,8 +743,9 @@ def delete_relation_type(request: Request) -> Response:
             "SELECT COUNT(*) FROM relations WHERE campaign_id = ? AND type = ?",
             (current["campaign_id"], current["key"])).fetchone()[0]
         if used:
-            raise HTTPException(409, f"{used} lien(s) utilisent la nature « {current['label']} ». "
-                                     "Changez leur nature avant de la supprimer.")
+            raise HTTPException(409, msgn("{n} lien utilise la nature « {label} ». Changez sa nature avant de la supprimer.",
+                                          "{n} liens utilisent la nature « {label} ». Changez leur nature avant de la supprimer.",
+                                          used, label=current["label"]))
         conn.execute("DELETE FROM relation_types WHERE id = ?", (tid,))
     return Response(status_code=204)
 
@@ -784,7 +806,7 @@ def _upload_images(kind: str):
         limit = cfg.max_upload_mb * 1024 * 1024
         declared = int(request.headers.get("content-length") or 0)
         if declared > limit * limits.GALLERY_FILES:
-            raise HTTPException(413, f"Envoi trop volumineux (max {cfg.max_upload_mb} Mo par image)")
+            raise HTTPException(413, msg("Envoi trop volumineux (max {size} Mo par image)", size=cfg.max_upload_mb))
 
         entity = await in_tx(request, lambda conn: scoped(conn, request, TABLES[kind], eid, "Fiche"), write=False)
 
@@ -798,12 +820,12 @@ def _upload_images(kind: str):
             for upload in uploads:
                 raw = await upload.read(limit + 1)
                 if len(raw) > limit:
-                    raise HTTPException(413, f"{upload.filename} dépasse {cfg.max_upload_mb} Mo")
+                    raise HTTPException(413, msg("{name} dépasse {size} Mo", name=upload.filename or "", size=cfg.max_upload_mb))
                 try:
                     img = await run_in_threadpool(imaging.process_upload, raw, cfg.media_dir,
                                                   entity["campaign_id"])
                 except imaging.ImageError as exc:
-                    raise HTTPException(400, f"{upload.filename} : {exc}") from exc
+                    raise HTTPException(400, msg("{name} : {error}", name=upload.filename or "", error=i18n.message(exc))) from exc
                 stored.append((img, (upload.filename or "")[:200]))
         except BaseException:
             for img, _ in stored:
@@ -884,6 +906,7 @@ routes = [
     Route("/api/auth/logout", logout, methods=["POST"]),
     Route("/api/auth/setup", setup, methods=["POST"]),
     Route("/api/auth/password", change_password, methods=["POST"]),
+    Route("/api/auth/locale", change_locale, methods=["PUT"]),
 
     Route("/api/campaigns", list_campaigns),
     Route("/api/campaigns", create_campaign, methods=["POST"]),

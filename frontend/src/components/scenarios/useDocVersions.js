@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../../api.js';
+import { pt, t } from '../../i18n/index.js';
 import { versionDate } from '../HistoryPanel.jsx';
 
 /**
@@ -37,7 +38,7 @@ export default function useDocVersions({ doc, sideTab, reloadKey, run, toast, co
   const createVersion = async (label) => {
     const content = editorRef.current?.getHtml();
     const created = await run(() => api.createVersion(doc.id, { label, ...(content != null ? { content } : {}) }),
-      'Version enregistrée');
+      pt('toast', 'Version enregistrée'));
     if (!created) return false;
     loadVersions();
     return true;
@@ -53,9 +54,10 @@ export default function useDocVersions({ doc, sideTab, reloadKey, run, toast, co
 
   const deleteVersion = async (v) => {
     const yes = await confirm({
-      title: 'Supprimer cette version',
-      message: `La version du ${versionDate(v)} sera supprimée de l’historique. Le contenu actuel de la fiche ne change pas.`,
-      confirmLabel: 'Supprimer',
+      title: t('Supprimer cette version'),
+      message: t('La version du {date} sera supprimée de l’historique. Le contenu actuel de la fiche ne change pas.',
+        { date: versionDate(v) }),
+      confirmLabel: t('Supprimer'),
     });
     if (!yes) return;
     if (await run(() => api.deleteVersion(doc.id, v.id)) === undefined) return;
@@ -67,10 +69,10 @@ export default function useDocVersions({ doc, sideTab, reloadKey, run, toast, co
     const v = versionView?.version;
     if (!v) return;
     const yes = await confirm({
-      title: 'Restaurer cette version',
-      message: `Le contenu de la fiche sera remplacé par la version du ${versionDate(v)} pour tous les MJ. `
-        + 'L’état actuel est d’abord gardé dans l’historique : vous pourrez y revenir. Le titre ne change pas.',
-      confirmLabel: 'Restaurer',
+      title: t('Restaurer cette version'),
+      message: t('Le contenu de la fiche sera remplacé par la version du {date} pour tous les MJ. L’état actuel est d’abord gardé dans l’historique : vous pourrez y revenir. Le titre ne change pas.',
+        { date: versionDate(v) }),
+      confirmLabel: t('Restaurer'),
     });
     if (!yes) return;
     restoringRef.current = true;

@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Parcours navigateur de frontend/e2e/ (Playwright), chacun sur une instance neuve de Maze lancée par ce script :
-# base vide, dossiers de contrôle et d'état vides (mise-a-jour.mjs), MAZE_VERSION=abc1234 ; dossier de données passé au
+# base vide, dossiers de contrôle et d'état vides (mise-a-jour.mjs), MAZE_VERSION=abc1234, MAZE_DEFAULT_LOCALE=fr (les
+# parcours ouvrent des navigateurs en fr-FR et attendent les textes français, sauf langue.mjs et
+# interface-anglaise.mjs qui ouvrent aussi un navigateur en en-US) ; dossier de données passé au
 # parcours (MAZE_E2E_DATA_DIR, finitions-interface.mjs). Même commande en local,
 # en recette et dans l'intégration continue (.github/workflows/ci.yml) : c'est la liste de référence des parcours.
 #
@@ -52,8 +54,10 @@ for name in "${names[@]}"; do
     echo "=== $name"
     (
         cd "$REPO/backend" || exit 1
+        # Langue par défaut française : les parcours attendent les textes français (navigateurs en fr-FR ;
+        # langue.mjs et interface-anglaise.mjs vérifient l'anglais avec un navigateur en en-US).
         export MAZE_DATA_DIR="$run/data" MAZE_STATIC_DIR="$STATIC" MAZE_CONTROL_DIR="$run/control" \
-            MAZE_STATUS_DIR="$run/status" MAZE_VERSION=abc1234 PYTHONDONTWRITEBYTECODE=1
+            MAZE_STATUS_DIR="$run/status" MAZE_VERSION=abc1234 MAZE_DEFAULT_LOCALE=fr PYTHONDONTWRITEBYTECODE=1
         exec "$PYTHON" -m uvicorn maze.app:app_factory --factory --host 127.0.0.1 --port "$PORT"
     ) >"$run/server.log" 2>&1 &
     server=$!

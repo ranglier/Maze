@@ -1,34 +1,35 @@
 import CommentsPanel from '../CommentsPanel.jsx';
 import { HistoryPanel } from '../HistoryPanel.jsx';
 import { Icon } from '../ui.jsx';
+import { t } from '../../i18n/index.js';
 
 /** Panneau latéral de la fiche ouverte : sommaire, commentaires, historique des versions. */
 export default function DocSide({ side, doc, openThreads, headings, activeHeading, onHeading, history, comments }) {
   const { sideTab, sideOpen } = side;
   return (
-    <aside className={`doc-side${sideOpen ? ' is-open' : ''}`} aria-label="Panneau latéral">
+    <aside className={`doc-side${sideOpen ? ' is-open' : ''}`} aria-label={t('Panneau latéral')}>
       <div className="doc-side__tabs" role="tablist">
         <button type="button" role="tab" aria-selected={sideTab === 'toc'} className={sideTab === 'toc' ? 'is-active' : ''}
           onClick={side.selectToc}>
-          Sommaire
+          {t('Sommaire')}
         </button>
         <button type="button" role="tab" aria-selected={sideTab === 'comments'} className={sideTab === 'comments' ? 'is-active' : ''}
           onClick={side.showComments}>
-          Commentaires{openThreads > 0 && <span className="doc-side__badge">{openThreads}</span>}
+          {t('Commentaires')}{openThreads > 0 && <span className="doc-side__badge">{openThreads}</span>}
         </button>
         <button type="button" role="tab" aria-selected={sideTab === 'history'} className={sideTab === 'history' ? 'is-active' : ''}
           onClick={side.showHistory}>
-          Historique
+          {t('Historique')}
         </button>
-        <button type="button" className="icon-btn icon-btn--small doc-side__close" aria-label="Fermer le panneau"
+        <button type="button" className="icon-btn icon-btn--small doc-side__close" aria-label={t('Fermer le panneau')}
           onClick={() => side.setSideOpen(false)}>
           <Icon name="close" size={15} />
         </button>
       </div>
       {sideTab === 'toc' ? (
-        <nav className="doc-toc" aria-label="Table des matières">
+        <nav className="doc-toc" aria-label={t('Table des matières')}>
           {headings.length === 0 ? (
-            <p className="muted doc-toc__empty">Les titres de la fiche apparaîtront ici.</p>
+            <p className="muted doc-toc__empty">{t('Les titres de la fiche apparaîtront ici.')}</p>
           ) : (
             <ul>
               {headings.map((h) => (

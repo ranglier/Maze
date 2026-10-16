@@ -2,47 +2,50 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { api } from '../api.js';
 import { Icon, useAction, useConfirm, useToast } from './ui.jsx';
 import { SectionHead, fmtDate } from './AdminPage.jsx';
+import { N_, pt, t, tn } from '../i18n/index.js';
 
+// Accès de Claude à une campagne : libellés traduits à l'affichage (label()).
 const MODES = [
-  { key: 'none', label: 'Aucun' },
-  { key: 'read', label: 'Lecture' },
-  { key: 'write', label: 'Lecture et écriture' },
+  { key: 'none', label: () => t('Aucun') },
+  { key: 'read', label: () => pt('access', 'Lecture') },
+  { key: 'write', label: () => pt('access', 'Lecture et écriture') },
 ];
 
+// Libellés traduits à l'affichage (t(…)) : N_ les signale seulement à l'extraction.
 const TOOL_LABEL = {
-  list_campaigns: 'Liste des campagnes',
-  search: 'Recherche',
-  get_campaign: 'Vue d’ensemble',
-  get_entry: 'Lecture d’une fiche',
-  list_relations: 'Liste des liens',
-  get_document: 'Lecture d’une fiche rédigée',
-  create_entry: 'Création d’une fiche',
-  update_entry: 'Modification d’une fiche',
-  create_relation: 'Création d’un lien',
-  update_relation: 'Modification d’un lien',
-  delete_relation: 'Suppression d’un lien',
-  set_membership: 'Appartenance à une faction',
-  remove_membership: 'Retrait d’une faction',
-  set_place_link: 'Lien avec un lieu',
-  remove_place_link: 'Retrait d’un lieu',
-  create_document: 'Création d’une fiche rédigée',
-  update_document: 'Modification d’une fiche rédigée',
-  add_comment: 'Commentaire',
-  view_image: 'Lecture d’une image',
-  add_image: 'Ajout d’une image',
-  update_image: 'Modification d’une image',
-  edit_image: 'Retouche d’une image',
-  delete_image: 'Suppression d’une image',
-  add_document_image: 'Illustration d’une fiche rédigée',
-  list_library: 'Lecture de la bibliothèque',
-  delete_library_image: 'Retrait de la bibliothèque',
-  list_maps: 'Lecture des cartes interactives',
-  view_map: 'Lecture d’une carte',
-  create_map: 'Création d’une carte',
-  update_map: 'Modification d’une carte',
-  place_on_map: 'Épingle posée sur une carte',
-  remove_from_map: 'Épingle retirée d’une carte',
-  set_place_kind: 'Type de lieux modifié',
+  list_campaigns: N_('Liste des campagnes'),
+  search: N_('Recherche'),
+  get_campaign: N_('Vue d’ensemble'),
+  get_entry: N_('Lecture d’une fiche'),
+  list_relations: N_('Liste des liens'),
+  get_document: N_('Lecture d’une fiche rédigée'),
+  create_entry: N_('Création d’une fiche'),
+  update_entry: N_('Modification d’une fiche'),
+  create_relation: N_('Création d’un lien'),
+  update_relation: N_('Modification d’un lien'),
+  delete_relation: N_('Suppression d’un lien'),
+  set_membership: N_('Appartenance à une faction'),
+  remove_membership: N_('Retrait d’une faction'),
+  set_place_link: N_('Lien avec un lieu'),
+  remove_place_link: N_('Retrait d’un lieu'),
+  create_document: N_('Création d’une fiche rédigée'),
+  update_document: N_('Modification d’une fiche rédigée'),
+  add_comment: N_('Commentaire'),
+  view_image: N_('Lecture d’une image'),
+  add_image: N_('Ajout d’une image'),
+  update_image: N_('Modification d’une image'),
+  edit_image: N_('Retouche d’une image'),
+  delete_image: N_('Suppression d’une image'),
+  add_document_image: N_('Illustration d’une fiche rédigée'),
+  list_library: N_('Lecture de la bibliothèque'),
+  delete_library_image: N_('Retrait de la bibliothèque'),
+  list_maps: N_('Lecture des cartes interactives'),
+  view_map: N_('Lecture d’une carte'),
+  create_map: N_('Création d’une carte'),
+  update_map: N_('Modification d’une carte'),
+  place_on_map: N_('Épingle posée sur une carte'),
+  remove_from_map: N_('Épingle retirée d’une carte'),
+  set_place_kind: N_('Type de lieux modifié'),
 };
 
 const LOG_VISIBLE = 10;   // actions visibles sans défiler ; les suivantes dans la barre de défilement du journal
@@ -72,15 +75,17 @@ function LogTable({ log }) {
     <>
       <div ref={wrapRef} className="table-wrap claude-log" style={height ? { maxHeight: height } : undefined}>
         <table className="table">
-          <thead><tr><th>Date</th><th>Action</th><th>Campagne</th><th>Cible</th><th>Résultat</th></tr></thead>
+          <thead>
+            <tr><th>{t('Date')}</th><th>{t('Action')}</th><th>{t('Campagne')}</th><th>{t('Cible')}</th><th>{t('Résultat')}</th></tr>
+          </thead>
           <tbody>
             {log.map((e) => (
               <tr key={e.id}>
                 <td className="table__nums">{fmtDate(e.at)}</td>
-                <td>{TOOL_LABEL[e.tool] || e.tool}</td>
+                <td>{TOOL_LABEL[e.tool] ? t(TOOL_LABEL[e.tool]) : e.tool}</td>
                 <td>{e.campaign || <span className="muted">-</span>}</td>
                 <td className="table__mono">{e.target}</td>
-                <td>{e.ok ? 'OK' : <span className="claude-log__error" title={e.detail}>{e.detail || 'Échec'}</span>}</td>
+                <td>{e.ok ? t('OK') : <span className="claude-log__error" title={e.detail}>{e.detail || t('Échec')}</span>}</td>
               </tr>
             ))}
           </tbody>
@@ -88,7 +93,8 @@ function LogTable({ log }) {
       </div>
       {log.length > LOG_VISIBLE && (
         <p className="muted claude-log__more">
-          {LOG_VISIBLE} dernières actions affichées sur {log.length} : faites défiler le journal pour voir les précédentes.
+          {t('{shown} dernières actions affichées sur {total} : faites défiler le journal pour voir les précédentes.',
+            { shown: LOG_VISIBLE, total: log.length })}
         </p>
       )}
     </>
@@ -100,9 +106,9 @@ export function CopyField({ label, value, mono = true }) {
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(value);
-      toast(`${label} copié`, 'success');
+      toast(t('{label} copié', { label }), 'success');
     } catch {
-      toast('Copie impossible : sélectionnez le texte à la main.', 'error');
+      toast(t('Copie impossible : sélectionnez le texte à la main.'), 'error');
     }
   };
   return (
@@ -110,7 +116,7 @@ export function CopyField({ label, value, mono = true }) {
       <dt>{label}</dt>
       <dd>
         <code className={mono ? 'table__mono' : ''}>{value}</code>
-        <button type="button" className="icon-btn icon-btn--small" title="Copier" aria-label={`Copier : ${label}`} onClick={copy}>
+        <button type="button" className="icon-btn icon-btn--small" title={t('Copier')} aria-label={t('Copier : {label}', { label })} onClick={copy}>
           <Icon name="copy" size={15} />
         </button>
       </dd>
@@ -141,17 +147,17 @@ export default function ClaudeSection({ campaigns }) {
   };
 
   const toggle = () => save({ enabled: !state.enabled },
-    state.enabled ? 'Accès de Claude suspendu' : 'Accès de Claude activé');
+    state.enabled ? t('Accès de Claude suspendu') : t('Accès de Claude activé'));
 
   const setMode = (campaignId, mode) => save({ grant: { campaign_id: campaignId, mode } });
 
   const generate = async () => {
     if (state.client_id) {
       const yes = await confirm({
-        title: 'Générer un nouveau secret',
-        message: 'Claude sera déconnecté : il faudra saisir le nouvel identifiant et le nouveau secret dans les '
-          + 'paramètres du connecteur sur claude.ai, puis vous reconnecter.',
-        confirmLabel: 'Générer',
+        title: t('Générer un nouveau secret'),
+        message: t('Claude sera déconnecté : il faudra saisir le nouvel identifiant et le nouveau secret dans les '
+          + 'paramètres du connecteur sur claude.ai, puis vous reconnecter.'),
+        confirmLabel: t('Générer'),
       });
       if (!yes) return;
     }
@@ -165,74 +171,78 @@ export default function ClaudeSection({ campaigns }) {
 
   const disconnect = async () => {
     const yes = await confirm({
-      title: 'Déconnecter Claude',
-      message: 'Les connexions en cours sont révoquées. Pour travailler à nouveau avec Claude, il faudra rouvrir la '
-        + 'connexion depuis claude.ai (Connecteurs > Maze > Connecter) et saisir votre mot de passe.',
-      confirmLabel: 'Déconnecter',
+      title: t('Déconnecter Claude'),
+      message: t('Les connexions en cours sont révoquées. Pour travailler à nouveau avec Claude, il faudra rouvrir la '
+        + 'connexion depuis claude.ai (Connecteurs > Maze > Connecter) et saisir votre mot de passe.'),
+      confirmLabel: t('Déconnecter'),
     });
     if (!yes) return;
     setBusy(true);
-    const out = await run(() => api.admin.claudeDisconnect(), 'Claude est déconnecté');
+    const out = await run(() => api.admin.claudeDisconnect(), t('Claude est déconnecté'));
     setBusy(false);
     if (out) setState(out);
   };
 
-  if (!state) return <p className="muted">Chargement…</p>;
+  if (!state) return <p className="muted">{t('Chargement…')}</p>;
   const openCount = state.grants.length;
 
   return (
     <>
-      <SectionHead title="Connecteur Claude"
-        description="Claude (claude.ai) peut lire, et modifier si vous le permettez, les campagnes que vous lui ouvrez ici. Il agit au nom de l’administrateur qui a autorisé la connexion ; ses modifications de fiches rédigées sont gardées dans leur historique.">
+      <SectionHead title={t('Connecteur Claude')}
+        description={t('Claude (claude.ai) peut lire, et modifier si vous le permettez, les campagnes que vous lui ouvrez ici. Il agit au nom de l’administrateur qui a autorisé la connexion ; ses modifications de fiches rédigées sont gardées dans leur historique.')}>
         <button type="button" className={`btn ${state.enabled ? 'btn--ghost' : 'btn--primary'}`} onClick={toggle} disabled={busy}>
-          <Icon name={state.enabled ? 'lock' : 'check'} size={16} /> {state.enabled ? 'Suspendre l’accès' : 'Activer l’accès'}
+          <Icon name={state.enabled ? 'lock' : 'check'} size={16} /> {state.enabled ? t('Suspendre l’accès') : t('Activer l’accès')}
         </button>
       </SectionHead>
 
       <div className={`notice claude-status${state.enabled ? ' notice--success' : ''}`} role="status">
         <span className="claude-status__text">
           <span className={`state-dot state-dot--${state.enabled ? 'success' : 'failed'}`} aria-hidden="true" />
-          {state.enabled
-            ? `Accès actif : Claude peut utiliser ${openCount === 0 ? 'Maze, mais aucune campagne ne lui est ouverte' : `${openCount} campagne(s)`}.`
-            : 'Accès suspendu : Claude ne peut rien lire ni modifier, même connecté.'}
+          {!state.enabled ? t('Accès suspendu : Claude ne peut rien lire ni modifier, même connecté.')
+            : openCount === 0 ? t('Accès actif : Claude peut utiliser Maze, mais aucune campagne ne lui est ouverte.')
+              : tn('Accès actif : Claude peut utiliser {n} campagne.', 'Accès actif : Claude peut utiliser {n} campagnes.', openCount)}
         </span>
       </div>
 
       <section className="admin__block">
-        <h2>Connexion à claude.ai</h2>
+        <h2>{t('Connexion à claude.ai')}</h2>
         <dl className="facts claude-facts">
-          <CopyField label="URL du serveur" value={state.mcp_url} />
-          {state.client_id && <CopyField label="Identifiant client" value={state.client_id} />}
+          <CopyField label={t('URL du serveur')} value={state.mcp_url} />
+          {state.client_id && <CopyField label={t('Identifiant client')} value={state.client_id} />}
         </dl>
         {secret && (
           <div className="notice claude-secret">
-            <dl className="claude-secret__field"><CopyField label="Secret client" value={secret} /></dl>
-            <span className="muted">Copiez-le maintenant : il ne sera plus affiché.</span>
+            <dl className="claude-secret__field"><CopyField label={t('Secret client')} value={secret} /></dl>
+            <span className="muted">{t('Copiez-le maintenant : il ne sera plus affiché.')}</span>
           </div>
         )}
         <p>
           <button type="button" className={`btn ${state.client_id ? 'btn--ghost' : 'btn--primary'}`} onClick={generate} disabled={busy}>
-            <Icon name="refresh" size={16} /> {state.client_id ? 'Générer un nouveau secret' : 'Générer l’identifiant et le secret'}
+            <Icon name="refresh" size={16} /> {state.client_id ? t('Générer un nouveau secret') : t('Générer l’identifiant et le secret')}
           </button>
         </p>
         <ol className="claude-steps">
-          {!state.enabled && <li><strong>Activer l’accès</strong> (bouton en haut de cette page) et ouvrir au moins une campagne ci-dessous.</li>}
-          <li>Sur claude.ai : <strong>Paramètres &gt; Connecteurs &gt; Ajouter un connecteur personnalisé</strong>.</li>
-          <li>Nom : <strong>Maze</strong> ; URL : l’URL du serveur ci-dessus.</li>
-          <li><strong>Paramètres avancés</strong> : l’identifiant client et le secret client.</li>
-          <li><strong>Connecter</strong> : Maze demande votre identifiant et votre mot de passe d’administrateur, puis <strong>Autoriser</strong>.</li>
-          <li>Dans une conversation, activez le connecteur Maze depuis le menu des outils quand vous voulez travailler avec Claude.</li>
+          {!state.enabled && (
+            <li>{t('{activate} (bouton en haut de cette page) et ouvrir au moins une campagne ci-dessous.',
+              { activate: <strong>{t('Activer l’accès')}</strong> })}</li>
+          )}
+          <li>{t('Sur claude.ai : {path}.', { path: <strong>{t('Paramètres > Connecteurs > Ajouter un connecteur personnalisé')}</strong> })}</li>
+          <li>{t('Nom : {name} ; URL : l’URL du serveur ci-dessus.', { name: <strong>Maze</strong> })}</li>
+          <li>{t('{advanced} : l’identifiant client et le secret client.', { advanced: <strong>{t('Paramètres avancés')}</strong> })}</li>
+          <li>{t('{connect} : Maze demande votre identifiant et votre mot de passe d’administrateur, puis {authorize}.',
+            { connect: <strong>{t('Connecter')}</strong>, authorize: <strong>{t('Autoriser')}</strong> })}</li>
+          <li>{t('Dans une conversation, activez le connecteur Maze depuis le menu des outils quand vous voulez travailler avec Claude.')}</li>
         </ol>
       </section>
 
       <section className="admin__block">
-        <h2>Campagnes ouvertes à Claude</h2>
-        {!campaigns ? <p className="muted">Chargement…</p> : campaigns.length === 0 ? (
-          <p className="muted">Aucune campagne pour l’instant.</p>
+        <h2>{t('Campagnes ouvertes à Claude')}</h2>
+        {!campaigns ? <p className="muted">{t('Chargement…')}</p> : campaigns.length === 0 ? (
+          <p className="muted">{t('Aucune campagne pour l’instant.')}</p>
         ) : (
           <div className="table-wrap">
             <table className="table">
-              <thead><tr><th>Campagne</th><th>Accès de Claude</th></tr></thead>
+              <thead><tr><th>{t('Campagne')}</th><th>{t('Accès de Claude')}</th></tr></thead>
               <tbody>
                 {campaigns.map((c) => {
                   const current = modes.get(c.id) || 'none';
@@ -240,12 +250,12 @@ export default function ClaudeSection({ campaigns }) {
                     <tr key={c.id}>
                       <td><strong>{c.name}</strong></td>
                       <td>
-                        <div className="segmented segmented--compact" role="radiogroup" aria-label={`Accès de Claude à ${c.name}`}>
+                        <div className="segmented segmented--compact" role="radiogroup" aria-label={t('Accès de Claude à {name}', { name: c.name })}>
                           {MODES.map((m) => (
                             <button key={m.key} type="button" role="radio" aria-checked={current === m.key}
                               className={current === m.key ? 'is-active' : ''} disabled={busy}
                               onClick={() => current !== m.key && setMode(c.id, m.key)}>
-                              {m.label}
+                              {m.label()}
                             </button>
                           ))}
                         </div>
@@ -260,14 +270,14 @@ export default function ClaudeSection({ campaigns }) {
       </section>
 
       <section className="admin__block">
-        <h2>Connexions</h2>
+        <h2>{t('Connexions')}</h2>
         {state.sessions.length === 0 ? (
-          <p className="muted">Claude n’est pas connecté.</p>
+          <p className="muted">{t('Claude n’est pas connecté.')}</p>
         ) : (
           <>
             <div className="table-wrap">
               <table className="table">
-                <thead><tr><th>Autorisée par</th><th>Autorisée le</th><th>Dernière activité</th></tr></thead>
+                <thead><tr><th>{t('Autorisée par')}</th><th>{t('Autorisée le')}</th><th>{t('Dernière activité')}</th></tr></thead>
                 <tbody>
                   {state.sessions.map((s) => (
                     <tr key={s.id}><td>{s.user}</td><td>{fmtDate(s.authorized_at)}</td><td>{fmtDate(s.last_used_at)}</td></tr>
@@ -277,7 +287,7 @@ export default function ClaudeSection({ campaigns }) {
             </div>
             <p className="claude-actions">
               <button type="button" className="btn btn--ghost btn--danger-text" onClick={disconnect} disabled={busy}>
-                <Icon name="logout" size={16} /> Déconnecter Claude
+                <Icon name="logout" size={16} /> {t('Déconnecter Claude')}
               </button>
             </p>
           </>
@@ -285,8 +295,8 @@ export default function ClaudeSection({ campaigns }) {
       </section>
 
       <section className="admin__block">
-        <h2>Journal</h2>
-        {state.log.length === 0 ? <p className="muted">Aucune action pour l’instant.</p> : <LogTable log={state.log} />}
+        <h2>{t('Journal')}</h2>
+        {state.log.length === 0 ? <p className="muted">{t('Aucune action pour l’instant.')}</p> : <LogTable log={state.log} />}
       </section>
     </>
   );

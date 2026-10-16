@@ -4,6 +4,7 @@ import { readFile, writeFile, rm, mkdir, cp } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { schemaFingerprint } from './schema-fingerprint.mjs';
+import { i18nCatalogsPlugin } from './i18n-catalogs.mjs';
 
 // fileURLToPath, pas URL.pathname : chemin décodé (espaces, accents) et valable sous Windows (audit FRONT-8).
 const root = path.dirname(fileURLToPath(import.meta.url));
@@ -63,7 +64,7 @@ const options = {
     'process.env.NODE_ENV': JSON.stringify(watch ? 'development' : 'production'),
     __MAZE_SCHEMA_VERSION__: JSON.stringify(schemaInfo.version),
   },
-  plugins: [{
+  plugins: [i18nCatalogsPlugin(), {
     name: 'index-html',
     setup(b) {
       b.onEnd(async (result) => { if (result.metafile) await writeIndex(result.metafile); });

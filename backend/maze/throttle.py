@@ -46,6 +46,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from . import db
+from .i18n import msgn
 
 WINDOW = 600.0
 MAX_PER_ADDRESS = 8
@@ -199,14 +200,14 @@ def _address_refusal(address: str, now: float) -> Refused:
     oldest = by_address.oldest(address)
     wait = _seconds((oldest if oldest is not None else now) + WINDOW - now)
     minutes = math.ceil(wait / 60)
-    return Refused(f"Trop de tentatives depuis cette adresse. Réessayez dans {minutes} minute"
-                   f"{'s' if minutes > 1 else ''}.", wait)
+    return Refused(msgn("Trop de tentatives depuis cette adresse. Réessayez dans {n} minute.",
+                        "Trop de tentatives depuis cette adresse. Réessayez dans {n} minutes.", minutes), wait)
 
 
 def _busy_refusal(wait: float) -> Refused:
     seconds = _seconds(wait)
-    return Refused(f"Trop de tentatives en cours sur ce compte. Réessayez dans {seconds} seconde"
-                   f"{'s' if seconds > 1 else ''}.", seconds)
+    return Refused(msgn("Trop de tentatives en cours sur ce compte. Réessayez dans {n} seconde.",
+                        "Trop de tentatives en cours sur ce compte. Réessayez dans {n} secondes.", seconds), seconds)
 
 
 def account_delay(attempts: int) -> float:
