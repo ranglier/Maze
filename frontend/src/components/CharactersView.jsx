@@ -9,7 +9,7 @@ import { EntryShell } from './EntryNotes.jsx';
 import RelationDialog from './RelationDialog.jsx';
 import { Icon, useAction } from './ui.jsx';
 import { useTreeDrag } from './treeDrag.js';
-import { compareText, t, tn } from '../i18n/index.js';
+import { compareText, pt, t, tn } from '../i18n/index.js';
 
 /*
  * Onglet Personnages : index de tous les PNJ et factions de la campagne (à gauche, rangés par
@@ -315,7 +315,7 @@ function CharacterList({ graph, campaignName, currentId, onOpen, onCreate, onReo
           onChange={(e) => setQuery(e.target.value)} aria-label={t('Rechercher dans les personnages')} />
         <div className="char-list__row">
           <div className="segmented segmented--small" role="radiogroup" aria-label={t('Afficher')}>
-            {[['all', t('Tous')], ['npc', t('PNJ')], ['faction', t('Factions')]].map(([k, label]) => (
+            {[['all', t('Tous')], ['npc', pt('filtre', 'PNJ')], ['faction', t('Factions')]].map(([k, label]) => (
               <button key={k} type="button" role="radio" aria-checked={show === k} className={show === k ? 'is-active' : ''}
                 onClick={() => setShow(k)}>{label}</button>
             ))}

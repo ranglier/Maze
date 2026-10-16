@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { api } from '../api.js';
 import { NPC_STATUS, placeKind } from '../constants.js';
-import { N_, t } from '../i18n/index.js';
+import { pt, t } from '../i18n/index.js';
 import { initialsAvatar, storage } from '../util.js';
 import { Icon, KindImage, useDialogLayer } from './ui.jsx';
 
@@ -12,13 +12,13 @@ import { Icon, KindImage, useDialogLayer } from './ui.jsx';
  * marqueurs \u0002 et \u0003, transformés ici en <mark> (aucun HTML interprété).
  */
 
-// Libellés traduits à l'affichage (t(g.label)) : N_ les signale seulement à l'extraction.
+// Titres traduits à l'affichage (g.title()) : jamais figés au chargement du module.
 const GROUPS = [
-  { kind: 'npc', label: N_('PNJ') },
-  { kind: 'faction', label: N_('Factions') },
-  { kind: 'place', label: N_('Lieux') },
-  { kind: 'document', label: N_('Fiches rédigées') },
-  { kind: 'comment', label: N_('Commentaires') },
+  { kind: 'npc', title: () => pt('filtre', 'PNJ') },
+  { kind: 'faction', title: () => t('Factions') },
+  { kind: 'place', title: () => t('Lieux') },
+  { kind: 'document', title: () => t('Fiches rédigées') },
+  { kind: 'comment', title: () => t('Commentaires') },
 ];
 
 export function Highlight({ text }) {
@@ -153,7 +153,7 @@ export default function SearchPalette({ campaign, multiple, onClose, onNavigate 
             <p className="palette__hint">{t('Aucun résultat pour « {query} ».', { query: query.trim() })}</p>
           ) : groups.map((g) => (
             <section key={g.kind} className="palette__group">
-              <h3>{t(g.label)}</h3>
+              <h3>{g.title()}</h3>
               <ul>
                 {g.items.map((r) => {
                   index += 1;
