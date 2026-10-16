@@ -1,22 +1,25 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api.js';
 import { Icon, Modal, useAction } from './ui.jsx';
+import { N_, t } from '../i18n/index.js';
 
 const FILTERS = [
-  { key: 'all', label: 'Toutes' },
-  { key: 'library', label: 'Bibliothèque' },
-  { key: 'gallery', label: 'Fiches' },
-  { key: 'document', label: 'Scénarios' },
-  { key: 'map', label: 'Cartes' },
+  { key: 'all', label: N_('Toutes') },
+  { key: 'library', label: N_('Bibliothèque') },
+  { key: 'gallery', label: N_('Fiches') },
+  { key: 'document', label: N_('Scénarios') },
+  { key: 'map', label: N_('Cartes') },
 ];
 
 /**
  * Choix d'une image déjà dans la campagne (bibliothèque, galeries, illustrations des fiches rédigées).
  * onPick({ source, id, set_cover }) fait la copie ; renvoie une valeur vraie si elle a réussi.
- * coverLabel : propose « en faire le portrait / l'emblème / l'illustration » (galerie d'une fiche).
+ * coverLabel : libellé traduit de la case « En faire le portrait / l'emblème / l'illustration » (galerie d'une fiche) ;
+ * absent : pas de case.
+ * title : titre traduit (défaut : « Choisir une image de Maze »).
  * onUpload(files) : propose aussi l'envoi depuis l'ordinateur (éditeur des fiches rédigées).
  */
-export default function ImagePicker({ campaignId, title = 'Choisir une image de Maze', coverLabel, onPick, onUpload, onClose }) {
+export default function ImagePicker({ campaignId, title, coverLabel, onPick, onUpload, onClose }) {
   const [images, setImages] = useState(null);
   const [filter, setFilter] = useState('all');
   const [query, setQuery] = useState('');
@@ -50,13 +53,13 @@ export default function ImagePicker({ campaignId, title = 'Choisir une image de 
   };
 
   return (
-    <Modal title={title} onClose={onClose} wide
+    <Modal title={title || t('Choisir une image de Maze')} onClose={onClose} wide
       footer={(
         <>
           {onUpload && (
             <>
               <button type="button" className="btn btn--ghost image-picker__upload" onClick={() => fileRef.current?.click()} disabled={busy}>
-                <Icon name="upload" size={16} /> Depuis l’ordinateur…
+                <Icon name="upload" size={16} /> {t('Depuis l’ordinateur…')}
               </button>
               <input ref={fileRef} type="file" accept="image/*" hidden
                 onChange={async (e) => {
@@ -71,29 +74,29 @@ export default function ImagePicker({ campaignId, title = 'Choisir une image de 
             </>
           )}
           <button type="button" className="btn btn--primary" onClick={pick} disabled={!choice || busy}>
-            <Icon name="check" size={16} /> {busy ? 'Ajout…' : 'Utiliser cette image'}
+            <Icon name="check" size={16} /> {busy ? t('Ajout…') : t('Utiliser cette image')}
           </button>
         </>
       )}>
       <div className="image-picker">
         <div className="image-picker__bar">
-          <div className="segmented segmented--compact" role="tablist" aria-label="Provenance">
+          <div className="segmented segmented--compact" role="tablist" aria-label={t('Provenance')}>
             {FILTERS.map((f) => (
               <button key={f.key} type="button" role="tab" aria-selected={filter === f.key}
-                className={filter === f.key ? 'is-active' : ''} onClick={() => setFilter(f.key)}>{f.label}</button>
+                className={filter === f.key ? 'is-active' : ''} onClick={() => setFilter(f.key)}>{t(f.label)}</button>
             ))}
           </div>
-          <input type="search" placeholder="Rechercher…" value={query} onChange={(e) => setQuery(e.target.value)}
-            aria-label="Rechercher une image" />
+          <input type="search" placeholder={t('Rechercher…')} value={query} onChange={(e) => setQuery(e.target.value)}
+            aria-label={t('Rechercher une image')} />
         </div>
-        {!images ? <p className="muted">Chargement…</p> : shown.length === 0 ? (
+        {!images ? <p className="muted">{t('Chargement…')}</p> : shown.length === 0 ? (
           <p className="muted image-picker__empty">
             {images.length === 0
-              ? 'Aucune image dans cette campagne. Un administrateur peut en déposer dans la bibliothèque (Administration > Images).'
-              : 'Aucune image ne correspond.'}
+              ? t('Aucune image dans cette campagne. Un administrateur peut en déposer dans la bibliothèque (Administration > Images).')
+              : t('Aucune image ne correspond.')}
           </p>
         ) : (
-          <ul className="image-picker__grid" role="listbox" aria-label="Images de la campagne">
+          <ul className="image-picker__grid" role="listbox" aria-label={t('Images de la campagne')}>
             {shown.map((img) => {
               const key = `${img.source}-${img.id}`;
               return (
@@ -113,13 +116,13 @@ export default function ImagePicker({ campaignId, title = 'Choisir une image de 
           <div className="image-picker__choice">
             <img src={choice.url} alt="" />
             <div>
-              <strong>{choice.caption || 'Sans légende'}</strong>
+              <strong>{choice.caption || t('Sans légende')}</strong>
               <span className="muted">{choice.origin} · {choice.width}×{choice.height}</span>
               {coverLabel && (
                 <label className="check"><input type="checkbox" checked={asCover} onChange={(e) => setAsCover(e.target.checked)} />
-                  En faire {coverLabel}</label>
+                  {coverLabel}</label>
               )}
-              <span className="muted">Une copie est ajoutée : l’image d’origine ne change pas.</span>
+              <span className="muted">{t('Une copie est ajoutée : l’image d’origine ne change pas.')}</span>
             </div>
           </div>
         )}
