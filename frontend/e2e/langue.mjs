@@ -6,8 +6,9 @@
 //      par le compte (rechargement) ; Automatique : retour à la langue du navigateur.
 //   3. Écran de connexion : petit sélecteur de langue, choix gardé dans le navigateur (rechargement), Automatique.
 //   4. Navigateur en français, compte réglé sur English : interface en anglais ; le compte l'emporte.
-// Seuls les fichiers transversaux sont traduits à ce stade (App, menu du compte, écran de connexion…) : le parcours
-// ne vérifie qu'eux. Captures en anglais dans MAZE_E2E_SHOTS (langue-en-*.png).
+// Le parcours vérifie l'ordre de choix de la langue sur les écrans transversaux (App, menu du compte, écran de
+// connexion) ; les écrans de chaque onglet en anglais sont vérifiés par interface-anglaise.mjs. Captures en anglais
+// dans MAZE_E2E_SHOTS (langue-en-*.png).
 //
 // Base vide ou déjà initialisée. Usage : node langue.mjs [url]   (défaut : $MAZE_URL ou http://127.0.0.1:8765)
 // Variables : MAZE_E2E_USER (admin), MAZE_E2E_PASSWORD (requis si la base a déjà un compte), HEADED=1,
