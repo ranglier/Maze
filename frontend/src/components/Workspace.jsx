@@ -14,7 +14,7 @@ import { subtreeIds } from './PlacesView.jsx';
 import { AddToMap, MapPicker, ScenarioBanner } from './ScenarioFilter.jsx';
 import { castOf, neighborsOf, scenariosOf } from '../cast.js';
 import { Icon, useConfirm, useToast } from './ui.jsx';
-import { t, useLocale } from '../i18n/index.js';
+import { pt, t, useLocale } from '../i18n/index.js';
 import { confirmDiscard } from '../session.js';
 import { TOUCH, isLandscapePhone, isPhone } from '../viewport.js';
 
@@ -442,7 +442,7 @@ export default function Workspace({
           />
         )}
         {!view && !badScenario && !scenarioMap?.error && !(mode === 'place' && placesData && !placeItem) && (
-          <div className="stage__loading" aria-busy="true">{t('Chargement de la carte…')}</div>
+          <div className="stage__loading" aria-busy="true">{pt('graph', 'Chargement de la carte…')}</div>
         )}
         {busy && <div className="stage__busy" role="status"><span className="spinner" /> {t('Réorganisation…')}</div>}
 

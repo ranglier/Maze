@@ -3,7 +3,7 @@ import { normalize, nodeId } from '../util.js';
 import { castOf, scenariosOf } from '../cast.js';
 import { Icon } from './ui.jsx';
 import { useSheet } from '../viewport.js';
-import { compareText, t, tn, useLocale } from '../i18n/index.js';
+import { compareText, pt, t, tn, useLocale } from '../i18n/index.js';
 
 /*
  * Cartes des relations : une par scénario, plus la carte des factions de la campagne.
@@ -136,7 +136,7 @@ function bannerTitle(verb, title, count) {
 export function ScenarioBanner({
   title, count, hiddenCount, neighbors, onNeighbors, onOpenDoc, onClear,
   icon = 'book', verb = 'citée', // i18n-ignore (identifiant de l'infobulle, voir bannerTitle)
-  openLabel = t('Ouvrir la fiche'), clearLabel = t('Retirer le filtre'),
+  openLabel = pt('page', 'Ouvrir la fiche'), clearLabel = t('Retirer le filtre'),
 }) {
   const [open, setOpen] = useState(false);
   return (

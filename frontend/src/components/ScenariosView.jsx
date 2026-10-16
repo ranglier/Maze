@@ -8,7 +8,7 @@ import { LiveDocument } from '../editor/live.js';
 import { storage } from '../util.js';
 import { fmtDate } from './AdminPage.jsx';
 import { useAction, useConfirm, useToast } from './ui.jsx';
-import { t, tn } from '../i18n/index.js';
+import { pt, t, tn } from '../i18n/index.js';
 import DocTree from './scenarios/DocTree.jsx';
 import DocBar from './scenarios/DocBar.jsx';
 import DocSide from './scenarios/DocSide.jsx';
@@ -270,7 +270,7 @@ export default function ScenariosView({ campaign, user, header, trailing, docId,
     if (pendingMeta.current?.id === item.id) pendingMeta.current = null;
     const wasOpen = item.id === currentId || isDescendant(item.id, currentId);
     deletingRef.current = wasOpen;
-    const done = await run(() => api.deleteDocument(item.id), t('Fiche supprimée'));
+    const done = await run(() => api.deleteDocument(item.id), pt('toast', 'Fiche supprimée'));
     if (done === undefined) {
       deletingRef.current = false;
       return;

@@ -8,7 +8,7 @@ import CommentsPanel from './CommentsPanel.jsx';
 import { HistoryPanel, versionDate, versionTitle } from './HistoryPanel.jsx';
 import { useKinds } from './PlaceIcon.jsx';
 import { Icon, Markdown, useAction, useConfirm, useToast } from './ui.jsx';
-import { N_, t, tn } from '../i18n/index.js';
+import { N_, pt, t, tn } from '../i18n/index.js';
 
 /*
  * Panneau latéral des fiches PNJ, factions et lieux (pleine page) : Sommaire, Commentaires, Historique,
@@ -375,7 +375,7 @@ export function EntryShell({
     const isThread = comment.parent_id === null;
     const yes = await confirm({
       title: isThread ? t('Supprimer le fil') : t('Supprimer la réponse'),
-      message: isThread ? t('Le commentaire et toutes ses réponses seront supprimés. Le texte de la fiche n’est pas modifié.')
+      message: isThread ? pt('sheet', 'Le commentaire et toutes ses réponses seront supprimés. Le texte de la fiche n’est pas modifié.')
         : t('Cette réponse sera supprimée.'),
       confirmLabel: t('Supprimer'),
     });
@@ -441,7 +441,7 @@ export function EntryShell({
   };
 
   const createVersion = async (label) => {
-    const created = await run(() => api.createEntryVersion(kind, id, { label }), t('Version enregistrée'));
+    const created = await run(() => api.createEntryVersion(kind, id, { label }), pt('toast', 'Version enregistrée'));
     if (!created) return false;
     loadVersions();
     return true;
@@ -458,7 +458,7 @@ export function EntryShell({
   const deleteVersion = async (v) => {
     const yes = await confirm({
       title: t('Supprimer cette version'),
-      message: t('La version du {date} sera supprimée de l’historique. Le contenu actuel de la fiche ne change pas.',
+      message: pt('sheet', 'La version du {date} sera supprimée de l’historique. Le contenu actuel de la fiche ne change pas.',
         { date: versionDate(v) }),
       confirmLabel: t('Supprimer'),
     });
@@ -478,7 +478,7 @@ export function EntryShell({
       confirmLabel: t('Restaurer'),
     });
     if (!yes) return;
-    const done = await run(() => api.restoreEntryVersion(kind, id, v.id), t('Version restaurée'));
+    const done = await run(() => api.restoreEntryVersion(kind, id, v.id), pt('toast', 'Version restaurée'));
     if (!done) return;
     setVersionView(null);
     await onRestored?.();

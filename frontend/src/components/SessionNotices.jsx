@@ -100,7 +100,7 @@ function LostEdit({ entry }) {
         </p>
       )}
       <div className="session-notice__actions">
-        {href && entry.status !== 'saving' && <a className="btn btn--small btn--ghost" href={href}>{t('Ouvrir la fiche')}</a>}
+        {href && entry.status !== 'saving' && <a className="btn btn--small btn--ghost" href={href}>{pt('page', 'Ouvrir la fiche')}</a>}
         {entry.html && (
           <>
             <button type="button" className="btn btn--small btn--ghost"
