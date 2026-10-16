@@ -3,7 +3,7 @@ import { api } from '../api.js';
 import GraphView from '../graph/GraphView.jsx';
 import { DEFAULT_FILTERS, buildElements } from '../graph/elements.js';
 import { KIND_LABEL, NPC_STATUS } from '../constants.js';
-import { nodeId, normalize, parseNodeId, storage } from '../util.js';
+import { memberNodeId, nodeId, normalize, parseNodeId, storage } from '../util.js';
 import { typeIndex } from '../relationTypes.js';
 import CreateDialog from './CreateDialog.jsx';
 import EntityPanel from './EntityPanel.jsx';
@@ -55,7 +55,7 @@ function restrict(graph, keep, pos) {
     ...graph,
     npcs: graph.npcs.filter((n) => keep.has(nodeId('npc', n.id))).map((n) => at('npc', n)),
     factions: graph.factions.filter((f) => keep.has(nodeId('faction', f.id))).map((f) => at('faction', f)),
-    memberships: graph.memberships.filter((m) => keep.has(nodeId('npc', m.npc_id)) && keep.has(nodeId('faction', m.faction_id))),
+    memberships: graph.memberships.filter((m) => keep.has(memberNodeId(m)) && keep.has(nodeId('faction', m.faction_id))),
     relations: graph.relations.filter((r) => keep.has(nodeId(r.source_kind, r.source_id)) && keep.has(nodeId(r.target_kind, r.target_id))),
   };
 }
@@ -249,7 +249,7 @@ export default function Workspace({
   const openEdge = useCallback(async (id) => {
     if (id.startsWith('mem-')) {
       const m = graph.memberships.find((x) => `mem-${x.id}` === id);
-      if (m) openNode(nodeId('npc', m.npc_id));
+      if (m) openNode(memberNodeId(m));
       return;
     }
     const r = graph.relations.find((x) => `rel-${x.id}` === id);

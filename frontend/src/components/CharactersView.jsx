@@ -182,6 +182,7 @@ function CharacterList({ graph, campaignName, currentId, onOpen, onCreate, onReo
     const membersOf = new Map(graph.factions.map((f) => [f.id, []]));
     const inFaction = new Set();
     for (const m of graph.memberships) {
+      if (m.npc_id == null) continue; // sous-faction : pas dans les groupes de PNJ
       inFaction.add(m.npc_id);
       membersOf.get(m.faction_id)?.push(m);
     }

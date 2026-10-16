@@ -26,7 +26,7 @@ const LAYOUT = {
   // Carte resserrée, lisible en vue d'ensemble : les noms des fiches priment ; les natures de lien
   // s'affichent en zoomant ou au survol, la disposition n'allonge plus les liens pour elles.
   nodeRepulsion: () => 8000,
-  idealEdgeLength: (edge) => (edge.hasClass('membership') ? 70 : 105),
+  idealEdgeLength: (edge) => (edge.hasClass('faction-member') ? 200 : edge.hasClass('membership') ? 70 : 105),
   edgeElasticity: (edge) => (edge.hasClass('membership') ? 0.6 : 0.4),
   nodeSeparation: 60,
   gravity: 0.3,
