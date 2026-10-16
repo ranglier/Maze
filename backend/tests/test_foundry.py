@@ -395,6 +395,60 @@ class FoundryApiTest(unittest.TestCase):
         # Lise est présente au bar cité : voisine. L'export complet reste là (5 PNJ).
         self.assertEqual(len(data["npcs"]), 5)
 
+    def test_nested_factions(self):
+        """Factions imbriquées (migration 031) : la page d'une faction liste ses sous-factions, celle d'une
+        sous-faction ses factions parentes (« Membre de ») ; une faction sans imbrication garde sa page et son
+        empreinte ; une sous-faction citée dans un scénario y amène ses factions parentes en fiches liées."""
+        s = self.s
+        cid = self.campaign("Imbriquées")
+        mk = lambda path, data: s.call("POST", path, data)[1]  # noqa: E731
+        council = mk(f"/api/campaigns/{cid}/factions", {"name": "Conseil du Port", "summary": "Assemblée."})
+        watch = mk(f"/api/campaigns/{cid}/factions", {"name": "Garde"})
+        house = mk(f"/api/campaigns/{cid}/factions", {"name": "Valcourt"})
+        hart = mk(f"/api/campaigns/{cid}/npcs", {"name": "Hart"})
+        s.call("POST", "/api/memberships", {"npc_id": hart["id"], "faction_id": watch["id"], "role": "Capitaine",
+                                            "is_leader": True})
+        _, created = s.call("POST", "/api/admin/foundry/tokens", {"name": "Imbriquées", "campaigns": [cid]})
+        self.addCleanup(s.call, "DELETE", f"/api/admin/foundry/tokens/{created['token_id']}")
+
+        def export() -> dict:
+            return json.loads(self.fetch(f"/api/foundry/v1/campaigns/{cid}/export", token=created["token"])[2])
+
+        def by_id(data: dict) -> dict:
+            return {f["id"]: f for f in data["factions"]}
+
+        before = by_id(export())
+        nested = [s.call("POST", "/api/memberships", {"member_faction_id": sub["id"], "faction_id": council["id"],
+                                                      "role": role})[1]
+                  for sub, role in ((watch, "Bras armé"), (house, ""))]
+        sc = mk(f"/api/campaigns/{cid}/documents", {
+            "title": "Ronde", "content": f'<p><a class="mention" data-mention="faction:{watch["id"]}">Garde</a></p>'})
+        data = export()
+        after = by_id(data)
+        link = foundry._link
+        self.assertIn("<h2>Sous-factions</h2><ul>"
+                      f"<li><p>{link('faction', watch['id'], 'Garde')} : Bras armé</p></li>"
+                      f"<li><p>{link('faction', house['id'], 'Valcourt')}</p></li></ul>", after[council["id"]]["html"])
+        self.assertIn(f"<strong>Membre de :</strong> {link('faction', council['id'], 'Conseil du Port')} (Bras armé)",
+                      after[watch["id"]]["html"])
+        self.assertIn(f"<strong>Chef :</strong> {link('npc', hart['id'], 'Hart')}", after[watch["id"]]["html"])
+        self.assertNotIn("Sous-factions", after[watch["id"]]["html"])
+        self.assertNotEqual(after[council["id"]]["hash"], before[council["id"]]["hash"])
+        ronde = next(x for x in data["scenarios"] if x["id"] == sc["id"])
+        self.assertEqual(ronde["cast"]["faction"], [watch["id"]])
+        self.assertEqual(ronde["related"]["faction"], [council["id"]])
+        # Pages en anglais : intitulés traduits.
+        en = json.loads(self.fetch(f"/api/foundry/v1/campaigns/{cid}/export?lang=en", token=created["token"])[2])
+        self.assertIn("<h2>Sub-factions</h2>", by_id(en)[council["id"]]["html"])
+        self.assertIn("<strong>Member of:</strong>", by_id(en)[watch["id"]]["html"])
+        # Imbrication retirée : pages et empreintes exactement celles d'avant.
+        for m in nested:
+            s.call("DELETE", f"/api/memberships/{m['id']}")
+        s.call("DELETE", f"/api/documents/{sc['id']}")
+        again = by_id(export())
+        for fid in (council["id"], watch["id"], house["id"]):
+            self.assertEqual((again[fid]["html"], again[fid]["hash"]), (before[fid]["html"], before[fid]["hash"]))
+
     def test_grant_removed_with_campaign(self):
         s = self.s
         _, camp = s.call("POST", "/api/campaigns", {"name": "Éphémère"})
