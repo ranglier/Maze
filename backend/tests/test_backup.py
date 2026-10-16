@@ -17,7 +17,9 @@ from pathlib import Path
 
 from PIL import Image
 
-from tests.test_api import Server, multipart, png_bytes, rewind_schema, undo_entry_revision
+from tests.test_api import (
+    Server, multipart, png_bytes, rewind_schema, undo_entry_revision, undo_user_locale,
+)
 from tests.test_maps import form
 
 BACKEND = Path(__file__).resolve().parents[1]
@@ -981,6 +983,7 @@ class AccessSettingsRestoreTest(unittest.TestCase):
             with sqlite3.connect(db_path) as conn:
                 conn.execute("ALTER TABLE mcp_log DROP COLUMN campaign_name")
                 undo_entry_revision(conn)   # migration 025
+                undo_user_locale(conn)   # migration 030
                 rewind_schema(conn, 23)
             db.migrate(db_path)
             with sqlite3.connect(db_path) as conn:

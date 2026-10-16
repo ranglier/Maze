@@ -36,6 +36,8 @@ services:
       MAZE_PUBLIC_URL: ${MAZE_PUBLIC_URL:-}
       # Code source proposé aux utilisateurs (AGPL, section 13), dans .env ; vide : https://github.com/ranglier/Maze.
       MAZE_SOURCE_URL: ${MAZE_SOURCE_URL:-}
+      # Langue par défaut de l'interface et des messages (fr, en), après celles du compte et du navigateur, dans .env.
+      MAZE_DEFAULT_LOCALE: ${MAZE_DEFAULT_LOCALE:-fr}
       # Archives de sauvegarde conservées par nature (vide : valeurs par défaut), dans .env.
       MAZE_BACKUP_KEEP: ${MAZE_BACKUP_KEEP:-}
     secrets:

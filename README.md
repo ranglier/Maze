@@ -119,7 +119,7 @@ Next: schedule the daily backup and install the update service (below). A step-b
 
 ## Configuration
 
-With Docker, `.env` feeds `MAZE_BIND`, `FORWARDED_ALLOW_IPS`, `MAZE_PUBLIC_URL`, `MAZE_SOURCE_URL` and `MAZE_BACKUP_KEEP` to `docker-compose.yml`; set other variables under `environment:` in a `docker-compose.override.yml`, then `docker compose up -d`.
+With Docker, `.env` feeds `MAZE_BIND`, `FORWARDED_ALLOW_IPS`, `MAZE_PUBLIC_URL`, `MAZE_SOURCE_URL`, `MAZE_DEFAULT_LOCALE` and `MAZE_BACKUP_KEEP` to `docker-compose.yml`; set other variables under `environment:` in a `docker-compose.override.yml`, then `docker compose up -d`.
 
 | Variable | Default | Purpose |
 |---|---|---|
@@ -138,6 +138,7 @@ With Docker, `.env` feeds `MAZE_BIND`, `FORWARDED_ALLOW_IPS`, `MAZE_PUBLIC_URL`,
 | MAZE_STATIC_DIR | /app/static in the image (`backend/maze/static` otherwise) | Built interface served by Maze (`frontend/dist` in development) |
 | MAZE_DB_WRITE_THREADS / MAZE_DB_READ_THREADS | 5 / 11 | Threads reserved for database writes and reads (writes waiting for a lock never delay reads) |
 | MAZE_PUBLIC_URL | (empty: derived from requests) | Public address, e.g. https://maze.example.org: OAuth addresses and MCP server URL of the Claude connector, Foundry module manifest |
+| MAZE_DEFAULT_LOCALE | fr | Language of the interface and of server messages when neither the account (account menu > Language) nor the browser asks for a language Maze knows: `fr` or `en`. Order: account setting, then browser language, then this value |
 | MAZE_SOURCE_URL | https://github.com/ranglier/Maze | Where users of this instance can get its source code: "Code source (AGPL-3.0)" link on the login screen and in the account menu, as section 13 of the AGPL requires. A modified fork must point it to its own source code (see [License](#license)) |
 | MAZE_MAP_FONT | (empty) | TrueType font for map previews sent to Claude (`view_map`), tried before DejaVu Sans (in the image) and Pillow's font (no accents). Only useful outside the image |
 | MAZE_LIVE_MAX_PER_USER / MAZE_LIVE_MAX_TOTAL | 12 / 100 | Simultaneous real-time editing connections, per account and for the whole instance; beyond that, the page shows why and the browser retries later (close code 4429) |

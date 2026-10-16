@@ -143,6 +143,11 @@ def undo_entry_revision(conn: sqlite3.Connection) -> None:
         conn.execute(f"ALTER TABLE {table} DROP COLUMN revision")
 
 
+def undo_user_locale(conn: sqlite3.Connection) -> None:
+    """Défait la migration 030 (langue du compte), pour rejouer les migrations depuis une base plus ancienne."""
+    conn.execute("ALTER TABLE users DROP COLUMN locale")
+
+
 def rewind_schema(conn: sqlite3.Connection, version: int) -> None:
     """Ramène l'enregistrement des migrations à `version` (user_version et schema_migrations), une fois le schéma
     lui-même défait par le test : les migrations suivantes seront rejouées par db.migrate."""

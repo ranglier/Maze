@@ -385,6 +385,13 @@ class PasswordChange(BaseModel):
     new_password: Password
 
 
+class LocaleChange(_Strict):
+    """Langue de l'interface du compte : code de deux ou trois lettres (fr, en…), ou vide pour « Automatique »
+    (langue du navigateur, puis MAZE_DEFAULT_LOCALE). Toute langue est admise : l'interface retombe sur le français
+    pour une langue qu'elle ne connaît pas."""
+    locale: Annotated[str, Field(pattern=r"^([a-z]{2,3})?$")]
+
+
 class UserCreate(_Strict):
     username: Username
     display_name: Short = ""

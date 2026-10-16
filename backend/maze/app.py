@@ -23,7 +23,7 @@ from starlette.routing import Mount, Route, WebSocketRoute
 from starlette.staticfiles import StaticFiles
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from . import auth, backup, db, limits, throttle
+from . import auth, backup, db, i18n, limits, throttle
 from .mediafiles import MEDIA_TYPES, TEMP_SUFFIX
 from .collab import RESTORING, SCHEMA_VERSION, STALE_CLIENT, Hub
 from .admin import MAX_IMPORT_MB, routes as admin_routes
@@ -319,11 +319,20 @@ def _build_app(cfg: Settings, lock: IO[str]) -> Starlette:
         routes.append(Mount("/assets", StaticFiles(directory=assets_dir), name="assets"))
     routes.append(Route("/{path:path}", spa))
 
+    # Messages traduits à la réponse (maze.i18n) : langue du compte, puis Accept-Language, puis MAZE_DEFAULT_LOCALE.
+    # `detail` peut être un i18n.msg(...) (modèle et paramètres) ; marque posée pour que I18nMiddleware n'y revienne pas.
+    def translated(request: Request, detail):
+        request.scope[i18n.TRANSLATED] = True
+        return i18n.translate(detail, i18n.request_locale(request.scope))
+
     async def http_error(request: Request, exc: HTTPException) -> Response:
-        return JSONResponse({"detail": exc.detail}, status_code=exc.status_code, headers=exc.headers)
+        return JSONResponse({"detail": translated(request, exc.detail)}, status_code=exc.status_code,
+                            headers=exc.headers)
 
     async def validation_error(request: Request, exc: RequestValidationError) -> Response:
-        return JSONResponse({"detail": "Données invalides", "errors": exc.errors}, status_code=422)
+        # Message d'en-tête seulement : l'interface compose le détail des champs elle-même (api.js, formatDetail).
+        return JSONResponse({"detail": translated(request, "Données invalides"), "errors": exc.errors},
+                            status_code=422)
 
     async def database_error(request: Request, exc: sqlite3.OperationalError) -> Response:
         # Verrou d'écriture toujours pris après l'attente (import, suppression ou restauration en cours, audit M15) :
@@ -340,6 +349,8 @@ def _build_app(cfg: Settings, lock: IO[str]) -> Starlette:
     middleware = [
         # Niveau 6 : presque aussi compact que 9 pour deux fois moins de CPU (graphe de 1000 PNJ : 17 ms au lieu de 35).
         Middleware(GZipMiddleware, minimum_size=1024, compresslevel=6),
+        # Réponses d'erreur JSON écrites hors des gestionnaires d'erreurs : `detail` traduit (corps lu avant compression).
+        Middleware(i18n.I18nMiddleware),
         # CORS des routes lues par le module Foundry (préflight compris, avant la session).
         Middleware(foundry.FoundryCors),
         Middleware(SecurityHeadersMiddleware),

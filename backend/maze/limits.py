@@ -22,6 +22,8 @@ from starlette.exceptions import HTTPException
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from .i18n import msg
+
 KIB = 1024
 MIB = 1024 * KIB
 JSON_LIMIT = 2 * MIB
@@ -65,7 +67,8 @@ def _readable(size: int) -> str:
 
 class BodyTooLarge(HTTPException):
     def __init__(self, limit: int):
-        super().__init__(413, f"Requête trop volumineuse (max {_readable(limit)})")
+        # msg : traduit à la réponse (maze.i18n), y compris quand BodyLimitMiddleware écrit lui-même la réponse.
+        super().__init__(413, msg("Requête trop volumineuse (max {size})", size=_readable(limit)))
 
 
 class BodyLimitMiddleware:

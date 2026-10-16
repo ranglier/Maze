@@ -1,0 +1,20 @@
+{
+  "Authentification requise": "Authentication required",
+  "Base de données occupée : réessayez dans un instant": "Database busy: try again in a moment",
+  "Campagne": "Campaign",
+  "Compte": "Account",
+  "Corps de requête JSON invalide": "Invalid JSON request body",
+  "Données invalides": "Invalid data",
+  "Fichier introuvable": "File not found",
+  "Identifiant ou mot de passe incorrect": "Incorrect username or password",
+  "La nature « {label} » existe déjà": "The relation type “{label}” already exists",
+  "Maze a été mis à jour : rechargez la page": "Maze has been updated: reload the page",
+  "Mot de passe actuel incorrect": "Current password is incorrect",
+  "Nombre hors limites": "Number out of range",
+  "Requête trop volumineuse (max {size})": "Request too large (max {size})",
+  "Restauration en cours : réessayez dans un instant": "Restore in progress: try again in a moment",
+  "Route inconnue": "Unknown route",
+  "Réservé aux administrateurs": "Administrators only",
+  "Un compte existe déjà : connectez-vous.": "An account already exists: sign in.",
+  "{what} introuvable": "{what} not found"
+}

@@ -19,8 +19,10 @@ from starlette.routing import Route
 
 from . import auth, db, defaults, imaging, limits, throttle
 from .config import LICENSE, Settings
+from .i18n import msg
 from .schemas import (
-    CampaignCreate, CampaignUpdate, EntityOrder, FactionCreate, FactionUpdate, ImageUpdate, Login, PasswordChange, Setup,
+    CampaignCreate, CampaignUpdate, EntityOrder, FactionCreate, FactionUpdate, ImageUpdate, LocaleChange, Login,
+    PasswordChange, Setup,
     MembershipCreate, MembershipUpdate, NpcCreate, NpcUpdate, PositionsUpdate,
     RelationCreate, RelationTypeCreate, RelationTypeUpdate, RelationUpdate,
 )
@@ -118,7 +120,9 @@ def path_id(request: Request, name: str = "id") -> int:
 def get_or_404(conn: sqlite3.Connection, table: str, row_id: int, what: str) -> dict[str, Any]:
     row = db.row_to_dict(conn.execute(f"SELECT * FROM {table} WHERE id = ?", (row_id,)).fetchone())
     if row is None:
-        raise HTTPException(404, f"{what} introuvable")
+        # Message traduit à la réponse (maze.i18n) : modèle « {what} introuvable », nom de la sorte de fiche traduit
+        # lui aussi (« Campagne », « PNJ »… dans le catalogue).
+        raise HTTPException(404, msg("{what} introuvable", what=msg(what)))
     return row
 
 
@@ -139,7 +143,7 @@ def scoped(conn: sqlite3.Connection, request: Request, table: str, row_id: int, 
     Une ressource inaccessible est signalée comme introuvable, pour ne pas révéler son existence."""
     row = get_or_404(conn, table, row_id, what)
     if not auth.can_access(conn, auth.current_user(request), campaign_of(conn, table, row)):
-        raise HTTPException(404, f"{what} introuvable")
+        raise HTTPException(404, msg("{what} introuvable", what=msg(what)))
     return row
 
 
@@ -208,8 +212,10 @@ def auth_status(request: Request) -> Response:
     return JSONResponse({
         "authenticated": user is not None,
         "setup_required": auth.count_users(cfg.db_path) == 0,
-        "user": auth.public_user(user) if user else None,
+        "user": auth.public_user(user) if user else None,   # langue du compte : user.locale (vide = automatique)
         "instance": instance_id(request) if user else None,
+        # Langue par défaut de l'instance (MAZE_DEFAULT_LOCALE), après celles du compte et du navigateur.
+        "default_locale": cfg.default_locale,
         "version": cfg.version,
         # Public, même sans session (écran de connexion) : code source et licence (AGPL, section 13).
         "source_url": cfg.source_url,
@@ -289,6 +295,17 @@ async def change_password(request: Request) -> Response:
     if hub is not None:
         hub.recheck()  # connexions temps réel des autres sessions : coupées
     return JSONResponse({"changed": True})
+
+
+@threaded
+def change_locale(request: Request) -> Response:
+    """Langue de l'interface du compte (menu du compte > Langue) : « fr », « en »… ou vide pour suivre le navigateur.
+    Sert aussi aux messages d'erreur du serveur (maze.i18n.request_locale)."""
+    user = auth.current_user(request)
+    data = parse_body(request, LocaleChange)
+    with tx(request) as conn:
+        conn.execute("UPDATE users SET locale = ? WHERE id = ?", (data.locale, user["id"]))
+    return JSONResponse({"locale": data.locale})
 
 
 # --- Campagnes -------------------------------------------------------------
@@ -683,7 +700,7 @@ def create_relation_type(request: Request) -> Response:
             "SELECT 1 FROM relation_types WHERE campaign_id = ? AND lower(label) = lower(?)",
             (cid, data.label)).fetchone()
         if exists:
-            raise HTTPException(409, f"La nature « {data.label} » existe déjà")
+            raise HTTPException(409, msg("La nature « {label} » existe déjà", label=data.label))
         order = conn.execute(
             "SELECT COALESCE(MAX(sort_order), -1) + 1 FROM relation_types WHERE campaign_id = ?",
             (cid,)).fetchone()[0]
@@ -707,7 +724,7 @@ def update_relation_type(request: Request) -> Response:
                 "SELECT 1 FROM relation_types WHERE campaign_id = ? AND lower(label) = lower(?) AND id <> ?",
                 (current["campaign_id"], values["label"], tid)).fetchone()
             if clash:
-                raise HTTPException(409, f"La nature « {values['label']} » existe déjà")
+                raise HTTPException(409, msg("La nature « {label} » existe déjà", label=values["label"]))
         db.update(conn, "relation_types", tid, values, touch=False)
         row = scoped(conn, request, "relation_types", tid, "Nature de lien")
     return JSONResponse(row)
@@ -884,6 +901,7 @@ routes = [
     Route("/api/auth/logout", logout, methods=["POST"]),
     Route("/api/auth/setup", setup, methods=["POST"]),
     Route("/api/auth/password", change_password, methods=["POST"]),
+    Route("/api/auth/locale", change_locale, methods=["PUT"]),
 
     Route("/api/campaigns", list_campaigns),
     Route("/api/campaigns", create_campaign, methods=["POST"]),

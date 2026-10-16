@@ -17,7 +17,9 @@ import zipfile
 from pathlib import Path
 
 from maze.foundry_html import clean, field_html, markdown_to_html
-from tests.test_api import ADMIN_PASSWORD, Server, multipart, png_bytes, rewind_schema, undo_entry_revision
+from tests.test_api import (
+    ADMIN_PASSWORD, Server, multipart, png_bytes, rewind_schema, undo_entry_revision, undo_user_locale,
+)
 from tests.test_maps import form, jpeg
 
 
@@ -496,6 +498,7 @@ class FoundryTokenLifecycleTest(unittest.TestCase):
             conn.execute("UPDATE users SET active = 0 WHERE id = ?", (self.admin2["id"],))
             conn.execute("ALTER TABLE mcp_log DROP COLUMN campaign_name")   # colonne de la migration 024
             undo_entry_revision(conn)   # migration 025
+            undo_user_locale(conn)   # migration 030
             rewind_schema(conn, 22)
         db.migrate(db_path)
         with sqlite3.connect(db_path) as conn:
