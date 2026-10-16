@@ -176,7 +176,7 @@ input[type="checkbox"] { accent-color: var(--brass); width: 16px; height: 16px; 
 }
 .splash__card--wide { width: min(460px, 100%); }
 .splash__lead { color: var(--mist); margin-bottom: 8px; }
-/* Code source de l'instance (AGPL, section 13) : discret, sous le formulaire. */
+/* Code source de l'instance : discret, sous le formulaire. */
 .splash__footer { margin-top: 6px; text-align: center; font-size: 12.5px; }
 .splash__footer a { color: var(--mist); text-decoration: none; }
 .splash__footer a:hover, .splash__footer a:focus-visible { color: var(--brass); text-decoration: underline; }

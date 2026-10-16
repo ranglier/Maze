@@ -89,7 +89,7 @@ try {
   check(await page.getByRole('button', { name: 'Sign in' }).isVisible(), 'écran de connexion en anglais (« Sign in »)');
   check(await page.locator('label[for=login-username]').textContent() === 'Username', 'libellé « Username »');
   check(await page.getByText('The game master\'s workshop.').isVisible(), 'accroche en anglais');
-  check(await page.locator('.splash__footer a').textContent() === 'Source code (AGPL-3.0)', 'lien « Source code (AGPL-3.0) »');
+  check(await page.locator('.splash__footer a').textContent() === 'Source code', 'lien « Source code »');
   await login(page, 'mauvais-mot-de-passe');
   const refusal = page.locator('.form-error[role=alert]');
   await refusal.waitFor({ timeout: 15000 });

@@ -11,10 +11,9 @@ from pathlib import Path
 
 log = logging.getLogger("maze")
 
-# Licence de Maze (identifiant SPDX) et adresse de son code source par défaut. AGPL, section 13 : chaque utilisateur
-# d'une instance doit pouvoir obtenir le code de la version qu'il utilise ; un fork modifié règle MAZE_SOURCE_URL sur
-# ses propres sources. L'interface affiche le lien (écran de connexion, menu du compte), via /api/auth/status.
-LICENSE = "AGPL-3.0-or-later"
+# Licence de Maze (identifiant SPDX) et adresse de son code source par défaut. L'interface affiche le lien (écran de
+# connexion, menu du compte), via /api/auth/status ; un fork peut régler MAZE_SOURCE_URL sur ses propres sources.
+LICENSE = "MIT"
 DEFAULT_SOURCE_URL = "https://github.com/ranglier/Maze"
 
 
@@ -96,7 +95,7 @@ class Settings:
     # Connexions temps réel admises (audit PERF-9) : par compte (toutes fiches) et pour toute l'instance.
     live_max_per_user: int = 12
     live_max_total: int = 100
-    # Code source de cette version, proposé à tous les utilisateurs (AGPL, section 13).
+    # Code source de cette version, proposé à tous les utilisateurs.
     source_url: str = DEFAULT_SOURCE_URL
     # Langue par défaut de l'instance (interface et messages du serveur) : après celle du compte et du navigateur.
     default_locale: str = "fr"

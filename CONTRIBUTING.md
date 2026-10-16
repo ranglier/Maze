@@ -65,7 +65,7 @@ Maze is translated gettext style: the French text is the key, and French has no 
 
 ## Developer Certificate of Origin
 
-Maze is licensed under the GNU AGPL-3.0-or-later (see the [README](README.md#license) and [LICENSE](LICENSE)). Every contribution is published under that same license.
+Maze is released under the MIT License (see the [README](README.md#license) and [LICENSE](LICENSE)). Every contribution is published under that same license.
 
 Every commit must be signed off with `git commit -s`, which adds a line with your name and email address at the end of the message:
 

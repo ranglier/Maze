@@ -46,8 +46,7 @@ export default function LoginScreen({ onLoggedIn, sourceUrl }) {
   );
 }
 
-/** Pied de l'écran de connexion : langue de l'interface, et code source de l'instance, visible avant toute connexion
- * (AGPL, section 13). */
+/** Pied de l'écran de connexion : langue de l'interface, et code source de l'instance, visible avant toute connexion. */
 function SplashFooter({ sourceUrl }) {
   return (
     <>

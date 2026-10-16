@@ -1,7 +1,7 @@
 {
   "id": "maze-sync",
   "title": "Maze Sync",
-  "description": "Importe les PNJ, factions, lieux et cartes interactives d'une campagne de Maze dans le monde : journaux, scènes avec notes, acteurs (Dark Heresy). Module privé, servi par l'instance de Maze.",
+  "description": "Imports the NPCs, factions, places and interactive maps of a Maze campaign into the world: journals, scenes with notes, actors (Dark Heresy). Served by your Maze instance. / Importe les PNJ, factions, lieux et cartes interactives d'une campagne de Maze : journaux, scènes avec notes, acteurs (Dark Heresy).",
   "version": "1.2.1",
   "authors": [{ "name": "ranglier" }],
   "license": "LICENSE",

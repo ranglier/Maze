@@ -94,13 +94,12 @@ const PATHS = {
   flame: 'M10 17.5c3 0 5-2 5-5 0-3.5-3-5-3.5-9-2 1.5-3.5 3.5-3.5 6-1-.8-1.5-1.8-1.5-3C4.5 8.5 5 11 5 12.5c0 3 2 5 5 5z',
 };
 
-/** Lien vers le code source de la version en service (AGPL, section 13 : offert à tout utilisateur de l'instance),
- * adresse donnée par /api/auth/status (MAZE_SOURCE_URL côté serveur). Ouvert dans un nouvel onglet. */
+/** Lien vers le code source de la version en service, proposé à tout utilisateur de l'instance, adresse donnée par /api/auth/status (MAZE_SOURCE_URL côté serveur). Ouvert dans un nouvel onglet. */
 export function SourceLink({ url, className, role, onClick, children }) {
   if (!url) return null;
   return (
     <a href={url} target="_blank" rel="noopener noreferrer" className={className} role={role} onClick={onClick}>
-      {children}{t('Code source (AGPL-3.0)')}
+      {children}{t('Code source')}
     </a>
   );
 }

@@ -217,7 +217,7 @@ def auth_status(request: Request) -> Response:
         # Langue par défaut de l'instance (MAZE_DEFAULT_LOCALE), après celles du compte et du navigateur.
         "default_locale": cfg.default_locale,
         "version": cfg.version,
-        # Public, même sans session (écran de connexion) : code source et licence (AGPL, section 13).
+        # Public, même sans session (écran de connexion) : code source et licence.
         "source_url": cfg.source_url,
         "license": LICENSE,
     })
