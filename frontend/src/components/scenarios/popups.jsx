@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from '../ui.jsx';
+import { pt, t } from '../../i18n/index.js';
 import { useSheet } from '../../viewport.js';
 
 /** Menu contextuel simple, ancré sous un bouton. */
@@ -51,9 +52,9 @@ export function MentionPreview({ target, entity, onClose, onOpen }) {
   const top = Math.min(target.rect.bottom + 8, window.innerHeight - 220);
   const left = Math.min(Math.max(12, target.rect.left), window.innerWidth - 332);
   return createPortal(
-    <div className="mention-card" ref={ref} role="dialog" aria-label="Aperçu de la fiche" style={{ top, left }}>
+    <div className="mention-card" ref={ref} role="dialog" aria-label={t('Aperçu de la fiche')} style={{ top, left }}>
       {!entity ? (
-        <p className="muted">Cette fiche a été supprimée.</p>
+        <p className="muted">{pt('mention', 'Cette fiche a été supprimée.')}</p>
       ) : (
         <>
           <div className="mention-card__head" style={{ '--ring': entity.color }}>
@@ -68,8 +69,8 @@ export function MentionPreview({ target, entity, onClose, onOpen }) {
           {entity.summary && <p className="mention-card__summary">{entity.summary}</p>}
           <button type="button" className="btn btn--small btn--ghost" onClick={onOpen}>
             {entity.kind === 'place'
-              ? <><Icon name="pin" size={14} /> Ouvrir le lieu</>
-              : <><Icon name="person" size={14} /> Ouvrir la fiche</>}
+              ? <><Icon name="pin" size={14} /> {t('Ouvrir le lieu')}</>
+              : <><Icon name="person" size={14} /> {t('Ouvrir la fiche')}</>}
           </button>
         </>
       )}

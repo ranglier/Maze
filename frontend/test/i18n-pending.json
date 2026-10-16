@@ -1,26 +1,7 @@
 {
   "common": [],
   "admin": [],
-  "scenarios": [
-    "components/CommentsPanel.jsx",
-    "components/DocDialogs.jsx",
-    "components/HistoryPanel.jsx",
-    "components/ScenarioFilter.jsx",
-    "components/ScenariosView.jsx",
-    "components/scenarios/DocBar.jsx",
-    "components/scenarios/DocChildren.jsx",
-    "components/scenarios/DocSide.jsx",
-    "components/scenarios/DocTree.jsx",
-    "components/scenarios/SaveState.jsx",
-    "components/scenarios/docs.js",
-    "components/scenarios/popups.jsx",
-    "components/scenarios/useDocComments.js",
-    "components/scenarios/useDocVersions.js",
-    "components/scenarios/useScenarioData.js",
-    "editor/Editor.jsx",
-    "editor/live.js",
-    "editor/templates.js"
-  ],
+  "scenarios": [],
   "places": [
     "components/MapsView.jsx",
     "components/PlaceCrumbs.jsx",

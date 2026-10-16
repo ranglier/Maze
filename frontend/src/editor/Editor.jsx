@@ -15,6 +15,7 @@ import {
   yCursorPlugin, ySyncPlugin, ySyncPluginKey, yUndoPlugin,
 } from 'y-prosemirror';
 import { normalize } from '../util.js';
+import { N_, compareText, pt, t, useLocale } from '../i18n/index.js';
 import { Field, Icon, Modal } from '../components/ui.jsx';
 import {
   activeState, applyLink, currentLinkHref, editorKeymap, findWrapper, insertImage, insertRule, insertTable, markdownRules,
@@ -23,6 +24,7 @@ import {
 import { docToHtml, schema, templateHtml } from './schema.js';
 import { slugify } from './sanitize.js';
 import { TOUCH, isPhone } from '../viewport.js';
+import './calloutLabels.js';
 
 /*
  * Éditeur des fiches rédigées : ProseMirror relié au document Yjs partagé (LiveDocument).
@@ -30,26 +32,27 @@ import { TOUCH, isPhone } from '../viewport.js';
  * leurs curseurs apparaissent avec leur nom.
  */
 
+// Libellés marqués (N_), traduits à l'affichage.
 const BLOCKS = [
-  { key: 'p', label: 'Paragraphe' },
-  { key: 'h1', label: 'Titre 1' },
-  { key: 'h2', label: 'Titre 2' },
-  { key: 'h3', label: 'Titre 3' },
+  { key: 'p', label: N_('Paragraphe') },
+  { key: 'h1', label: N_('Titre 1') },
+  { key: 'h2', label: N_('Titre 2') },
+  { key: 'h3', label: N_('Titre 3') },
 ];
 
 // Commandes du menu « / » (début de ligne).
 const SLASH_ITEMS = [
-  { key: 'h1', label: 'Titre 1', hint: '#', icon: 'heading' },
-  { key: 'h2', label: 'Titre 2', hint: '##', icon: 'heading' },
-  { key: 'h3', label: 'Titre 3', hint: '###', icon: 'heading' },
-  { key: 'ul', label: 'Liste à puces', hint: '-', icon: 'list' },
-  { key: 'ol', label: 'Liste numérotée', hint: '1.', icon: 'olist' },
-  { key: 'quote', label: 'Citation', hint: '>', icon: 'quote' },
-  { key: 'read', label: 'Accroche (texte à lire aux joueurs)', icon: 'scroll' },
-  { key: 'secret', label: 'Secret (réservé au MJ)', icon: 'lock' },
-  { key: 'hr', label: 'Séparateur', hint: '---', icon: 'minus' },
-  { key: 'table', label: 'Tableau', icon: 'table' },
-  { key: 'image', label: 'Image', icon: 'image' },
+  { key: 'h1', label: N_('Titre 1'), hint: '#', icon: 'heading' },
+  { key: 'h2', label: N_('Titre 2'), hint: '##', icon: 'heading' },
+  { key: 'h3', label: N_('Titre 3'), hint: '###', icon: 'heading' },
+  { key: 'ul', label: N_('Liste à puces'), hint: '-', icon: 'list' },
+  { key: 'ol', label: N_('Liste numérotée'), hint: '1.', icon: 'olist' },
+  { key: 'quote', label: N_('Citation'), hint: '>', icon: 'quote' },
+  { key: 'read', label: N_('Accroche (texte à lire aux joueurs)'), icon: 'scroll' },
+  { key: 'secret', label: N_('Secret (réservé au MJ)'), icon: 'lock' },
+  { key: 'hr', label: N_('Séparateur'), hint: '---', icon: 'minus' },
+  { key: 'table', label: N_('Tableau'), icon: 'table' },
+  { key: 'image', label: N_('Image'), icon: 'image' },
 ];
 
 /**
@@ -68,19 +71,19 @@ function localTableEditing() {
 // Actions sur le tableau sous le curseur (barre flottante au-dessus du tableau).
 const TABLE_ACTIONS = [
   [
-    { label: 'Ligne au-dessus', short: '↑ Ligne', command: addRowBefore },
-    { label: 'Ligne en dessous', short: 'Ligne ↓', command: addRowAfter },
-    { label: 'Supprimer la ligne', short: 'Suppr.', command: deleteRow, danger: true },
+    { label: N_('Ligne au-dessus'), short: N_('↑ Ligne'), command: addRowBefore },
+    { label: N_('Ligne en dessous'), short: N_('Ligne ↓'), command: addRowAfter },
+    { label: N_('Supprimer la ligne'), short: N_('Suppr.'), command: deleteRow, danger: true },
   ],
   [
-    { label: 'Colonne à gauche', short: '← Colonne', command: addColumnBefore },
-    { label: 'Colonne à droite', short: 'Colonne →', command: addColumnAfter },
-    { label: 'Supprimer la colonne', short: 'Suppr.', command: deleteColumn, danger: true },
+    { label: N_('Colonne à gauche'), short: N_('← Colonne'), command: addColumnBefore },
+    { label: N_('Colonne à droite'), short: N_('Colonne →'), command: addColumnAfter },
+    { label: N_('Supprimer la colonne'), short: N_('Suppr.'), command: deleteColumn, danger: true },
   ],
   [
-    { label: "Ligne d'en-tête", short: 'En-tête', command: toggleHeaderRow },
-    { label: 'Fusionner les cellules', short: 'Fusionner', command: mergeCells },
-    { label: 'Scinder la cellule', short: 'Scinder', command: splitCell },
+    { label: N_("Ligne d'en-tête"), short: N_('En-tête'), command: toggleHeaderRow },
+    { label: N_('Fusionner les cellules'), short: N_('Fusionner'), command: mergeCells },
+    { label: N_('Scinder la cellule'), short: N_('Scinder'), command: splitCell },
   ],
 ];
 
@@ -96,7 +99,7 @@ function cursorBuilder(user) {
   const label = document.createElement('span');
   label.className = 'remote-caret__label';
   label.style.backgroundColor = color;
-  label.textContent = String(user?.name || 'MJ').slice(0, 40);
+  label.textContent = String(user?.name || t('MJ')).slice(0, 40);
   caret.append('⁠', label, '⁠');
   return caret;
 }
@@ -337,6 +340,7 @@ export default function Editor({
   const placeholderRef = useRef(placeholder);
   placeholderRef.current = placeholder;
   const registry = useRef({ views: new Set(), byKey: new Map(), loaded: false }).current;
+  const locale = useLocale();
 
   // Fiches citables, pour le nom affiché des mentions.
   useEffect(() => {
@@ -451,7 +455,7 @@ export default function Editor({
           return {
             class: `rich__content doc-content${empty ? ' is-empty' : ''}`,
             'data-placeholder': placeholderRef.current || '',
-            role: 'textbox', 'aria-multiline': 'true', 'aria-label': 'Contenu de la fiche', spellcheck: 'true',
+            role: 'textbox', 'aria-multiline': 'true', 'aria-label': t('Contenu de la fiche'), spellcheck: 'true',
           };
         },
         handlePaste: (view, e) => {
@@ -562,6 +566,12 @@ export default function Editor({
     if (readOnly) setSuggest(null);
   }, [readOnly]);
 
+  // Attributs de la zone d'édition (texte d'invite, aria-label) : calculés par le greffon à chaque mise à jour de la
+  // vue, recalculés ici au changement de langue ou d'invite.
+  useEffect(() => {
+    viewRef.current?.setProps({});
+  }, [locale, placeholder]);
+
   /** Commence un commentaire sur la sélection : l'extrait reste surligné pendant la rédaction. */
   const startComment = () => {
     const view = viewRef.current;
@@ -671,19 +681,21 @@ export default function Editor({
   const suggestItems = (() => {
     if (!suggest) return [];
     const q = normalize(suggest.query);
-    if (suggest.type === 'slash') return SLASH_ITEMS.filter((it) => !q || normalize(it.label).includes(q));
+    if (suggest.type === 'slash') {
+      return SLASH_ITEMS.map((it) => ({ ...it, label: t(it.label) })).filter((it) => !q || normalize(it.label).includes(q));
+    }
     const list = entities
       .filter((e) => !q || normalize(e.name).includes(q))
       .sort((a, b) => Number(!normalize(a.name).startsWith(q)) - Number(!normalize(b.name).startsWith(q))
-        || a.name.localeCompare(b.name, 'fr'))
+        || compareText(a.name, b.name))
       .slice(0, 8)
       .map((e) => ({ ...e, key: `${e.kind}:${e.id}` }));
     const name = suggest.query.trim();
     const exact = entities.some((e) => normalize(e.name) === q);
     if (name.length >= 2 && !exact && callbacks.current.onCreateEntity) {
-      list.push({ key: 'new-npc', create: 'npc', name, label: `Créer le PNJ « ${name} »` });
-      list.push({ key: 'new-faction', create: 'faction', name, label: `Créer la faction « ${name} »` });
-      list.push({ key: 'new-place', create: 'place', name, label: `Créer le lieu « ${name} »` });
+      list.push({ key: 'new-npc', create: 'npc', name, label: t('Créer le PNJ « {name} »', { name }) });
+      list.push({ key: 'new-faction', create: 'faction', name, label: t('Créer la faction « {name} »', { name }) });
+      list.push({ key: 'new-place', create: 'place', name, label: t('Créer le lieu « {name} »', { name }) });
     }
     return list;
   })();
@@ -743,39 +755,41 @@ export default function Editor({
   return (
     <div className={`rich${readOnly ? ' rich--readonly' : ''}${simple ? ' rich--field' : ''}`}>
       {!readOnly && (
-        <div className="rich__toolbar" role="toolbar" aria-label="Mise en forme">
+        <div className="rich__toolbar" role="toolbar" aria-label={t('Mise en forme')}>
           {/* Groupes insécables : à la ligne, un groupe passe entier (jamais un bouton isolé). */}
           <span className="tool-group">
-            <select className="tool-select" value={active.block || 'p'} aria-label="Type de bloc"
+            <select className="tool-select" value={active.block || 'p'} aria-label={t('Type de bloc')}
               onChange={(e) => runKey(e.target.value)}>
-              {BLOCKS.map((b) => <option key={b.key} value={b.key}>{b.label}</option>)}
+              {BLOCKS.map((b) => <option key={b.key} value={b.key}>{t(b.label)}</option>)}
             </select>
           </span>
           <span className="tool-group">
-            {tool('b', 'Gras (Ctrl+B)', <strong>G</strong>, () => run(toggle.bold), active.bold)}
-            {tool('i', 'Italique (Ctrl+I)', <em>I</em>, () => run(toggle.italic), active.italic)}
-            {tool('u', 'Souligné (Ctrl+U)', <u>S</u>, () => run(toggle.underline), active.underline)}
-            {tool('s', 'Barré (Ctrl+Maj+X)', <s>B</s>, () => run(toggle.strike), active.strike)}
+            {/* Initiales des boutons (G : gras, S : souligné, B : barré) : traduites avec le contexte « initiale ». */}
+            {tool('b', t('Gras (Ctrl+B)'), <strong>{pt('initiale', 'G')}</strong>, () => run(toggle.bold), active.bold)}
+            {tool('i', t('Italique (Ctrl+I)'), <em>{pt('initiale', 'I')}</em>, () => run(toggle.italic), active.italic)}
+            {tool('u', t('Souligné (Ctrl+U)'), <u>{pt('initiale', 'S')}</u>, () => run(toggle.underline), active.underline)}
+            {tool('s', t('Barré (Ctrl+Maj+X)'), <s>{pt('initiale', 'B')}</s>, () => run(toggle.strike), active.strike)}
           </span>
           <span className="tool-group">
             <AlignMenu value={active.align} onPick={(value) => run(setAlign(value))} />
-            {tool('ul', 'Liste à puces', <Icon name="list" size={17} />, () => runKey('ul'), active.ul)}
-            {tool('ol', 'Liste numérotée', <Icon name="olist" size={17} />, () => runKey('ol'), active.ol)}
-            {tool('quote', 'Citation', <Icon name="quote" size={17} />, () => runKey('quote'), active.quote)}
+            {tool('ul', t('Liste à puces'), <Icon name="list" size={17} />, () => runKey('ul'), active.ul)}
+            {tool('ol', t('Liste numérotée'), <Icon name="olist" size={17} />, () => runKey('ol'), active.ol)}
+            {tool('quote', t('Citation'), <Icon name="quote" size={17} />, () => runKey('quote'), active.quote)}
+          </span>
+          {/* Libellés courts (« À lire », pt('outil', 'Secret')) : la barre doit tenir sur une ligne, comme en français. */}
+          <span className="tool-group">
+            {tool('read', t('Encadré Accroche : texte à lire aux joueurs'), <><Icon name="scroll" size={16} /><span className="tool__label">{t('À lire')}</span></>, () => runKey('read'), active.read)}
+            {tool('secret', t('Encadré Secret : réservé au MJ'), <><Icon name="lock" size={15} /><span className="tool__label">{pt('outil', 'Secret')}</span></>, () => runKey('secret'), active.secret)}
           </span>
           <span className="tool-group">
-            {tool('read', 'Encadré Accroche : texte à lire aux joueurs', <><Icon name="scroll" size={16} /><span className="tool__label">À lire</span></>, () => runKey('read'), active.read)}
-            {tool('secret', 'Encadré Secret : réservé au MJ', <><Icon name="lock" size={15} /><span className="tool__label">Secret</span></>, () => runKey('secret'), active.secret)}
+            {tool('hr', t('Séparateur'), <Icon name="minus" size={17} />, () => runKey('hr'))}
+            {tool('link', t('Lien (Ctrl+K)'), <Icon name="link" size={17} />, openLinkDialog, active.link)}
+            {!simple && tool('img', t('Image (depuis Maze ou l’ordinateur)'), <Icon name="image" size={17} />, chooseImage)}
+            {tool('table', t('Tableau'), <Icon name="table" size={17} />, () => run(insertTable), active.table)}
           </span>
           <span className="tool-group">
-            {tool('hr', 'Séparateur', <Icon name="minus" size={17} />, () => runKey('hr'))}
-            {tool('link', 'Lien (Ctrl+K)', <Icon name="link" size={17} />, openLinkDialog, active.link)}
-            {!simple && tool('img', 'Image (depuis Maze ou l’ordinateur)', <Icon name="image" size={17} />, chooseImage)}
-            {tool('table', 'Tableau', <Icon name="table" size={17} />, () => run(insertTable), active.table)}
-          </span>
-          <span className="tool-group">
-            {tool('undo', 'Annuler (Ctrl+Z)', <Icon name="undo" size={17} />, () => run(undoCommand))}
-            {tool('redo', 'Rétablir (Ctrl+Y)', <Icon name="redo" size={17} />, () => run(redoCommand))}
+            {tool('undo', t('Annuler (Ctrl+Z)'), <Icon name="undo" size={17} />, () => run(undoCommand))}
+            {tool('redo', t('Rétablir (Ctrl+Y)'), <Icon name="redo" size={17} />, () => run(redoCommand))}
           </span>
           <input ref={fileRef} type="file" accept="image/*" hidden
             onChange={(e) => { uploadAndInsert(e.target.files); e.target.value = ''; }} />
@@ -783,21 +797,21 @@ export default function Editor({
       )}
       <div ref={mountRef} className="rich__mount" />
       {tableBar && !readOnly && viewRef.current && (
-        <div ref={tableBarRef} className={`table-bar${tableBar.pinned ? ' is-pinned' : ''}`} role="toolbar" aria-label="Tableau"
+        <div ref={tableBarRef} className={`table-bar${tableBar.pinned ? ' is-pinned' : ''}`} role="toolbar" aria-label={t('Tableau')}
           style={{ top: tableBar.top, left: tableBar.left }}
           onMouseDown={(e) => e.preventDefault()}>
           {TABLE_ACTIONS.map((group, i) => (
             <span key={i} className="table-bar__group">
               {group.map((a) => (
-                <button key={a.label} type="button" title={a.label} aria-label={a.label}
+                <button key={a.label} type="button" title={t(a.label)} aria-label={t(a.label)}
                   className={`table-bar__btn${a.danger ? ' is-danger' : ''}`}
                   disabled={!a.command(viewRef.current.state)} onClick={() => run(a.command)}>
-                  {a.short || a.label}
+                  {t(a.short || a.label)}
                 </button>
               ))}
             </span>
           ))}
-          <button type="button" className="table-bar__btn is-danger" title="Supprimer le tableau" aria-label="Supprimer le tableau"
+          <button type="button" className="table-bar__btn is-danger" title={t('Supprimer le tableau')} aria-label={t('Supprimer le tableau')}
             onClick={() => run(deleteTable)}>
             <Icon name="trash" size={15} />
           </button>
@@ -805,14 +819,14 @@ export default function Editor({
       )}
       {commentFab && !readOnly && onStartComment && (
         <button type="button" className="comment-fab" style={{ top: commentFab.top }}
-          title="Commenter la sélection (Ctrl+Alt+M)" aria-label="Commenter la sélection"
+          title={t('Commenter la sélection (Ctrl+Alt+M)')} aria-label={t('Commenter la sélection')}
           onMouseDown={(e) => e.preventDefault()} onClick={startComment}>
           <Icon name="comment" size={17} />
         </button>
       )}
       {suggest && suggestItems.length > 0 && !readOnly && createPortal(
         <ul className="suggest" role="listbox" style={{ left: suggest.rect.left, top: suggest.rect.bottom + 6 }}
-          aria-label={suggest.type === 'mention' ? 'Fiches à citer' : 'Blocs à insérer'}>
+          aria-label={suggest.type === 'mention' ? t('Fiches à citer') : t('Blocs à insérer')}>
           {suggestItems.map((it, i) => (
             <li key={it.key} role="option" aria-selected={i === index}>
               <button type="button" className={i === index ? 'is-active' : ''}
@@ -857,15 +871,16 @@ export default function Editor({
 function LinkDialog({ initial, onClose, onApply }) {
   const [url, setUrl] = useState(initial.url);
   return (
-    <Modal title="Lien" onClose={onClose} footer={(
+    <Modal title={t('Lien')} onClose={onClose} footer={(
       <>
-        <button type="button" className="btn btn--ghost btn--danger-text modal__foot-left" onClick={() => onApply('')}>Retirer le lien</button>
-        <button type="button" className="btn btn--ghost" onClick={onClose}>Annuler</button>
-        <button type="submit" form="link-form" className="btn btn--primary">Appliquer</button>
+        <button type="button" className="btn btn--ghost btn--danger-text modal__foot-left" onClick={() => onApply('')}>{t('Retirer le lien')}</button>
+        <button type="button" className="btn btn--ghost" onClick={onClose}>{t('Annuler')}</button>
+        <button type="submit" form="link-form" className="btn btn--primary">{t('Appliquer')}</button>
       </>
     )}>
       <form id="link-form" onSubmit={(e) => { e.preventDefault(); onApply(/^https?:\/\/.+/.test(url) || url.startsWith('mailto:') ? url : ''); }}>
-        <Field label="Adresse" htmlFor="link-url" hint={TOUCH ? "Les liens s'ouvrent dans un nouvel onglet, en mode Lecture." : "Les liens s'ouvrent dans un nouvel onglet. En édition : Ctrl+clic pour les suivre."}>
+        <Field label={t('Adresse')} htmlFor="link-url" hint={TOUCH ? t("Les liens s'ouvrent dans un nouvel onglet, en mode Lecture.")
+          : t("Les liens s'ouvrent dans un nouvel onglet. En édition : Ctrl+clic pour les suivre.")}>
           <input id="link-url" value={url} onChange={(e) => setUrl(e.target.value)} />
         </Field>
       </form>
@@ -874,8 +889,8 @@ function LinkDialog({ initial, onClose, onApply }) {
 }
 
 const ALIGN_CHOICES = [
-  ['left', 'alignLeft', 'Aligner à gauche'], ['center', 'alignCenter', 'Centrer'],
-  ['right', 'alignRight', 'Aligner à droite'], ['justify', 'alignJustify', 'Justifier'],
+  ['left', 'alignLeft', N_('Aligner à gauche')], ['center', 'alignCenter', N_('Centrer')],
+  ['right', 'alignRight', N_('Aligner à droite')], ['justify', 'alignJustify', N_('Justifier')],
 ];
 
 /** Alignement du paragraphe : un seul bouton (alignement courant) qui ouvre les quatre choix. */
@@ -894,14 +909,15 @@ function AlignMenu({ value, onPick }) {
   return (
     <span className="align-menu" ref={ref}>
       <button type="button" className={`tool${value && value !== 'left' ? ' is-active' : ''}`}
-        title={`Alignement : ${current[2].toLowerCase()}`} aria-label="Alignement du texte" aria-haspopup="menu" aria-expanded={open}
+        title={t('Alignement : {value}', { value: t(current[2]).toLowerCase() })} aria-label={t('Alignement du texte')}
+        aria-haspopup="menu" aria-expanded={open}
         disabled={value === null} onMouseDown={(e) => e.preventDefault()} onClick={() => setOpen((o) => !o)}>
         <Icon name={current[1]} size={17} />
       </button>
       {open && (
-        <span className="align-menu__pop" role="menu" aria-label="Alignement du texte">
+        <span className="align-menu__pop" role="menu" aria-label={t('Alignement du texte')}>
           {ALIGN_CHOICES.map(([v, icon, title]) => (
-            <button key={v} type="button" role="menuitemradio" aria-checked={current[0] === v} title={title} aria-label={title}
+            <button key={v} type="button" role="menuitemradio" aria-checked={current[0] === v} title={t(title)} aria-label={t(title)}
               className={`tool${current[0] === v ? ' is-active' : ''}`}
               onMouseDown={(e) => e.preventDefault()} onClick={() => { setOpen(false); onPick(v); }}>
               <Icon name={icon} size={17} />

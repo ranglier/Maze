@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../../api.js';
+import { t } from '../../i18n/index.js';
 
 /**
  * Commentaires de la fiche ouverte : fils ancrés dans le texte (marque de l'éditeur), brouillon sur la sélection,
@@ -13,19 +14,19 @@ export default function useDocComments({ doc, live, liveState, run, toast, confi
 
   const reloadComments = useCallback(async () => {
     if (!doc) return;
-    const t = await run(() => api.comments(doc.id));
-    if (t) setThreads(t);
+    const list = await run(() => api.comments(doc.id));
+    if (list) setThreads(list);
   }, [doc?.id, run]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Surlignage dans le texte : fils ouverts et fil sélectionné.
   useEffect(() => {
-    const openIds = new Set((threads || []).filter((t) => !t.resolved).map((t) => t.id));
+    const openIds = new Set((threads || []).filter((th) => !th.resolved).map((th) => th.id));
     editorRef.current?.setCommentState(openIds, activeComment);
   }, [threads, activeComment, live, liveState?.synced]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const startComment = (info) => {
     if (!info) {
-      toast('Sélectionnez d’abord le passage à commenter.', 'info');
+      toast(t('Sélectionnez d’abord le passage à commenter.'), 'info');
       return;
     }
     setDraft(info);
@@ -37,7 +38,7 @@ export default function useDocComments({ doc, live, liveState, run, toast, confi
     const created = await run(() => api.createComment(doc.id, { body, quote: draft?.quote || '' }));
     if (!created) return false;
     if (!editorRef.current?.applyComment(created.id)) {
-      toast('Le passage commenté a été supprimé entre-temps : le commentaire est enregistré sans ancrage.', 'info');
+      toast(t('Le passage commenté a été supprimé entre-temps : le commentaire est enregistré sans ancrage.'), 'info');
     }
     setDraft(null);
     setActiveComment(created.id);
@@ -63,7 +64,7 @@ export default function useDocComments({ doc, live, liveState, run, toast, confi
   };
 
   const resolveComment = async (thread, resolved) => {
-    const done = await run(() => api.updateComment(thread.id, { resolved }), resolved ? 'Fil résolu' : 'Fil rouvert');
+    const done = await run(() => api.updateComment(thread.id, { resolved }), resolved ? t('Fil résolu') : t('Fil rouvert'));
     if (!done) return;
     if (resolved && activeComment === thread.id) setActiveComment(null);
     reloadComments();
@@ -79,10 +80,10 @@ export default function useDocComments({ doc, live, liveState, run, toast, confi
   const deleteComment = async (comment) => {
     const isThread = comment.parent_id === null;
     const yes = await confirm({
-      title: isThread ? 'Supprimer le fil' : 'Supprimer la réponse',
-      message: isThread ? 'Le commentaire et toutes ses réponses seront supprimés. Le texte de la fiche n’est pas modifié.'
-        : 'Cette réponse sera supprimée.',
-      confirmLabel: 'Supprimer',
+      title: isThread ? t('Supprimer le fil') : t('Supprimer la réponse'),
+      message: isThread ? t('Le commentaire et toutes ses réponses seront supprimés. Le texte de la fiche n’est pas modifié.')
+        : t('Cette réponse sera supprimée.'),
+      confirmLabel: t('Supprimer'),
     });
     if (!yes) return;
     const done = await run(() => api.deleteComment(comment.id));
@@ -94,7 +95,7 @@ export default function useDocComments({ doc, live, liveState, run, toast, confi
     reloadComments();
   };
 
-  const openThreads = (threads || []).filter((t) => !t.resolved).length;
+  const openThreads = (threads || []).filter((th) => !th.resolved).length;
 
   return { threads, setThreads, anchors, setAnchors, draft, setDraft, activeComment, setActiveComment, startComment,
     submitDraft, cancelDraft, selectComment, replyComment, resolveComment, editComment, deleteComment, openThreads };
