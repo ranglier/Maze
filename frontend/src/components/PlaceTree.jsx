@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { placeKind } from '../constants.js';
+import { t, tn } from '../i18n/index.js';
 import {
   GROUP_MIN, OTHER_KINDS, childrenMap, groupParent, groupsOf, isGroupKey, matchPlaces, pathIds, splitMatch, subtreeIds,
 } from '../places.js';
@@ -172,14 +173,14 @@ export default function PlaceTree({ data, campaignName, currentId, onOpen, onCre
   };
   const dnd = useTreeDrag((dragged, target, where) => {
     if (target.key === 'root') { onMoveTo(dragged.id, null, 100000); return; }
-    const t = tree.byId.get(target.id);
+    const dest = tree.byId.get(target.id);
     if (where === 'inside') {
-      moveRevealed(dragged.id, t.id, 100000);
+      moveRevealed(dragged.id, dest.id, 100000);
       return;
     }
-    const parent = t.parent_id ?? null;
+    const parent = dest.parent_id ?? null;
     const siblings = tree.kidsOf(parent).filter((p) => p.id !== dragged.id);
-    moveRevealed(dragged.id, parent, siblings.findIndex((p) => p.id === t.id) + (where === 'after' ? 1 : 0));
+    moveRevealed(dragged.id, parent, siblings.findIndex((p) => p.id === dest.id) + (where === 'after' ? 1 : 0));
   });
 
   // Filtre : lieux trouvés et leurs ancêtres.
@@ -322,7 +323,7 @@ export default function PlaceTree({ data, campaignName, currentId, onOpen, onCre
       <li key={p.id}>
         <div className={`doc-tree__item${p.id === currentId ? ' is-active' : ''}${node.onPath ? ' is-on-path' : ''}`
           + `${node.context ? ' is-context' : ''}${dnd.className(p.id)}`}
-          style={{ '--depth': node.depth }} title={filtering ? undefined : 'Glisser pour déplacer'}
+          style={{ '--depth': node.depth }} title={filtering ? undefined : t('Glisser pour déplacer')}
           {...dnd.props({ key: p.id, id: p.id, label: p.name },
             { inside: true, enabled: !filtering, accepts: (d) => !inside(p.id, d.id) })}>
           {node.hasKids && !filtering ? (
@@ -336,12 +337,12 @@ export default function PlaceTree({ data, campaignName, currentId, onOpen, onCre
             aria-expanded={node.hasKids ? node.isOpen : undefined} {...rowProps(node)}>
             <span className="place-tree__icon"><PlaceIcon kind={p.kind} size={15} /></span>
             <span className="doc-tree__label">{label(p)}</span>
-            {p.pinned && <span className="doc-tree__pin" title="Épinglé"><Icon name="star" size={11} /></span>}
+            {p.pinned && <span className="doc-tree__pin" title={t('Épinglé')}><Icon name="star" size={11} /></span>}
             {node.hasKids && !node.isOpen && (
-              <span className="doc-tree__count" title={`${node.count} sous-lieu${node.count > 1 ? 'x' : ''}`}>{node.count}</span>
+              <span className="doc-tree__count" title={tn('{n} sous-lieu', '{n} sous-lieux', node.count)}>{node.count}</span>
             )}
           </button>
-          <button type="button" className="doc-tree__more" tabIndex={-1} aria-label={`Actions pour ${p.name}`}
+          <button type="button" className="doc-tree__more" tabIndex={-1} aria-label={t('Actions pour {name}', { name: p.name })}
             onClick={(e) => openMenu(p, e.currentTarget, e.currentTarget.parentElement.querySelector('[data-row]'))}>
             <Icon name="more" size={16} />
           </button>
@@ -353,7 +354,7 @@ export default function PlaceTree({ data, campaignName, currentId, onOpen, onCre
 
   const renderGroup = (node) => {
     const g = node.group;
-    const name = g.kind === OTHER_KINDS ? 'Autres types' : placeKind(g.kind, kinds).label;
+    const name = g.kind === OTHER_KINDS ? t('Autres types') : placeKind(g.kind, kinds).label;
     return (
       <li key={g.key}>
         <div className={`doc-tree__item doc-tree__group${node.onPath ? ' is-on-path' : ''}`} style={{ '--depth': node.depth }}>
@@ -361,7 +362,7 @@ export default function PlaceTree({ data, campaignName, currentId, onOpen, onCre
             <Icon name={node.isOpen ? 'chevron' : 'right'} size={13} />
           </button>
           <button type="button" className="doc-tree__link" onClick={() => toggle(g.key)} aria-expanded={node.isOpen}
-            title={`${name} : ${g.items.length} lieux`} {...rowProps(node)}>
+            title={tn('{name} : {n} lieu', '{name} : {n} lieux', g.items.length, { name })} {...rowProps(node)}>
             {g.kind !== OTHER_KINDS && <span className="place-tree__icon"><PlaceIcon kind={g.kind} size={14} /></span>}
             <span className="doc-tree__label">{name}</span>
             <span className="doc-tree__count">{g.items.length}</span>
@@ -373,29 +374,29 @@ export default function PlaceTree({ data, campaignName, currentId, onOpen, onCre
   };
 
   return (
-    <aside className="doc-tree place-tree" aria-label="Lieux de la campagne" ref={asideRef}>
+    <aside className="doc-tree place-tree" aria-label={t('Lieux de la campagne')} ref={asideRef}>
       <button type="button" className={`doc-tree__root${currentId ? '' : ' is-active'}${dnd.className('root')}`}
         onClick={() => onOpen(null)} {...dnd.props({ key: 'root', fixed: true }, { inside: 'only', enabled: !filtering })}>
         <Icon name="pin" size={17} />
         <span>
-          <strong>Lieux</strong>
+          <strong>{t('Lieux')}</strong>
           <span className="doc-tree__sub">{campaignName}</span>
         </span>
       </button>
       <div className="doc-tree__section">
-        <span>Tous les lieux{places.length > 0 && <span className="doc-tree__total"> · {places.length}</span>}</span>
+        <span>{t('Tous les lieux')}{places.length > 0 && <span className="doc-tree__total"> · {places.length}</span>}</span>
         <span className="doc-tree__section-actions">
           <button type="button" className={`icon-btn icon-btn--small${grouped ? ' is-active' : ''}`} aria-pressed={grouped}
-            title={`Regrouper par type les listes de ${GROUP_MIN} lieux et plus`} aria-label="Regrouper par type"
+            title={t('Regrouper par type les listes de {n} lieux et plus', { n: GROUP_MIN })} aria-label={t('Regrouper par type')}
             onClick={() => setGrouped(!grouped)}>
             <Icon name="district" size={15} />
           </button>
           <button type="button" className="icon-btn icon-btn--small" disabled={!canFold}
-            title="Tout replier (garder le chemin du lieu affiché)" aria-label="Tout replier"
+            title={t('Tout replier (garder le chemin du lieu affiché)')} aria-label={t('Tout replier')}
             onClick={() => setOpen(resting)}>
             <Icon name="fold" size={15} />
           </button>
-          <button type="button" className="icon-btn icon-btn--small" title="Nouveau lieu" aria-label="Nouveau lieu"
+          <button type="button" className="icon-btn icon-btn--small" title={t('Nouveau lieu')} aria-label={t('Nouveau lieu')}
             onClick={() => onCreate(null)}>
             <Icon name="plus" size={15} />
           </button>
@@ -405,38 +406,38 @@ export default function PlaceTree({ data, campaignName, currentId, onOpen, onCre
         <div className="tree-filter" role="search">
           <label className="tree-filter__box">
             <Icon name="search" size={14} />
-            <input ref={filterRef} type="search" value={query} placeholder="Filtrer les lieux" aria-label="Filtrer les lieux"
+            <input ref={filterRef} type="search" value={query} placeholder={t('Filtrer les lieux')} aria-label={t('Filtrer les lieux')}
               aria-keyshortcuts="/" enterKeyHint="go" autoComplete="off" spellCheck={false}
               onChange={(e) => setQuery(e.target.value)} onKeyDown={onFilterKey} />
             {query && (
-              <button type="button" className="tree-filter__clear" aria-label="Effacer le filtre"
+              <button type="button" className="tree-filter__clear" aria-label={t('Effacer le filtre')}
                 onClick={() => { setQuery(''); filterRef.current?.focus(); }}>
                 <Icon name="close" size={13} />
               </button>
             )}
           </label>
-          <select className={`tree-filter__kind${kindFilter ? ' is-set' : ''}`} value={kindFilter} aria-label="Type de lieu"
+          <select className={`tree-filter__kind${kindFilter ? ' is-set' : ''}`} value={kindFilter} aria-label={t('Type de lieu')}
             onChange={(e) => setKindFilter(e.target.value)}>
-            <option value="">Tous types</option>
+            <option value="">{t('Tous types')}</option>
             {usedKinds.map((k) => <option key={k.key} value={k.key}>{k.label} ({k.count})</option>)}
           </select>
         </div>
       )}
       {filtering && (
         <p className="tree-filter__summary" role="status">
-          {matches.length === 0 ? 'Aucun lieu ne correspond.'
-            : `${matches.length} lieu${matches.length > 1 ? 'x' : ''} trouvé${matches.length > 1 ? 's' : ''}`}
-          <button type="button" className="link-btn" onClick={clearFilter}>Effacer</button>
+          {matches.length === 0 ? t('Aucun lieu ne correspond.')
+            : tn('{n} lieu trouvé', '{n} lieux trouvés', matches.length)}
+          <button type="button" className="link-btn" onClick={clearFilter}>{t('Effacer')}</button>
         </p>
       )}
       <div ref={listRef} onKeyDown={onTreeKey}>
-        <ul className="doc-tree__list" aria-label="Arborescence des lieux">
+        <ul className="doc-tree__list" aria-label={t('Arborescence des lieux')}>
           {top.map(renderNode)}
         </ul>
       </div>
       {places.length === 0 && (
         <button type="button" className="doc-tree__empty" onClick={() => onCreate(null)}>
-          <Icon name="plus" size={14} /> Créer le premier lieu
+          <Icon name="plus" size={14} /> {t('Créer le premier lieu')}
         </button>
       )}
       {menu && (
@@ -453,9 +454,9 @@ export default function PlaceTree({ data, campaignName, currentId, onOpen, onCre
         }} />
       )}
       {moving && (
-        <MoveDialog title={`Déplacer « ${moving.name} »`} intro="Choisissez le lieu qui le contiendra."
+        <MoveDialog title={t('Déplacer « {name} »', { name: moving.name })} intro={t('Choisissez le lieu qui le contiendra.')}
           options={[
-            { id: null, label: 'Aucun (lieu de premier niveau)', icon: 'pin', depth: 0, current: (moving.parent_id ?? null) === null },
+            { id: null, label: t('Aucun (lieu de premier niveau)'), icon: 'pin', depth: 0, current: (moving.parent_id ?? null) === null },
             ...flattenTree((id) => tree.kidsOf(id), null, moving.id).map(({ item, depth }) => ({
               id: item.id, label: item.name, icon: 'pin', depth: depth + 1, current: moving.parent_id === item.id,
             })),
@@ -492,14 +493,14 @@ function TreeMenu({ menu, onClose, onAction }) {
     <div className="popover popover--menu" ref={ref} role="menu" onKeyDown={onKey}
       style={{ position: 'fixed', top: menu.rect.bottom + 4, left: Math.min(menu.rect.left, window.innerWidth - 240), right: 'auto' }}>
       <div className="popover__group popover__group--actions">
-        <button type="button" role="menuitem" onClick={() => onAction('child')}><Icon name="plus" size={15} /> Ajouter un sous-lieu</button>
+        <button type="button" role="menuitem" onClick={() => onAction('child')}><Icon name="plus" size={15} /> {t('Ajouter un sous-lieu')}</button>
         <button type="button" role="menuitem" onClick={() => onAction('pin')}>
-          <Icon name="star" size={15} /> {menu.item.pinned ? 'Retirer des épinglés' : 'Épingler sur l’accueil'}
+          <Icon name="star" size={15} /> {menu.item.pinned ? t('Retirer des épinglés') : t('Épingler sur l’accueil')}
         </button>
-        <button type="button" role="menuitem" disabled={menu.first} onClick={() => onAction('up')}><Icon name="up" size={15} /> Monter</button>
-        <button type="button" role="menuitem" disabled={menu.last} onClick={() => onAction('down')}><Icon name="down" size={15} /> Descendre</button>
-        <button type="button" role="menuitem" onClick={() => onAction('move')}><Icon name="swap" size={15} /> Déplacer vers…</button>
-        <button type="button" role="menuitem" className="danger-text" onClick={() => onAction('delete')}><Icon name="trash" size={15} /> Supprimer</button>
+        <button type="button" role="menuitem" disabled={menu.first} onClick={() => onAction('up')}><Icon name="up" size={15} /> {t('Monter')}</button>
+        <button type="button" role="menuitem" disabled={menu.last} onClick={() => onAction('down')}><Icon name="down" size={15} /> {t('Descendre')}</button>
+        <button type="button" role="menuitem" onClick={() => onAction('move')}><Icon name="swap" size={15} /> {t('Déplacer vers…')}</button>
+        <button type="button" role="menuitem" className="danger-text" onClick={() => onAction('delete')}><Icon name="trash" size={15} /> {t('Supprimer')}</button>
       </div>
     </div>,
     document.body,

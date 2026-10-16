@@ -30,20 +30,7 @@
     "editor/live.js",
     "editor/templates.js"
   ],
-  "places": [
-    "components/MapsView.jsx",
-    "components/PlaceCrumbs.jsx",
-    "components/PlaceTree.jsx",
-    "components/PlacesView.jsx",
-    "components/maps/MapCanvas.jsx",
-    "components/maps/MapDialog.jsx",
-    "components/maps/MapRings.jsx",
-    "components/maps/MapZoom.jsx",
-    "components/maps/PinList.jsx",
-    "components/maps/PlacePanel.jsx",
-    "components/maps/constants.js",
-    "places.js"
-  ],
+  "places": [],
   "characters": [
     "components/CharactersView.jsx",
     "components/CreateDialog.jsx",

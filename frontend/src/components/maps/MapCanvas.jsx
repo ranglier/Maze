@@ -1,5 +1,6 @@
 import { useContext, useEffect, useRef, useState } from 'react';
 import { placeKind } from '../../constants.js';
+import { t, tn } from '../../i18n/index.js';
 import { storage } from '../../util.js';
 import { KindsContext, PlaceIcon } from '../PlacesView.jsx';
 import { Icon, KindImage } from '../ui.jsx';
@@ -185,13 +186,13 @@ export default function MapCanvas({ map, byId, places, path, editing, armed, cen
       ref={ref} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}
       onDragOver={(e) => { if (editing && e.dataTransfer.types.includes(DRAG_TYPE)) { e.preventDefault(); setDropping(true); } }}
       onDragLeave={() => setDropping(false)} onDrop={onDrop}
-      role="application" aria-label={`Carte ${map.name}`}>
+      role="application" aria-label={t('Carte {name}', { name: map.name })}>
       {view && (
         <img className="map-view__image" src={src} alt="" draggable={false} onLoad={() => setLoaded(true)}
           style={{ width: W, height: H, transform: `translate(${view.x}px, ${view.y}px) scale(${view.k})` }} />
       )}
-      {!loaded && <div className="map-view__loading">Chargement de l’image…</div>}
-      {hdLoading && <div className="map-hd" aria-live="polite">Chargement de la pleine définition…</div>}
+      {!loaded && <div className="map-view__loading">{t('Chargement de l’image…')}</div>}
+      {hdLoading && <div className="map-hd" aria-live="polite">{t('Chargement de la pleine définition…')}</div>}
       {view && loaded && (
         <div className="map-view__overlay">
           <RingLines rings={rings} />
@@ -209,7 +210,8 @@ export default function MapCanvas({ map, byId, places, path, editing, armed, cen
                 onClick={(e) => { e.stopPropagation(); if (e.detail === 0) togglePin(p.place_id); }}
                 onDoubleClick={(e) => { e.stopPropagation(); const own = ownMaps(p.place_id); if (own.length) onEnter(own[0]); }}
                 aria-expanded={kids ? open : undefined}
-                title={`${pl.name}${kids ? ` · ${kids} sous-lieu${kids > 1 ? 'x' : ''}` : ''}${ownMaps(p.place_id).length ? ' · double-clic : entrer dans sa carte' : ''}`}>
+                title={[pl.name, kids > 0 && tn('{n} sous-lieu', '{n} sous-lieux', kids),
+                  ownMaps(p.place_id).length > 0 && t('double-clic : entrer dans sa carte')].filter(Boolean).join(' · ')}>
                 <span className="map-pin__dot">
                   {pinStyle === 'hidden' ? null
                     : pinStyle === 'icon' && kind.image ? <KindImage src={kind.image} size={24} />
@@ -225,7 +227,7 @@ export default function MapCanvas({ map, byId, places, path, editing, armed, cen
         </div>
       )}
       {trail.length > 1 && (
-        <nav className="map-trail" aria-label="Cartes" onPointerDown={(e) => e.stopPropagation()} onPointerUp={(e) => e.stopPropagation()}>
+        <nav className="map-trail" aria-label={t('Cartes')} onPointerDown={(e) => e.stopPropagation()} onPointerUp={(e) => e.stopPropagation()}>
           {trail.map((m, i) => (i < trail.length - 1 ? (
             <span key={m.id}>
               <button type="button" onClick={() => onTrail(m, trail[i + 1].place_id)}>{m.name}</button>
@@ -236,8 +238,9 @@ export default function MapCanvas({ map, byId, places, path, editing, armed, cen
       )}
       {armed != null && byId.has(armed) && (
         <div className="map-hint" onPointerDown={(e) => e.stopPropagation()} onPointerUp={(e) => e.stopPropagation()}>
-          <Icon name="pin" size={15} /> {TOUCH ? 'Touchez' : 'Cliquez sur'} la carte pour placer « {byId.get(armed).name} »
-          <button type="button" className="btn btn--small btn--ghost" onClick={onCancelArm}>Annuler</button>
+          <Icon name="pin" size={15} /> {TOUCH ? t('Touchez la carte pour placer « {name} »', { name: byId.get(armed).name })
+            : t('Cliquez sur la carte pour placer « {name} »', { name: byId.get(armed).name })}
+          <button type="button" className="btn btn--small btn--ghost" onClick={onCancelArm}>{t('Annuler')}</button>
         </div>
       )}
       <MapZoom size={size} zoomAt={zoomAt} fit={fit} labels={labels} onToggleLabels={toggleLabels} pinStyle={pinStyle}

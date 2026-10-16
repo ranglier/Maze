@@ -1,8 +1,9 @@
 // Arborescence des lieux : outils communs à l'index, à l'arbre, au fil d'Ariane et aux cartes.
 
+import { compareText } from './i18n/core.js';
 import { normalize, storage } from './util.js';
 
-export const byOrder = (a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name, 'fr');
+export const byOrder = (a, b) => a.sort_order - b.sort_order || compareText(a.name, b.name);
 
 export const childrenOf = (places, parentId) => places.filter((p) => (p.parent_id ?? null) === parentId).sort(byOrder);
 
@@ -90,7 +91,7 @@ export function groupsOf(parentId, kids, kinds) {
 export function matchPlaces(places, query, kind) {
   const q = normalize(query.trim());
   return places.filter((p) => (!kind || p.kind === kind)
-    && (!q || normalize(p.name).includes(q) || (p.tags || []).some((t) => normalize(t).includes(q))));
+    && (!q || normalize(p.name).includes(q) || (p.tags || []).some((tag) => normalize(tag).includes(q))));
 }
 
 /** Découpe un nom autour du texte cherché : [avant, trouvé, après], ou null (rien à surligner). */

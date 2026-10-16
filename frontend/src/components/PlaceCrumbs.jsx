@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { placeKind } from '../constants.js';
 import { OTHER_KINDS, ancestorsOf, childrenMap, groupsOf, matchPlaces } from '../places.js';
+import { t } from '../i18n/index.js';
 import { useSheet } from '../viewport.js';
 import { PlaceIcon, useKinds } from './PlaceIcon.jsx';
 import { Icon } from './ui.jsx';
@@ -25,15 +26,16 @@ export default function PlaceCrumbs({ place, places, onOpen }) {
   const sep = (parentId, activeId, name) => (
     <button type="button" className={`crumb-sep${menu && menu.parentId === parentId ? ' is-open' : ''}`}
       aria-haspopup="menu" aria-expanded={Boolean(menu && menu.parentId === parentId)}
-      title={name ? `Lieux dans ${name}` : 'Lieux de premier niveau'} aria-label={name ? `Lieux dans ${name}` : 'Lieux de premier niveau'}
+      title={name ? t('Lieux dans {name}', { name }) : t('Lieux de premier niveau')}
+      aria-label={name ? t('Lieux dans {name}', { name }) : t('Lieux de premier niveau')}
       onClick={toggle(parentId, activeId)}>
       <Icon name="right" size={12} />
     </button>
   );
 
   return (
-    <nav className="doc__crumbs place-crumbs" aria-label="Fil d'Ariane">
-      <button type="button" onClick={() => onOpen(null)}>Lieux</button>
+    <nav className="doc__crumbs place-crumbs" aria-label={t("Fil d'Ariane")}>
+      <button type="button" onClick={() => onOpen(null)}>{t('Lieux')}</button>
       {sep(null, chain[0].id, null)}
       {chain.map((p, i) => (
         <span key={p.id} className="place-crumbs__seg">
@@ -46,8 +48,8 @@ export default function PlaceCrumbs({ place, places, onOpen }) {
       ))}
       {menu && (
         <CrumbMenu menu={menu} items={kids.get(menu.parentId) || []} kids={kids} kinds={kinds}
-          title={menu.parentId ? byId.get(menu.parentId)?.name : 'Premier niveau'}
-          onClose={(refocus) => { const t = menu.trigger; setMenu(null); if (refocus) t?.focus(); }}
+          title={menu.parentId ? byId.get(menu.parentId)?.name : t('Premier niveau')}
+          onClose={(refocus) => { const trigger = menu.trigger; setMenu(null); if (refocus) trigger?.focus(); }}
           onPick={(id) => { setMenu(null); onOpen(id); }} />
       )}
     </nav>
@@ -110,18 +112,18 @@ function CrumbMenu({ menu, items, kids, kinds, title, onClose, onPick }) {
       {searchable && (
         <label className="tree-filter__box crumb-menu__filter">
           <Icon name="search" size={14} />
-          <input type="search" value={query} placeholder="Filtrer" aria-label="Filtrer" autoComplete="off"
+          <input type="search" value={query} placeholder={t('Filtrer')} aria-label={t('Filtrer')} autoComplete="off"
             onChange={(e) => setQuery(e.target.value)} />
         </label>
       )}
       <div className="popover__group popover__group--actions crumb-menu__list">
         {groups ? groups.map((g) => (
           <div key={g.key} className="crumb-menu__group">
-            <p className="crumb-menu__heading">{g.kind === OTHER_KINDS ? 'Autres types' : placeKind(g.kind, kinds).label}</p>
+            <p className="crumb-menu__heading">{g.kind === OTHER_KINDS ? t('Autres types') : placeKind(g.kind, kinds).label}</p>
             {g.items.map(item)}
           </div>
         )) : shown.map(item)}
-        {shown.length === 0 && <p className="muted crumb-menu__empty">Aucun lieu ne correspond.</p>}
+        {shown.length === 0 && <p className="muted crumb-menu__empty">{t('Aucun lieu ne correspond.')}</p>}
       </div>
     </div>,
     document.body,
