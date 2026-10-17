@@ -93,6 +93,7 @@
           <ul>
             <li><strong>NPC sheets</strong>: portrait, status, hook, personality, motivations, GM secrets, gallery.</li>
             <li><strong>Faction sheets</strong>: colour, emblem, goals, resources, members and their role.</li>
+            <li><strong>A faction tree</strong> in the Characters tab: sub-factions to any depth, a faction with several parents under each of them, drag and drop to reorder.</li>
             <li><strong>Places</strong> in a free hierarchy (region, city, building, room), with the NPCs and factions present.</li>
             <li><strong>Search</strong> across the whole campaign with Ctrl+K.</li>
           </ul>
@@ -101,16 +102,16 @@
           <figure class="shot">
             <a href="img/npc.webp">
               <img src="img/npc.webp" width="2160" height="1350" loading="lazy"
-                alt="The sheet of the NPC Maëlis Corvin, a fence: her faction and role, the tavern where she works, appearance, personality, motivations, a GM secret box and her relationships.">
+                alt="The sheet of the NPC Maëlis Corvin, a fence: her faction and role, the tavern where she works, appearance, personality, motivations, a GM secret box and her relationships. On the left, the Characters index arranged as a tree of factions.">
             </a>
             <figcaption>An NPC sheet, with its GM secret.</figcaption>
           </figure>
           <figure class="shot">
             <a href="img/faction.webp">
               <img src="img/faction.webp" width="2160" height="1350" loading="lazy"
-                alt="The sheet of the faction House Valcourt, a noble house: the places it owns, its two members with their role, description, goals, an ally relationship and the pages it appears in.">
+                alt="The sheet of the faction House Valcourt, a noble house and a sub-faction of the Harbour Council: the places it owns, its members, description, goals, an ally relationship and the pages it appears in. On the left, the Characters index shows House Valcourt under the Harbour Council.">
             </a>
-            <figcaption>A faction sheet: members, places, relationships.</figcaption>
+            <figcaption>A faction sheet, under its parent faction in the Characters tree.</figcaption>
           </figure>
         </div>
       </article>
@@ -153,6 +154,35 @@
         </figure>
       </article>
 
+      <article class="plate plate--stack">
+        <div class="plate__text">
+          <h2>A timeline</h2>
+          <p>An optional module, off by default and turned on campaign by campaign: the events of your campaign in the order you choose, with no calendar to set up.</p>
+          <ul>
+            <li><strong>Free dates</strong> ("742.M41", "Session 4"), a title, tags and a description with GM secret boxes and @ mentions.</li>
+            <li><strong>Two views</strong>: a vertical list and a horizontal strip with a mini-map, each in a normal or compact layout.</li>
+            <li><strong>Filter by tag</strong>, drag and drop in the list to reorder, search with Ctrl+K, export and import with the campaign.</li>
+            <li>Each NPC, faction and place sheet lists the events that mention it.</li>
+          </ul>
+        </div>
+        <div class="pair">
+          <figure class="shot">
+            <a href="img/timeline.webp">
+              <img src="img/timeline.webp" width="2160" height="1350" loading="lazy"
+                alt="The timeline of the demo campaign as a horizontal strip: event cards alternate above and below an axis, each with its free date, such as Year of the Storm or 10 years ago, and the sheets it mentions. The event Maëlis turns informant is open on the side with its tags, its mentions and a GM secret box. The Tags panel and a mini-map run along the bottom.">
+            </a>
+            <figcaption>The timeline strip: an event open on the side, the tags and the mini-map below.</figcaption>
+          </figure>
+          <figure class="shot">
+            <a href="img/timeline-compact.webp">
+              <img src="img/timeline-compact.webp" width="2160" height="1350" loading="lazy"
+                alt="The compact timeline strip: twelve events staggered on both sides of the axis, their dates and titles written diagonally, from Year of the Storm to Day of the inquiry. The event Ysolde's first purse is open on the side.">
+            </a>
+            <figcaption>The compact strip: the whole campaign at a glance.</figcaption>
+          </figure>
+        </div>
+      </article>
+
       <article class="plate">
         <div class="plate__text">
           <h2>Your server, your data</h2>
@@ -162,6 +192,7 @@
             <li><strong>One-click updates</strong> from the administration, with automatic rollback if the new version is not healthy.</li>
             <li>Two roles: administrator, and GM who sees only the campaigns assigned to them.</li>
             <li>Campaign export and import as a .zip file.</li>
+            <li><strong>Images</strong> in the administration: every image of a campaign (sheet galleries, page illustrations, map backgrounds, library), sorted by date, size or name, with multiple selection and bulk delete.</li>
           </ul>
         </div>
         <figure class="shot">
@@ -176,7 +207,7 @@
       <div class="columns">
         <section aria-labelledby="claude-title">
           <h2 id="claude-title">Claude connector (MCP)</h2>
-          <p>Maze includes a remote MCP server with its own OAuth 2.1 authorisation. Claude can search and read your campaigns and, if you allow it, edit sheets, relations and scenario pages, comment, add images and pin places on maps.</p>
+          <p>Maze includes a remote MCP server with its own OAuth 2.1 authorisation. Claude can search and read your campaigns and, if you allow it, edit sheets, relations and scenario pages, add timeline events, comment, add images and pin places on maps.</p>
           <p>Each authorisation needs an administrator's password, actions are logged, and pages keep their version from before Claude's change.</p>
         </section>
         <section aria-labelledby="foundry-title">
