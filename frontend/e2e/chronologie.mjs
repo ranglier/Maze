@@ -115,6 +115,9 @@ async function displayChecks(browser, ctx, a) {
   await third.locator('.timeline-line__open').click();
   await third.locator('.timeline-card h3').waitFor({ timeout: 5000 });
   check(await lines.count() === 14, 'clic sur une ligne : dépliée en carte à sa place');
+  // Focus posé au rendu de la carte (autoFocus) : un Échap pressé aussitôt n'est pas perdu.
+  check(await a.evaluate(() => document.activeElement?.classList.contains('timeline-card__fold')),
+    'ligne dépliée : focus sur « Replier » dès l’affichage');
   await a.keyboard.press('Escape');
   await third.locator('.timeline-line').waitFor({ timeout: 5000 });
   // Le focus revient au rafraîchissement suivant (requestAnimationFrame) : l'attendre plutôt que le lire tout de suite

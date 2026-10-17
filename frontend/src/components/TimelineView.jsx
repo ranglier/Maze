@@ -51,6 +51,9 @@ export default function TimelineView({ campaign, header, trailing, eventId, onNa
   const [highlight, setHighlight] = useState(null);
   const [expanded, setExpanded] = useState(() => new Set());
   const [opened, setOpened] = useState(() => new Set());   // liste compacte : lignes dépliées en carte
+  // Liste compacte : bouton qui reçoit le focus à son affichage, après un dépliage ou un repliage (autoFocus, posé
+  // dès le rendu : un Échap pressé aussitôt n'est pas perdu, comme avec un focus remis au rafraîchissement suivant).
+  const [focusTarget, setFocusTarget] = useState(null);
 
   const density = densities[mode];
   const compactList = mode === 'list' && density === 'compact';
@@ -58,18 +61,18 @@ export default function TimelineView({ campaign, header, trailing, eventId, onNa
   const setDensity = (d) => {
     setDensities((all) => ({ ...all, [mode]: d }));
     storage.set(TL.densityKey(mode), d);
-    if (mode === 'list') setOpened(new Set());
+    if (mode === 'list') { setOpened(new Set()); setFocusTarget(null); }
   };
   const toggleIn = (setter, id) => setter((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   // Ligne compacte dépliée en carte : le focus va sur son bouton « Replier » (Échap la replie depuis le clavier).
   const unfoldLine = (id) => {
     setOpened((s) => new Set(s).add(id));
-    requestAnimationFrame(() => document.querySelector(`[data-event="${id}"] .timeline-card__fold`)?.focus({ preventScroll: true }));
+    setFocusTarget({ id, on: 'fold' });
   };
   // Ligne compacte repliée (second clic, Échap) : le focus revient sur la ligne.
   const foldLine = (id) => {
     setOpened((s) => { const n = new Set(s); n.delete(id); return n; });
-    requestAnimationFrame(() => document.querySelector(`[data-event="${id}"] .timeline-line__open`)?.focus());
+    setFocusTarget({ id, on: 'line' });
   };
 
   const load = useCallback(async () => {
@@ -254,11 +257,13 @@ export default function TimelineView({ campaign, header, trailing, eventId, onNa
                           <EventForm key={ev.id} {...formProps} event={ev} onCancel={() => setForm(null)} onSaved={onSaved} />
                         ) : line ? (
                           <EventLine event={ev} byKey={byKey} draggable={!form} {...actions}
-                            onOpen={() => unfoldLine(ev.id)} />
+                            onOpen={() => unfoldLine(ev.id)}
+                            autoFocus={focusTarget?.id === ev.id && focusTarget.on === 'line'} />
                         ) : (
                           <EventCard event={ev} campaignId={cid} byKey={byKey} folded={!expanded.has(ev.id)}
                             draggable={!form} onToggleFold={() => toggleIn(setExpanded, ev.id)}
                             onCollapse={compactList ? () => foldLine(ev.id) : undefined}
+                            focusFold={compactList && focusTarget?.id === ev.id && focusTarget.on === 'fold'}
                             onOpenNode={openMention} {...actions} />
                         )}
                       </li>
@@ -414,11 +419,12 @@ function Grip() {
 }
 
 /** Outils d'un événement de la liste : modifier, déplacer, supprimer (et replier une ligne compacte dépliée). */
-function EventTools({ onEdit, onMove, onDelete, onCollapse }) {
+function EventTools({ onEdit, onMove, onDelete, onCollapse, focusFold = false }) {
   return (
     <div className="timeline-card__tools">
       {onCollapse && (
-        <button type="button" className="icon-btn timeline-card__fold" onClick={onCollapse} aria-expanded="true" aria-label={t('Replier')} title={t('Replier')}>
+        <button type="button" className="icon-btn timeline-card__fold" onClick={onCollapse} aria-expanded="true" aria-label={t('Replier')} title={t('Replier')}
+          autoFocus={focusFold}>
           <Icon name="up" size={16} />
         </button>
       )}
@@ -439,14 +445,14 @@ function EventTools({ onEdit, onMove, onDelete, onCollapse }) {
  * Liste compacte : une ligne par événement (date, titre, pastilles des étiquettes, nombre de fiches citées).
  * Clic ou Entrée : la ligne se déplie en carte normale à sa place.
  */
-function EventLine({ event, byKey, draggable, onOpen, onEdit, onMove, onDelete }) {
+function EventLine({ event, byKey, draggable, onOpen, onEdit, onMove, onDelete, autoFocus = false }) {
   const { shown, more } = TL.tagDots(event.tags);
   const cited = TL.eventMentions(event).filter((m) => byKey.has(`${m.kind}:${m.id}`)).length;
   return (
     <div className="timeline-line">
       <span className="timeline-item__marker" aria-hidden="true" />
       {draggable && <Grip />}
-      <button type="button" className="timeline-line__open" aria-expanded="false" onClick={onOpen}>
+      <button type="button" className="timeline-line__open" aria-expanded="false" onClick={onOpen} autoFocus={autoFocus}>
         <span className="timeline-line__date">{event.date_label}</span>
         <span className="timeline-line__title">{event.title}</span>
         {shown.length > 0 && (
@@ -499,7 +505,7 @@ function Mentions({ event, byKey, campaignId, dots = false }) {
 }
 
 /** Événement de la liste : date, titre, étiquettes, fiches citées, description (repliée si longue), actions. */
-function EventCard({ event, campaignId, byKey, folded, draggable, onToggleFold, onCollapse, onOpenNode, onEdit, onMove, onDelete }) {
+function EventCard({ event, campaignId, byKey, folded, draggable, onToggleFold, onCollapse, focusFold = false, onOpenNode, onEdit, onMove, onDelete }) {
   const long = TL.isLongDescription(event.description);
   // Ligne compacte dépliée : un second clic (hors boutons, liens et texte sélectionné) ou Échap la replie.
   const collapse = onCollapse && {
@@ -523,7 +529,7 @@ function EventCard({ event, campaignId, byKey, folded, draggable, onToggleFold, 
           {event.date_label && <p className="timeline-date">{event.date_label}</p>}
           <h3>{event.title}</h3>
         </div>
-        <EventTools onEdit={onEdit} onMove={onMove} onDelete={onDelete} onCollapse={onCollapse} />
+        <EventTools onEdit={onEdit} onMove={onMove} onDelete={onDelete} onCollapse={onCollapse} focusFold={focusFold} />
       </header>
       <Tags tags={event.tags} />
       <Mentions event={event} byKey={byKey} campaignId={campaignId} />
