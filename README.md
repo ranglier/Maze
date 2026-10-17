@@ -2,7 +2,7 @@
 
 **A self-hosted workshop for tabletop RPG game masters: characters, factions, places, maps and scenarios, written together in real time.**
 
-Maze is a web application for game masters who prepare their campaigns alone or with co-GMs. NPCs and factions live on a relationship graph, places in a tree with interactive maps, and scenarios in a collaborative editor that links to all of them. It runs as a single Docker container with a SQLite database, on your own server.
+Maze is a web application for game masters who prepare their campaigns alone or with co-GMs. NPCs and factions live on a relationship graph, places in a tree with interactive maps, scenarios in a collaborative editor that links to all of them, and the events of your campaign on an optional timeline. It runs as a single Docker container with a SQLite database, on your own server.
 
 Website, with screenshots: https://ranglier.github.io/Maze/
 
@@ -16,7 +16,7 @@ Website, with screenshots: https://ranglier.github.io/Maze/
 - Relationship graph: free placement, zoom, PNG export, automatic layout that keeps the most readable of several arrangements.
 - NPC sheets (portrait, status, hook, personality, motivations, GM secrets, gallery…) and faction sheets (colour, emblem, goals, resources, members).
 - Memberships with a role, for NPCs and for factions (a faction can be a sub-faction of one or more others, no loops); typed relations (ally, enemy, family, rival, mentor, debt…), one-way or mutual, optionally secret.
-- Graph views for a scenario's cast, for the factions, or for a place; a Characters tab lists everyone.
+- Graph views for a scenario's cast, for the factions, or for a place; a Characters tab lists everyone, as a faction tree (sub-factions at any depth, drag and drop to reorder) or alphabetically.
 
 **Places and interactive maps**
 - Free hierarchy of places (region > city > building > room…), with the NPCs and factions present and their role.
@@ -30,10 +30,12 @@ Website, with screenshots: https://ranglier.github.io/Maze/
 
 **Timeline (optional)**
 - A per-campaign timeline, off by default: ordered events with a free-text date ("742.M41", "Session 4"), a title, a rich description (GM secret boxes, `@` mentions) and tags. No calendar: you set the order by hand.
-- Shown as a vertical list or a horizontal timeline (evenly spaced, in order); each NPC, faction and place sheet lists the events that mention it. Turning it off hides it without deleting anything.
+- Shown as a vertical list or a horizontal timeline (evenly spaced, in order), each with a compact mode: one line per event, or a staggered timeline with names on the diagonal. A minimap helps you move along long timelines, and a collapsible Tags panel filters events.
+- Each NPC, faction and place sheet lists the events that mention it. Turning the timeline off hides it without deleting anything.
 
 **Everything else**
-- Global full-text search (Ctrl+K), image library, campaign export and import (`.zip`), phone layout.
+- Global full-text search (Ctrl+K), campaign export and import (`.zip`), phone layout.
+- Image library: every image of a campaign in one place, with multiple selection, bulk delete and sorting.
 - Two roles: administrator and GM (assigned campaigns only); scrypt passwords, login throttling.
 - Backups, restore and one-click updates from the web interface.
 - Integrations: a connector for Claude (MCP) and a Foundry VTT import module.

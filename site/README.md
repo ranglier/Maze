@@ -19,7 +19,7 @@ GitHub setting, once: Settings > Pages > Build and deployment > Source: GitHub A
 
 1. creates a temporary data folder and loads the English demo campaign (`python -m maze.demo --lang en`);
 2. starts Maze on `127.0.0.1` like `frontend/e2e/run-all.sh` (`MAZE_DEFAULT_LOCALE=en`);
-3. creates the first administrator from the setup screen, then adds through the API what the demo lacks: a campaign page, scenarios with read-aloud and GM secret boxes, a comment thread, an interactive map (background drawn by the script) with pins, a co-GM account and a backup;
+3. creates the first administrator from the setup screen, then adds through the API what the demo lacks: a campaign page, scenarios with read-aloud and GM secret boxes, a comment thread, an interactive map (background drawn by the script) with pins, the timeline turned on with a dozen events, a co-GM account and a backup;
 4. takes the screenshots in an `en-US` browser, 1440 x 900 at device scale 1.5, converts them to WebP (Pillow) and writes them to `site/img/`;
 5. stops the server and deletes the temporary folder.
 
@@ -40,8 +40,10 @@ Requirements: the server dependencies (`backend/requirements.txt`, Pillow includ
 | campaign.webp | Campaign page with the scenario tree |
 | editor.webp | Scenario page: read-aloud and GM secret boxes, a co-GM's live selection, comment thread |
 | graph.webp | Relationship graph of a scenario's cast |
-| npc.webp, faction.webp | NPC and faction sheets |
+| npc.webp, faction.webp | NPC and faction sheets, beside the Characters index arranged as a faction tree |
 | map.webp | Interactive map with pins, a place open with its ring of sub-places |
+| timeline.webp | Timeline strip with its mini-map, the Tags panel open and an event open on the side |
+| timeline-compact.webp | Compact timeline strip (staggered, names written diagonally), an event open on the side |
 | backups.webp | Administration > Backups |
 
 Look at every image before committing: the script fails if a screen does not appear, but not if a new interface text is left in French or a layout change hides something. The page gives each image's size (`width` and `height`) and a text alternative: update them if a screen changes.

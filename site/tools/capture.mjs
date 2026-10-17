@@ -6,7 +6,8 @@
 //   2. starts Maze on 127.0.0.1 the way frontend/e2e/run-all.sh does (uvicorn maze.app:app_factory);
 //   3. creates the first administrator from the setup screen, then adds through the API what the demo lacks:
 //      a campaign page, scenarios with read-aloud and GM secret boxes, a comment thread, an interactive map
-//      (background drawn by this script) with pins, a co-GM account and a backup;
+//      (background drawn by this script) with pins, the timeline (optional module) with its events, a co-GM account
+//      and a backup;
 //   4. takes the screenshots in an en-US browser (1440 x 900, device scale 1.5) and converts them to WebP;
 //   5. stops the server and deletes the data folder (MAZE_CAPTURE_KEEP=1 keeps it).
 //
@@ -315,6 +316,42 @@ try {
   }
   step('Interactive map created');
 
+  // Timeline (optional module, off by default): turned on for the demo, events in the GM's order, free dates.
+  await api(page, 'PATCH', `/api/campaigns/${cid}`, { timeline_enabled: true });
+  const secret = (html) => `<div data-callout="secret"><p>${html}</p></div>`;
+  const EVENTS = [
+    ['Year of the Storm', 'The old city drowns', ['Backstory'],
+      `<p>A storm and a tide like no other: the old city sinks into the ${place('Sunken bay')}, its sanctuary with it.</p>`],
+    ['20 years ago', 'The Grey Hand takes the docks', ['Backstory', 'Smuggling'],
+      `<p>${faction('The Grey Hand')} buys out the last honest warehouses. ${npc('Maëlis Corvin')} opens ${place('The Smoked Herring Tavern')}.</p>`],
+    ['10 years ago', 'Maëlis turns informant', ['Smuggling', 'Watch'],
+      `<p>Caught with a cargo of stolen silver, ${npc('Maëlis Corvin')} strikes a deal with ${npc('Captain Hart')}.</p>`
+      + secret('Nobody in the Grey Hand knows. If they learn it, she is dead.')],
+    ['Last great tide', 'Mother Oriane hears the sea sing', ['Backstory', 'Cult'],
+      `<p>${npc('Mother Oriane')} comes back from the ${place('Cave of Sighs')} changed, and the ${faction('Cult of the Black Tide')} begins to grow.</p>`],
+    ['Spring', 'The East Quay is pledged', ['Valcourt', 'Smuggling'],
+      `<p>${npc('Aurèle de Valcourt')} pledges the titles of the ${place('East Quay')} to ${faction('The Grey Hand')} to pay his debts.</p>`],
+    ['Two months ago', "Ysolde's first purse", ['Valcourt', 'Cult'],
+      `<p>${npc('Ysolde de Valcourt')} meets ${npc('Mother Oriane')} at night.</p>`
+      + secret('She funds the cult in secret, convinced it can restore her family\'s fortune.')],
+    ['Six weeks ago', 'The forged ledgers', ['Watch'],
+      `<p>${npc('Elias Morn')} finds two sets of accounts in the Harbourmaster's office and tells no one.</p>`],
+    ['Five weeks ago', 'Elias Morn found drowned', ['Watch'],
+      `<p>His body washes up under the ${place('Watchtower')}. ${npc('Captain Hart')} closes the case in a day.</p>`],
+    ['Session 1', 'Arrival in Ys', ['Session'],
+      '<p>The players land in the fog, a week before the royal inquiry.</p>'],
+    ['Session 2', 'The empty boat', ['Session', 'Cult'],
+      `<p>${npc('Brann Nutshell')}'s boat comes back without him. A black wave is painted on its bow.</p>`],
+    ['In 5 weeks', 'The great tide', ['Cult'],
+      `<p>The ${faction('Cult of the Black Tide')} means to light the three braziers of the sunken sanctuary.</p>`],
+    ['Day of the inquiry', 'The royal inspector', ['Watch', 'Valcourt'],
+      `<p>The inspector opens the Harbourmaster's ledgers before the ${faction('Harbour Council')}.</p>`],
+  ];
+  for (const [date_label, title, tags, description] of EVENTS) {
+    await api(page, 'POST', `/api/campaigns/${cid}/events`, { title, date_label, tags, description });
+  }
+  step(`Timeline: ${EVENTS.length} events`);
+
   // Backup (same command as the daily timer), so that the administration lists one.
   python(['-m', 'maze.backup']);
   step('Backup taken');
@@ -395,6 +432,30 @@ try {
   await page.locator('.map-pin', { has: page.locator('.map-pin__label', { hasText: 'Cave of Sighs' }) }).click();
   await page.waitForTimeout(800);
   await shoot('map');
+
+  // Timeline, as a frieze (keys of frontend/src/timeline.js), one event open in the side panel:
+  // normal with its mini-map and the Tags panel open, then compact.
+  const frieze = async (density, name, open, tags) => {
+    await page.evaluate((d) => {
+      localStorage.setItem('maze:timeline:mode', 'frieze');
+      localStorage.setItem('maze:timeline:density', d);
+    }, density);
+    await go(`#/c/${cid}/chronologie`);
+    await page.reload();
+    await page.getByText('The royal inspector').first().waitFor();
+    await page.locator('.frieze__open', { hasText: open }).click();
+    await page.locator('.timeline-panel', { hasText: open }).waitFor();
+    if (tags) {
+      await page.locator('.timeline-tagbar button', { hasText: 'Tags' }).first().click();
+      await page.locator('.timeline-tagbar .legend__item', { hasText: 'Smuggling' }).waitFor();
+    }
+    await page.mouse.move(VIEWPORT.width / 2, VIEWPORT.height - 120);   // no hover effect on the frieze
+    await page.evaluate(() => document.activeElement?.blur());
+    await page.waitForTimeout(800);
+    await shoot(name);
+  };
+  await frieze('normal', 'timeline', 'Maëlis turns informant', true);
+  await frieze('compact', 'timeline-compact', "Ysolde's first purse", false);
 
   // Administration > Backups.
   await go('#/admin/sauvegardes');
