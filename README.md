@@ -2,7 +2,7 @@
 
 **A self-hosted workshop for tabletop RPG game masters: characters, factions, places, maps and scenarios, written together in real time.**
 
-Maze is a web application for game masters who prepare their campaigns alone or with co-GMs. NPCs and factions live on a relationship graph, places in a tree with interactive maps, and scenarios in a collaborative editor that links to all of them. It runs as a single Docker container with a SQLite database, on your own server.
+Maze is a web application for game masters who prepare their campaigns alone or with co-GMs. NPCs and factions live on a relationship graph, places in a tree with interactive maps, scenarios in a collaborative editor that links to all of them, and the events of your campaign on an optional timeline. It runs as a single Docker container with a SQLite database, on your own server.
 
 Website, with screenshots: https://ranglier.github.io/Maze/
 
