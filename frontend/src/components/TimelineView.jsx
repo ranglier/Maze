@@ -8,7 +8,8 @@ import RichField from './RichField.jsx';
 import useScenarioData from './scenarios/useScenarioData.js';
 import { useTreeDrag } from './treeDrag.js';
 import { Field, Icon, Markdown, TagInput, useAction, useConfirm, useToast } from './ui.jsx';
-import { N_, compareText, t } from '../i18n/index.js';
+import { LegendDots, LegendPanel } from './Legend.jsx';
+import { N_, compareText, t, tn } from '../i18n/index.js';
 
 /*
  * Onglet Chronologie (module facultatif d'une campagne, campaign.timeline_enabled) : événements dans un ordre
@@ -16,11 +17,14 @@ import { N_, compareText, t } from '../i18n/index.js';
  *   - liste verticale : édition directe, « + » entre deux événements, glisser-déposer et « Déplacer vers… » ;
  *   - frise ordinale horizontale : cartes alternées de part et d'autre d'un axe, panneau latéral (feuille basse sur
  *     téléphone) avec la description complète.
- * Logique pure (ordre, insertion, filtre, couleurs) : ../timeline.js, testée par test/timeline.test.mjs.
+ * Chaque mode a sa densité (normale ou compacte), gardée séparément dans le navigateur : liste compacte, une ligne
+ * par événement (EventLine), dépliée en carte au clic ; frise compacte : rendu choisi par FriezeCard.
+ * Filtre par étiquette : panneau flottant « Étiquettes » en bas à gauche (TagPanel, sur le modèle de la légende de
+ * la carte des relations), replié à chaque ouverture.
+ * Logique pure (ordre, insertion, filtre, couleurs, densité) : ../timeline.js, testée par test/timeline.test.mjs.
  */
 
 const MODE_KEY = 'maze:timeline:mode';
-const DENSITY_KEY = 'maze:timeline:density';
 const EVENT_KEYS = ['date_label', 'title', 'tags', 'description'];
 // Libellés du panneau de conflit (traduits par ConflictPanel, à l'affichage).
 const LABELS = { date_label: N_('Date'), title: N_('Titre'), tags: N_('Étiquettes'), description: N_('Description') };
@@ -36,16 +40,37 @@ export default function TimelineView({ campaign, header, trailing, eventId, onNa
   const confirm = useConfirm();
   const [events, setEvents] = useState(null);
   const [mode, setModeState] = useState(() => TL.initialMode(storage.get(MODE_KEY), phonePortrait()));
-  const [density, setDensityState] = useState(() => (storage.get(DENSITY_KEY) === 'compact' ? 'compact' : 'normal'));
+  // Densité de chaque mode ({ list, frieze }), gardée séparément.
+  const [densities, setDensities] = useState(() => Object.fromEntries(
+    TL.MODES.map((m) => [m, TL.initialDensity(storage.get(TL.densityKey(m)))])));
   const [tagFilter, setTagFilter] = useState('');
+  const [tagsOpen, setTagsOpen] = useState(false);   // panneau « Étiquettes » : replié à chaque ouverture
   const [form, setForm] = useState(null);          // { id } : modification ; { isNew, beforeId } : création
   const [selected, setSelected] = useState(null);  // frise : événement ouvert dans le panneau
   const [moving, setMoving] = useState(null);      // événement de « Déplacer vers… »
   const [highlight, setHighlight] = useState(null);
   const [expanded, setExpanded] = useState(() => new Set());
+  const [opened, setOpened] = useState(() => new Set());   // liste compacte : lignes dépliées en carte
 
+  const density = densities[mode];
+  const compactList = mode === 'list' && density === 'compact';
   const setMode = (m) => { setModeState(m); storage.set(MODE_KEY, m); };
-  const setDensity = (d) => { setDensityState(d); storage.set(DENSITY_KEY, d); };
+  const setDensity = (d) => {
+    setDensities((all) => ({ ...all, [mode]: d }));
+    storage.set(TL.densityKey(mode), d);
+    if (mode === 'list') setOpened(new Set());
+  };
+  const toggleIn = (setter, id) => setter((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  // Ligne compacte dépliée en carte : le focus va sur son bouton « Replier » (Échap la replie depuis le clavier).
+  const unfoldLine = (id) => {
+    setOpened((s) => new Set(s).add(id));
+    requestAnimationFrame(() => document.querySelector(`[data-event="${id}"] .timeline-card__fold`)?.focus({ preventScroll: true }));
+  };
+  // Ligne compacte repliée (second clic, Échap) : le focus revient sur la ligne.
+  const foldLine = (id) => {
+    setOpened((s) => { const n = new Set(s); n.delete(id); return n; });
+    requestAnimationFrame(() => document.querySelector(`[data-event="${id}"] .timeline-line__open`)?.focus());
+  };
 
   const load = useCallback(async () => {
     const data = await run(() => api.events(cid));
@@ -72,7 +97,10 @@ export default function TimelineView({ campaign, header, trailing, eventId, onNa
     setTagFilter('');
     setHighlight(eventId);
     if (mode === 'frieze') setSelected(eventId);
-    else setExpanded((s) => new Set(s).add(eventId));
+    else {
+      setExpanded((s) => new Set(s).add(eventId));
+      setOpened((s) => new Set(s).add(eventId));
+    }
     requestAnimationFrame(() => {
       document.querySelector(`[data-event="${eventId}"]`)?.scrollIntoView({ block: 'center', inline: 'center' });
     });
@@ -175,10 +203,11 @@ export default function TimelineView({ campaign, header, trailing, eventId, onNa
                 </button>
               </div>
             )}
-            {mode === 'frieze' && events?.length > 0 && (
+            {events?.length > 0 && (
               <button type="button" className={`icon-btn timeline__density${density === 'compact' ? ' is-active' : ''}`}
-                aria-pressed={density === 'compact'} title={t('Affichage compact (date et titre)')}
-                aria-label={t('Affichage compact (date et titre)')}
+                aria-pressed={density === 'compact'}
+                title={mode === 'list' ? t('Affichage compact (une ligne par événement)') : t('Affichage compact (date et titre)')}
+                aria-label={mode === 'list' ? t('Affichage compact (une ligne par événement)') : t('Affichage compact (date et titre)')}
                 onClick={() => setDensity(density === 'compact' ? 'normal' : 'compact')}>
                 <Icon name="fold" size={17} />
               </button>
@@ -193,20 +222,6 @@ export default function TimelineView({ campaign, header, trailing, eventId, onNa
       </header>
 
       <div className={`timeline__body timeline__body--${mode}`}>
-        {tags.length > 0 && (
-          <div className="timeline-filters" role="group" aria-label={t('Filtrer par étiquette')}>
-            <button type="button" className={`timeline-filter${activeTag ? '' : ' is-active'}`} aria-pressed={!activeTag}
-              onClick={() => setTagFilter('')}>{t('Tous')}</button>
-            {tags.map((tag) => (
-              <button key={tag} type="button" style={{ '--tag': TL.tagColor(tag) }}
-                className={`timeline-filter${activeTag === tag ? ' is-active' : ''}`} aria-pressed={activeTag === tag}
-                onClick={() => setTagFilter(activeTag === tag ? '' : tag)}>
-                <span className="timeline-filter__dot" />{tag}
-              </button>
-            ))}
-          </div>
-        )}
-
         {!events ? <div className="doc-loading" aria-busy="true">{t('Chargement…')}</div>
           : empty ? (
             <div className="timeline-empty">
@@ -222,25 +237,29 @@ export default function TimelineView({ campaign, header, trailing, eventId, onNa
               {visible.length === 0 && activeTag && (
                 <p className="muted timeline__none">{t('Aucun événement avec l’étiquette « {tag} ».', { tag: activeTag })}</p>
               )}
-              <ol className="timeline-list">
+              <ol className={`timeline-list timeline-list--${density}`}>
                 {visible.map((ev) => {
                   const row = { key: `event-${ev.id}`, id: ev.id, label: ev.title };
+                  const line = compactList && !opened.has(ev.id) && form?.id !== ev.id;
+                  const actions = { onEdit: () => setForm({ id: ev.id }), onMove: () => setMoving(ev), onDelete: () => remove(ev) };
                   return (
                     <Fragment key={ev.id}>
                       {form?.isNew && form.beforeId === ev.id
                         ? <li className="timeline-item is-editing">{newForm}</li>
                         : <InsertRow onClick={() => startCreate(ev.id)} />}
                       <li data-event={ev.id} {...dnd.props(row, { enabled: !form })} draggable={false}
-                        className={`timeline-item${dnd.className(row.key)}${highlight === ev.id ? ' is-target' : ''}${form?.id === ev.id ? ' is-editing' : ''}`}
+                        className={`timeline-item${line ? ' is-line' : ''}${dnd.className(row.key)}${highlight === ev.id ? ' is-target' : ''}${form?.id === ev.id ? ' is-editing' : ''}`}
                         style={{ '--tag': markerColor(ev) }}>
                         {form?.id === ev.id ? (
                           <EventForm key={ev.id} {...formProps} event={ev} onCancel={() => setForm(null)} onSaved={onSaved} />
+                        ) : line ? (
+                          <EventLine event={ev} byKey={byKey} draggable={!form} {...actions}
+                            onOpen={() => unfoldLine(ev.id)} />
                         ) : (
                           <EventCard event={ev} campaignId={cid} byKey={byKey} folded={!expanded.has(ev.id)}
-                            draggable={!form}
-                            onToggleFold={() => setExpanded((s) => { const n = new Set(s); if (n.has(ev.id)) n.delete(ev.id); else n.add(ev.id); return n; })}
-                            onOpenNode={openMention} onEdit={() => setForm({ id: ev.id })} onMove={() => setMoving(ev)}
-                            onDelete={() => remove(ev)} />
+                            draggable={!form} onToggleFold={() => toggleIn(setExpanded, ev.id)}
+                            onCollapse={compactList ? () => foldLine(ev.id) : undefined}
+                            onOpenNode={openMention} {...actions} />
                         )}
                       </li>
                     </Fragment>
@@ -293,6 +312,10 @@ export default function TimelineView({ campaign, header, trailing, eventId, onNa
               )}
             </div>
           )}
+        {events && (
+          <TagPanel tags={tags} active={activeTag} onFilter={setTagFilter} open={tagsOpen}
+            onToggle={() => setTagsOpen((o) => !o)} />
+        )}
       </div>
 
       {moving && byId.has(moving.id) && (
@@ -333,6 +356,118 @@ function InsertRow({ onClick, end = false }) {
   );
 }
 
+/**
+ * Panneau « Étiquettes » en bas à gauche, sur le modèle de la légende de la carte des relations (LegendPanel) :
+ * une seule étiquette filtrée à la fois (un second clic retire le filtre), « Tout afficher » quand un filtre est
+ * actif ; replié avec un filtre, le bouton montre l'étiquette filtrée et un « × » pour retirer le filtre.
+ */
+function TagPanel({ tags, active, onFilter, open, onToggle }) {
+  const itemsId = useId();
+  if (!tags.length) return null;
+  const showActive = !open && active;
+  return (
+    <LegendPanel className={`timeline-tagbar${active ? ' has-filter' : ''}`} open={open} onToggle={onToggle}
+      itemsId={itemsId} itemsLabel={t('Filtrer par étiquette')}
+      title={open ? t('Replier les étiquettes') : t('Filtrer par étiquette')}
+      label={showActive ? t('Étiquettes, filtre « {tag} »', { tag: active }) : undefined}
+      toggle={showActive ? (
+        <>
+          <span className="legend__swatch timeline-tagbar__dot" style={{ '--rel': TL.tagColor(active) }} aria-hidden="true" />
+          <span className="timeline-tagbar__active">{active}</span>
+        </>
+      ) : (
+        <>
+          <LegendDots colors={tags.slice(0, 4).map(TL.tagColor)} />
+          {t('Étiquettes')}
+        </>
+      )}
+      after={showActive && (
+        <button type="button" className="timeline-tagbar__clear" onClick={() => onFilter('')}
+          aria-label={t('Retirer le filtre « {tag} »', { tag: active })} title={t('Retirer le filtre « {tag} »', { tag: active })}>
+          <Icon name="close" size={13} />
+        </button>
+      )}>
+      {tags.map((tag) => (
+        <button key={tag} type="button" className={`legend__item${active === tag ? ' is-active' : ''}`}
+          style={{ '--rel': TL.tagColor(tag) }} aria-pressed={active === tag} onClick={() => onFilter(active === tag ? '' : tag)}>
+          <span className="legend__swatch timeline-tagbar__dot" />{tag}
+        </button>
+      ))}
+      {active && (
+        <button type="button" className="legend__item timeline-tagbar__all" onClick={() => onFilter('')}>{t('Tout afficher')}</button>
+      )}
+    </LegendPanel>
+  );
+}
+
+/** Poignée de glisser-déposer d'un événement de la liste (souris). */
+function Grip() {
+  return (
+    <span className="timeline-grip" draggable title={t('Glisser pour déplacer')} aria-hidden="true"
+      onDragStart={(e) => {
+        const item = e.currentTarget.closest('li');
+        if (item) e.dataTransfer.setDragImage(item, 24, 24);
+      }}>
+      <Icon name="grip" size={16} />
+    </span>
+  );
+}
+
+/** Outils d'un événement de la liste : modifier, déplacer, supprimer (et replier une ligne compacte dépliée). */
+function EventTools({ onEdit, onMove, onDelete, onCollapse }) {
+  return (
+    <div className="timeline-card__tools">
+      {onCollapse && (
+        <button type="button" className="icon-btn timeline-card__fold" onClick={onCollapse} aria-expanded="true" aria-label={t('Replier')} title={t('Replier')}>
+          <Icon name="up" size={16} />
+        </button>
+      )}
+      <button type="button" className="icon-btn" onClick={onEdit} aria-label={t('Modifier')} title={t('Modifier')}>
+        <Icon name="edit" size={16} />
+      </button>
+      <button type="button" className="icon-btn" onClick={onMove} aria-label={t('Déplacer vers…')} title={t('Déplacer vers…')}>
+        <Icon name="swap" size={16} />
+      </button>
+      <button type="button" className="icon-btn icon-btn--danger" onClick={onDelete} aria-label={t('Supprimer')} title={t('Supprimer')}>
+        <Icon name="trash" size={16} />
+      </button>
+    </div>
+  );
+}
+
+/**
+ * Liste compacte : une ligne par événement (date, titre, pastilles des étiquettes, nombre de fiches citées).
+ * Clic ou Entrée : la ligne se déplie en carte normale à sa place.
+ */
+function EventLine({ event, byKey, draggable, onOpen, onEdit, onMove, onDelete }) {
+  const { shown, more } = TL.tagDots(event.tags);
+  const cited = TL.eventMentions(event).filter((m) => byKey.has(`${m.kind}:${m.id}`)).length;
+  return (
+    <div className="timeline-line">
+      <span className="timeline-item__marker" aria-hidden="true" />
+      {draggable && <Grip />}
+      <button type="button" className="timeline-line__open" aria-expanded="false" onClick={onOpen}>
+        <span className="timeline-line__date">{event.date_label}</span>
+        <span className="timeline-line__title">{event.title}</span>
+        {shown.length > 0 && (
+          <span className="timeline-line__tags" title={event.tags.join(', ')}>
+            {shown.map((tag) => <span key={tag} className="timeline-line__tag" style={{ '--tag': TL.tagColor(tag) }} />)}
+            {more > 0 && <span className="timeline-line__more">+{more}</span>}
+            <span className="sr-only">{event.tags.join(', ')}</span>
+          </span>
+        )}
+        {cited > 0 && (
+          <span className="timeline-line__cited" title={tn('{n} fiche citée', '{n} fiches citées', cited)}>
+            <Icon name="link" size={13} /><span aria-hidden="true">{cited}</span>
+            <span className="sr-only">{tn('{n} fiche citée', '{n} fiches citées', cited)}</span>
+          </span>
+        )}
+      </button>
+      <EventTools onEdit={onEdit} onMove={onMove} onDelete={onDelete} />
+    </div>
+  );
+}
+
 function Tags({ tags }) {
   if (!tags?.length) return null;
   return (
@@ -364,36 +499,31 @@ function Mentions({ event, byKey, campaignId, dots = false }) {
 }
 
 /** Événement de la liste : date, titre, étiquettes, fiches citées, description (repliée si longue), actions. */
-function EventCard({ event, campaignId, byKey, folded, draggable, onToggleFold, onOpenNode, onEdit, onMove, onDelete }) {
+function EventCard({ event, campaignId, byKey, folded, draggable, onToggleFold, onCollapse, onOpenNode, onEdit, onMove, onDelete }) {
   const long = TL.isLongDescription(event.description);
+  // Ligne compacte dépliée : un second clic (hors boutons, liens et texte sélectionné) ou Échap la replie.
+  const collapse = onCollapse && {
+    onClick: (e) => {
+      if (e.target.closest('button, a, input, textarea, [contenteditable="true"]')) return;
+      if (String(window.getSelection?.() || '')) return;
+      onCollapse();
+    },
+    onKeyDown: (e) => {
+      if (e.key !== 'Escape' || document.querySelector('.modal-backdrop, .palette-backdrop')) return;
+      e.stopPropagation();
+      onCollapse();
+    },
+  };
   return (
-    <article className="timeline-card" aria-label={event.title}>
+    <article className={`timeline-card${onCollapse ? ' is-unfolded' : ''}`} aria-label={event.title} {...collapse}>
       <span className="timeline-item__marker" aria-hidden="true" />
       <header className="timeline-card__head">
-        {draggable && (
-          <span className="timeline-grip" draggable title={t('Glisser pour déplacer')} aria-hidden="true"
-            onDragStart={(e) => {
-              const item = e.currentTarget.closest('li');
-              if (item) e.dataTransfer.setDragImage(item, 24, 24);
-            }}>
-            <Icon name="grip" size={16} />
-          </span>
-        )}
+        {draggable && <Grip />}
         <div className="timeline-card__titles">
           {event.date_label && <p className="timeline-date">{event.date_label}</p>}
           <h3>{event.title}</h3>
         </div>
-        <div className="timeline-card__tools">
-          <button type="button" className="icon-btn" onClick={onEdit} aria-label={t('Modifier')} title={t('Modifier')}>
-            <Icon name="edit" size={16} />
-          </button>
-          <button type="button" className="icon-btn" onClick={onMove} aria-label={t('Déplacer vers…')} title={t('Déplacer vers…')}>
-            <Icon name="swap" size={16} />
-          </button>
-          <button type="button" className="icon-btn icon-btn--danger" onClick={onDelete} aria-label={t('Supprimer')} title={t('Supprimer')}>
-            <Icon name="trash" size={16} />
-          </button>
-        </div>
+        <EventTools onEdit={onEdit} onMove={onMove} onDelete={onDelete} onCollapse={onCollapse} />
       </header>
       <Tags tags={event.tags} />
       <Mentions event={event} byKey={byKey} campaignId={campaignId} />
@@ -487,36 +617,148 @@ function Frieze({ events, density, byKey, campaignId, selectedId, highlight, onS
   };
 
   return (
-    <div className={`frieze frieze--${density}`} ref={scrollRef} onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove} onPointerUp={endGrab} onPointerCancel={endGrab}>
-      <ol className="frieze__track" onKeyDown={onKeyDown} aria-label={t('Frise chronologique')}>
-        {events.map((ev, i) => (
-          <li key={ev.id} data-event={ev.id} style={{ '--tag': markerColor(ev) }}
-            className={`frieze__slot ${i % 2 ? 'is-below' : 'is-above'}${ev.id === selectedId ? ' is-selected' : ''}${ev.id === highlight ? ' is-target' : ''}`}>
-            <button type="button" className="frieze__insert" onClick={() => onInsert(ev.id)}
-              aria-label={t('Insérer un événement avant « {title} »', { title: ev.title })}
-              title={t('Insérer un événement ici')}>
+    <div className="frieze-wrap">
+      <div className={`frieze frieze--${density}`} ref={scrollRef} onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove} onPointerUp={endGrab} onPointerCancel={endGrab}>
+        <ol className="frieze__track" onKeyDown={onKeyDown} aria-label={t('Frise chronologique')}>
+          {events.map((ev, i) => (
+            <li key={ev.id} data-event={ev.id} style={{ '--tag': markerColor(ev) }}
+              className={`frieze__slot ${i % 2 ? 'is-below' : 'is-above'}${ev.id === selectedId ? ' is-selected' : ''}${ev.id === highlight ? ' is-target' : ''}`}>
+              <button type="button" className="frieze__insert" onClick={() => onInsert(ev.id)}
+                aria-label={t('Insérer un événement avant « {title} »', { title: ev.title })}
+                title={t('Insérer un événement ici')}>
+                <Icon name="plus" size={13} />
+              </button>
+              <span className="frieze__dot" aria-hidden="true" />
+              <FriezeCard event={ev} index={i} density={density} byKey={byKey} campaignId={campaignId}
+                focusable={i === activeIndex} selected={ev.id === selectedId}
+                onOpen={() => { setActive(i); onSelect(ev.id); }} />
+            </li>
+          ))}
+          <li className="frieze__slot frieze__slot--end">
+            <button type="button" className="frieze__insert" onClick={() => onInsert(null)}
+              aria-label={t('Ajouter un événement à la fin')} title={t('Ajouter un événement à la fin')}>
               <Icon name="plus" size={13} />
             </button>
-            <span className="frieze__dot" aria-hidden="true" />
-            <div className="frieze__card">
-              <button type="button" className="frieze__open" data-index={i} tabIndex={i === activeIndex ? 0 : -1}
-                aria-current={ev.id === selectedId ? 'true' : undefined}
-                onClick={() => { setActive(i); onSelect(ev.id); }}>
-                {ev.date_label && <span className="frieze__date">{ev.date_label}</span>}
-                <span className="frieze__title">{ev.title}</span>
-              </button>
-              {density === 'normal' && <Mentions event={ev} byKey={byKey} campaignId={campaignId} dots />}
-            </div>
           </li>
-        ))}
-        <li className="frieze__slot frieze__slot--end">
-          <button type="button" className="frieze__insert" onClick={() => onInsert(null)}
-            aria-label={t('Ajouter un événement à la fin')} title={t('Ajouter un événement à la fin')}>
-            <Icon name="plus" size={13} />
-          </button>
-        </li>
-      </ol>
+        </ol>
+      </div>
+      <FriezeMap scrollRef={scrollRef} events={events} selectedId={selectedId} density={density} />
+    </div>
+  );
+}
+
+/**
+ * Mini-carte sous la frise (deux densités) : un trait par événement selon son rang, rectangle de la partie visible.
+ * Clic : centre la frise à cet endroit ; glisser (souris ou doigt) : fait défiler ; clavier (role slider) : flèches
+ * d'un écran, Début / Fin. Masquée quand toute la frise tient à l'écran. Calculs : ../timeline.js.
+ */
+function FriezeMap({ scrollRef, events, selectedId, density }) {
+  const mapRef = useRef(null);
+  const drag = useRef(null);
+  const [view, setView] = useState(null);   // { scrollLeft, clientWidth, scrollWidth, start, slot }
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return undefined;
+    let frame = 0;
+    const measure = () => {
+      frame = 0;
+      const first = el.querySelector('.frieze__slot');
+      setView({
+        scrollLeft: el.scrollLeft, clientWidth: el.clientWidth, scrollWidth: el.scrollWidth,
+        start: first ? first.offsetLeft : 0, slot: first ? first.offsetWidth : 0,
+      });
+    };
+    const schedule = () => { if (!frame) frame = requestAnimationFrame(measure); };
+    measure();
+    el.addEventListener('scroll', schedule, { passive: true });
+    const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(schedule) : null;
+    ro?.observe(el);
+    const track = el.querySelector('.frieze__track');
+    if (track) ro?.observe(track);
+    return () => { el.removeEventListener('scroll', schedule); ro?.disconnect(); if (frame) cancelAnimationFrame(frame); };
+  }, [scrollRef, events.length, density]);
+
+  if (!view || !TL.overflows(view)) return null;
+  const win = TL.minimapWindow(view);
+  const range = TL.eventsInView(view, events.length, view);
+  const scrollTo = (left, smooth = false) => {
+    const el = scrollRef.current;
+    if (!el) return;
+    if (smooth) el.scrollTo({ left, behavior: 'smooth' }); else el.scrollLeft = left;
+  };
+
+  const onPointerDown = (e) => {
+    if (e.button !== 0 && e.pointerType === 'mouse') return;
+    const el = scrollRef.current;
+    const rect = mapRef.current.getBoundingClientRect();
+    const current = { scrollLeft: el.scrollLeft, clientWidth: el.clientWidth, scrollWidth: el.scrollWidth };
+    let start = current.scrollLeft;
+    // Clic hors du rectangle : la frise est d'abord centrée sur ce point, puis le glissement part de là.
+    if (!e.target.closest('.frieze-map__window')) {
+      start = TL.scrollForFraction((e.clientX - rect.left) / rect.width, current);
+      scrollTo(start);
+    }
+    drag.current = { x: e.clientX, start, width: rect.width };
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    e.preventDefault();
+  };
+  const onPointerMove = (e) => {
+    if (!drag.current) return;
+    const el = scrollRef.current;
+    const current = { scrollLeft: el.scrollLeft, clientWidth: el.clientWidth, scrollWidth: el.scrollWidth };
+    scrollTo(TL.scrollForDrag(drag.current.start, e.clientX - drag.current.x, drag.current.width, current));
+  };
+  const endDrag = () => { drag.current = null; };
+  const onKeyDown = (e) => {
+    const left = TL.sliderScroll(e.key, view);
+    if (left === null) return;
+    e.preventDefault();
+    scrollTo(left, true);
+  };
+
+  return (
+    <div className="frieze-map" ref={mapRef} role="slider" tabIndex={0} aria-label={t('Position dans la frise')}
+      aria-orientation="horizontal" aria-valuemin={0} aria-valuemax={100} aria-valuenow={TL.scrollPercent(view)}
+      aria-valuetext={TL.viewText(range, events.length)} onKeyDown={onKeyDown}
+      onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={endDrag} onPointerCancel={endDrag}>
+      {events.map((ev, i) => (
+        <span key={ev.id} className={`frieze-map__mark${ev.id === selectedId ? ' is-selected' : ''}`} aria-hidden="true"
+          style={{ left: `${100 * TL.markFraction(i, view, view)}%`, '--tag': markerColor(ev) }} />
+      ))}
+      <span className="frieze-map__window" aria-hidden="true"
+        style={{ left: `${100 * win.left}%`, width: `${100 * win.width}%` }} />
+    </div>
+  );
+}
+
+/**
+ * Carte d'un événement dans la frise. Densité normale : date, titre (3 lignes), pastilles des fiches citées.
+ * Compacte : étiquette tournée à 45° qui part du point de l'axe, en quinconce (CSS « Frise compacte »,
+ * .frieze--compact). Dans les deux cas, le bouton .frieze__open porte data-index (clavier) et ouvre le panneau.
+ */
+function FriezeCard({ event, index, density, byKey, campaignId, focusable, selected, onOpen }) {
+  if (density === 'compact') {
+    // Étiquette en diagonale partant du point de l'axe (au-dessus : vers le haut à droite ; en dessous : vers le bas).
+    return (
+      <div className="frieze__card frieze__card--diag">
+        <button type="button" className="frieze__open" data-index={index} tabIndex={focusable ? 0 : -1}
+          aria-current={selected ? 'true' : undefined} onClick={onOpen} title={event.title}>
+          {event.date_label && <span className="frieze__date">{event.date_label}</span>}
+          <span className="frieze__title">{event.title}</span>
+        </button>
+      </div>
+    );
+  }
+  return (
+    <div className="frieze__card">
+      <button type="button" className="frieze__open" data-index={index} tabIndex={focusable ? 0 : -1}
+        aria-current={selected ? 'true' : undefined} onClick={onOpen}>
+        {event.date_label && <span className="frieze__date">{event.date_label}</span>}
+        <span className="frieze__title">{event.title}</span>
+      </button>
+      {density === 'normal' && <Mentions event={event} byKey={byKey} campaignId={campaignId} dots />}
     </div>
   );
 }

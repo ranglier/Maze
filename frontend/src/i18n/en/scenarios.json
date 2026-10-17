@@ -7,6 +7,7 @@
   "Adresse": "Address",
   "Adversaire": "Opponent",
   "Affichage compact (date et titre)": "Compact view (date and title)",
+  "Affichage compact (une ligne par événement)": "Compact view (one line per event)",
   "Affichage de la chronologie": "Timeline view",
   "Ajouter": "Add",
   "Ajouter un événement": "Add an event",
@@ -213,6 +214,7 @@
   "Paragraphe": "Paragraph",
   "Pas encore de description : « Modifier » pour en écrire une.": "No description yet: “Edit” to write one.",
   "Passage introuvable dans le texte (il est peut-être dans le titre).": "Passage not found in the text (it may be in the title).",
+  "Position dans la frise": "Position in the timeline",
   "Pour créer vos propres modèles : menu ⋯ d’une fiche, « Enregistrer comme modèle ».": "To create your own templates: ⋯ menu of a page, “Save as template”.",
   "Première impression des PJ.": "The PCs’ first impression.",
   "Préparation de séance": "Session prep",
@@ -223,10 +225,12 @@
   "Renommer": "Rename",
   "Repasser en édition": "Back to editing",
   "Replier": "Collapse",
+  "Replier les étiquettes": "Collapse tags",
   "Restauration : {label}": "Restore: {label}",
   "Restaurer": "Restore",
   "Restaurer cette version": "Restore this version",
   "Retirer le filtre": "Remove filter",
+  "Retirer le filtre « {tag} »": "Remove the “{tag}” filter",
   "Retirer le lien": "Remove link",
   "Rouvrir": "Reopen",
   "Rouvrir le fil": "Reopen thread",
@@ -331,6 +335,10 @@
     "one": "{n} sheet + neighbours",
     "other": "{n} sheets + neighbours"
   },
+  "{n} fiche citée": {
+    "one": "{n} sheet mentioned",
+    "other": "{n} sheets mentioned"
+  },
   "{n} ko": "{n} KB",
   "{n} masquée par l’affichage": {
     "one": "{n} hidden by display settings",
@@ -361,11 +369,14 @@
   "Échec de l’enregistrement du titre": "Could not save the title",
   "Écrivez le scénario. Tapez @ pour citer un PNJ, une faction, un lieu ou une autre fiche, / pour insérer un bloc.": "Write the scenario. Type @ to mention an NPC, a faction, a place or another page, / to insert a block.",
   "Également sur cette fiche": "Also on this page",
+  "Étiquettes, filtre « {tag} »": "Tags, filtered by “{tag}”",
   "Événement": "Event",
   "Événement ajouté": "Event added",
   "Événement enregistré": "Event saved",
   "Événement supprimé": "Event deleted",
   "à l’instant": "just now",
+  "événement {n} sur {count}": "event {n} of {count}",
+  "événements {first} à {last} sur {count}": "events {first} to {last} of {count}",
   "← Colonne": "← Column",
   "↑ Ligne": "↑ Row"
 }
