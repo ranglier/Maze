@@ -6,7 +6,12 @@
 //   - bascule Frise, ouverture d'une carte (panneau), flèches du clavier d'une carte à l'autre ;
 //   - recherche Ctrl+K : résultat « Événements », ouverture de l'événement ;
 //   - téléphone : accès par le menu de la campagne ; désactivation (confirmation) qui masque tout.
-// Captures dans MAZE_E2E_SHOTS : liste, frise, frise sur téléphone.
+//   - panneau « Étiquettes » flottant (replié par défaut, filtre, « Tout afficher », « × ») ;
+//   - seconde campagne de 15 événements : liste compacte (une ligne par événement, dépliage, Échap, rechargement),
+//     « + » de la frise de même taille, mini-carte (clic, clavier, absente quand tout tient), frise compacte en
+//     quinconce (étiquettes tournées, sans chevauchement), téléphone.
+// Captures dans MAZE_E2E_SHOTS : liste, frise, frise sur téléphone, liste normale et compacte, étiquettes filtrées,
+// frise compacte (ordinateur et téléphone), liste compacte sur téléphone.
 //
 // Base vide ou déjà initialisée. Usage : node chronologie.mjs [url]   (défaut : $MAZE_URL ou http://127.0.0.1:8765)
 // Variables : MAZE_E2E_USER (admin), MAZE_E2E_PASSWORD (requis si la base a déjà un compte), HEADED=1,
@@ -62,8 +67,172 @@ async function until(fn, msg, timeout = 10000) {
   throw new Error(`${msg} (délai dépassé)`);
 }
 
+// Événements variés : 8 étiquettes, titres longs, fiches citées.
+const TAGS = ['Guerre', 'Cour', 'Diplomatie', 'Prophétie', 'Commerce', 'Religion', 'Exploration', 'Séance'];
+const EVENT_TITLES = [
+  'La fondation de Varn sur les ruines de l’ancienne citadelle des rois-sorciers', 'Le grand incendie du port',
+  'Première ambassade des elfes de la Brume auprès du conseil des marchands', 'Le schisme des prêtres d’Ardan',
+  'La découverte des mines de sel noir', 'Le couronnement d’Ilse la Jeune', 'Traité des Sept Rivières',
+  'La comète rouge annonce le retour de l’Ombre selon les devins de la cour', 'Siège de Morne', 'La peste des marais',
+  'Expédition vers les îles Brisées, dont aucun navire ne revint avant trois ans', 'Mariage des maisons Varga et Oriel',
+  'La chute du pont de Lumière', 'Séance 4 : les héros arrivent à Varn', 'Révolte des guildes',
+];
+
+/** Section 10 : panneau Étiquettes, liste compacte, frise compacte en quinconce, mini-carte, téléphone. */
+async function displayChecks(browser, ctx, a) {
+  const camp = await api(a, 'POST', '/api/campaigns', { name: `Annales ${TAG}` });
+  await api(a, 'PATCH', `/api/campaigns/${camp.id}`, { timeline_enabled: true });
+  const npc = await api(a, 'POST', `/api/campaigns/${camp.id}/npcs`, { name: 'Oriel Dast' });
+  for (const [i, title] of EVENT_TITLES.entries()) {
+    const tags = TAGS.filter((_, k) => (i + k) % 5 === 0 || (i === 4 && k < 6)).slice(0, i === 4 ? 6 : 3);
+    const description = i % 3 === 0 ? `<p>Témoin : <a class="mention" data-mention="npc:${npc.id}">Oriel Dast</a>.</p>` : '<p>Notes.</p>';
+    await api(a, 'POST', `/api/campaigns/${camp.id}/events`, { title, date_label: i % 4 === 3 ? '' : `An ${1200 + i * 7}, mois des brumes`, tags, description });
+  }
+  const url = `${BASE}/#/c/${camp.id}/chronologie`;
+  await a.evaluate(() => { localStorage.setItem('maze:timeline:mode', 'list'); localStorage.removeItem('maze:timeline:density'); localStorage.removeItem('maze:timeline:density:list'); });
+  // Chargement complet (pas un simple changement d'adresse) : la liste des campagnes doit connaître la nouvelle.
+  await a.goto('about:blank');
+  await a.goto(url);
+  await a.locator('.timeline-item').first().waitFor({ timeout: 15000 });
+  check(await a.locator('.timeline-filters').count() === 0 && await a.locator('.timeline-tagbar').isVisible(),
+    'plus de rangée de filtres : panneau Étiquettes flottant');
+  await settle(a);
+  await a.screenshot({ path: path.join(SHOTS, 'liste-normale-etiquettes-repliees.png') });
+
+  // Liste compacte : une ligne par événement.
+  const listDensity = a.getByRole('button', { name: 'Affichage compact (une ligne par événement)' });
+  await listDensity.click();
+  const lines = a.locator('.timeline-line');
+  await until(async () => await lines.count() === 15, 'liste compacte');
+  check(await a.locator('.timeline-list .timeline-card').count() === 0, 'liste compacte : une ligne par événement, aucune carte');
+  const heights = await lines.evaluateAll((els) => els.map((e) => e.getBoundingClientRect().height));
+  check(heights.every((h) => h >= 34 && h <= 40), `liste compacte : lignes d’environ 36 px (${Math.min(...heights)} à ${Math.max(...heights)})`);
+  check(await a.evaluate(() => localStorage.getItem('maze:timeline:density:list') === 'compact'
+    && localStorage.getItem('maze:timeline:density') !== 'compact'), 'densité de la liste gardée à part de celle de la frise');
+  await settle(a);
+  await a.screenshot({ path: path.join(SHOTS, 'liste-compacte.png') });
+  const third = a.locator('.timeline-item').nth(2);
+  await third.locator('.timeline-line__open').click();
+  await third.locator('.timeline-card h3').waitFor({ timeout: 5000 });
+  check(await lines.count() === 14, 'clic sur une ligne : dépliée en carte à sa place');
+  await a.keyboard.press('Escape');
+  await third.locator('.timeline-line').waitFor({ timeout: 5000 });
+  check(await a.evaluate(() => document.activeElement?.classList.contains('timeline-line__open')), 'Échap : ligne repliée, focus sur la ligne');
+  await a.keyboard.press('Enter');
+  await third.locator('.timeline-card h3').click();
+  await third.locator('.timeline-line').waitFor({ timeout: 5000 });
+  check(await lines.count() === 15, 'Entrée puis second clic : dépliée puis repliée');
+  await a.reload();
+  await until(async () => await lines.count() === 15, 'densité après rechargement');
+  check(true, 'liste compacte gardée après rechargement');
+
+  // Panneau Étiquettes déplié avec un filtre actif.
+  const tagToggle = a.locator('.timeline-tagbar .legend__toggle');
+  await tagToggle.click();
+  await a.locator('.timeline-tagbar .legend__item', { hasText: 'Prophétie' }).click();
+  await settle(a);
+  await a.screenshot({ path: path.join(SHOTS, 'etiquettes-filtre-actif.png') });
+  check(await lines.count() < 15, 'liste compacte filtrée');
+  await a.locator('.timeline-tagbar .legend__item', { hasText: 'Tout afficher' }).click();
+  await tagToggle.click();
+
+  // Frise : densité propre (normale), « + » de même taille, mini-carte.
+  await a.getByRole('radio', { name: 'Frise' }).click();
+  await a.locator('.frieze--normal').waitFor({ timeout: 5000 });
+  check(true, 'frise : densité normale, indépendante de la liste');
+  const sizes = await a.locator('.frieze__insert').evaluateAll((els) => els.map((e) => {
+    const r = e.getBoundingClientRect();
+    return `${Math.round(r.width)}x${Math.round(r.height)}`;
+  }));
+  check(new Set(sizes).size === 1, `frise : pastilles « + » de même taille (${sizes[0]}, « + » de fin compris)`);
+  const map = a.locator('.frieze-map');
+  await map.waitFor({ timeout: 5000 });
+  check(/^événements 1 à \d+ sur 15$/.test(await map.getAttribute('aria-valuetext')), 'mini-carte : position lue (aria-valuetext)');
+  await settle(a);
+  await a.screenshot({ path: path.join(SHOTS, 'frise.png') });
+  const box = await map.boundingBox();
+  await a.mouse.click(box.x + box.width - 3, box.y + box.height / 2);
+  const atEnd = () => a.locator('.frieze').evaluate((el) => el.scrollLeft >= el.scrollWidth - el.clientWidth - 2);
+  await until(atEnd, 'clic près de la fin de la mini-carte');
+  check(true, 'mini-carte : un clic près de la fin fait défiler à la fin');
+  await map.focus();
+  await a.keyboard.press('Home');
+  await until(() => a.locator('.frieze').evaluate((el) => el.scrollLeft === 0), 'Début dans la mini-carte');
+  check(true, 'mini-carte au clavier : Début');
+
+  // Frise compacte : quinconce, étiquettes tournées, sans chevauchement.
+  await a.getByRole('button', { name: 'Affichage compact (date et titre)' }).click();
+  await a.locator('.frieze--compact').waitFor({ timeout: 5000 });
+  const geo = await a.evaluate(() => {
+    const slots = [...document.querySelectorAll('.frieze__slot:not(.frieze__slot--end)')];
+    const frieze = document.querySelector('.frieze').getBoundingClientRect();
+    return slots.map((sl) => {
+      const card = sl.querySelector('.frieze__card');
+      const btn = sl.querySelector('.frieze__open');
+      const dot = sl.querySelector('.frieze__dot').getBoundingClientRect();
+      const r = btn.getBoundingClientRect();
+      return { width: sl.getBoundingClientRect().width, transform: getComputedStyle(card).transform, h: btn.offsetHeight,
+        x: dot.x + dot.width / 2, top: r.top - frieze.top, bottom: frieze.bottom - r.bottom };
+    });
+  });
+  check(geo.every((g) => g.width < 50), `frise compacte : emplacements de ${Math.round(geo[0].width)} px`);
+  check(geo.every((g) => g.transform && g.transform !== 'none'), 'frise compacte : étiquettes tournées');
+  const clear = geo.slice(2).every((g, k) => g.h < Math.abs(g.x - geo[k].x) * Math.SQRT1_2);
+  check(clear, `frise compacte : étiquettes voisines d’un même côté sans chevauchement (${geo[0].h} px < ${Math.round(Math.abs(geo[2].x - geo[0].x) * Math.SQRT1_2)} px)`);
+  check(geo.every((g) => g.top >= -1 && g.bottom >= -1), 'frise compacte : étiquettes entières dans la hauteur de la frise');
+  await settle(a);
+  await a.screenshot({ path: path.join(SHOTS, 'frise-compacte.png') });
+  await a.locator('.frieze__open', { hasText: 'Siège de Morne' }).click();
+  await a.locator('aside.timeline-panel .timeline-detail__title', { hasText: 'Siège de Morne' }).waitFor({ timeout: 5000 });
+  check(await a.locator('.frieze__slot.is-selected .frieze__title', { hasText: 'Siège de Morne' }).count() === 1,
+    'frise compacte : un clic ouvre le panneau, étiquette sélectionnée');
+  await a.locator('aside.timeline-panel').getByRole('button', { name: 'Fermer' }).click();
+  // Peu d'événements (filtre) : tout tient, pas de mini-carte.
+  await tagToggle.click();
+  await a.locator('.timeline-tagbar .legend__item', { hasText: 'Séance' }).click();
+  await a.locator('.frieze-map').waitFor({ state: 'detached', timeout: 5000 });
+  check(true, 'mini-carte absente quand toute la frise tient à l’écran');
+  await a.locator('.timeline-tagbar .legend__item', { hasText: 'Tout afficher' }).click();
+
+  // Téléphone : liste compacte, frise compacte et mini-carte, panneau masqué sous la feuille basse.
+  const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, locale: 'fr-FR', isMobile: true, hasTouch: true,
+    storageState: await ctx.storageState() });
+  const p = await phone.newPage();
+  p.on('pageerror', (e) => errors.push(`pageerror (téléphone): ${e.message}`));
+  await p.goto(url);
+  await p.evaluate(() => { localStorage.setItem('maze:timeline:mode', 'list'); localStorage.setItem('maze:timeline:density:list', 'compact'); });
+  await p.reload();
+  await p.locator('.timeline-line').first().waitFor({ timeout: 15000 });
+  const phoneLine = await p.locator('.timeline-line').first().boundingBox();
+  check(phoneLine.height >= 43 && phoneLine.height <= 52, `téléphone : lignes compactes de ${Math.round(phoneLine.height)} px`);
+  const dateAbove = await p.locator('.timeline-item').first().evaluate((li) =>
+    li.querySelector('.timeline-line__date').getBoundingClientRect().bottom <= li.querySelector('.timeline-line__title').getBoundingClientRect().top + 1);
+  check(dateAbove, 'téléphone : date au-dessus du titre');
+  const tb = await p.locator('.timeline-tagbar .legend__toggle').boundingBox();
+  check(tb.height >= 38 && tb.height <= 44, 'téléphone : bouton Étiquettes de 38 à 44 px');
+  await settle(p);
+  await p.screenshot({ path: path.join(SHOTS, 'liste-compacte-telephone.png') });
+  await p.getByRole('radio', { name: 'Frise' }).click();
+  const phoneDensity = p.getByRole('button', { name: 'Affichage compact (date et titre)' });
+  if (await phoneDensity.getAttribute('aria-pressed') !== 'true') await phoneDensity.click();
+  await p.locator('.frieze--compact').waitFor({ timeout: 5000 });
+  await p.locator('.frieze-map').waitFor({ timeout: 5000 });
+  const phoneSlot = await p.locator('.frieze__slot').first().evaluate((el) => el.getBoundingClientRect().width);
+  check(phoneSlot <= 50, `téléphone : frise compacte (emplacements de ${Math.round(phoneSlot)} px) et mini-carte`);
+  await settle(p);
+  await p.screenshot({ path: path.join(SHOTS, 'frise-compacte-telephone.png') });
+  await p.locator('.frieze__open').nth(1).click();
+  await p.locator('aside.timeline-panel .timeline-detail__title').waitFor({ timeout: 5000 });
+  check(!(await p.locator('.timeline-tagbar').isVisible()), 'téléphone : panneau Étiquettes masqué sous la feuille basse');
+  await phone.close();
+  await a.goto('about:blank');
+  await a.goto(`${BASE}/#/c/${cid0}/chronologie`);
+  await a.locator('.timeline__body').waitFor({ timeout: 15000 });
+}
+
 const browser = await chromium.launch({ headless: !process.env.HEADED });
 let ok = false;
+let cid0 = null;
 try {
   const ctx = await browser.newContext({ viewport: { width: 1400, height: 900 }, locale: 'fr-FR' });
   const a = await ctx.newPage();
@@ -88,6 +257,7 @@ try {
   const name = `Chronique ${TAG}`;
   const campaign = await api(a, 'POST', '/api/campaigns', { name });
   const cid = campaign.id;
+  cid0 = cid;
   check(campaign.timeline_enabled === false, 'chronologie désactivée à la création de la campagne');
   const ilse = await api(a, 'POST', `/api/campaigns/${cid}/npcs`, { name: 'Ilse Varga', summary: 'Diplomate du Nord.' });
   const tabs = a.locator('nav.module-tabs');
@@ -178,9 +348,33 @@ try {
     'description avec @mention et étiquette enregistrées');
   await item('Le traité des Brumes').locator('.timeline-mention', { hasText: 'Ilse Varga' }).waitFor({ timeout: 5000 });
   check(true, 'pastille de la fiche citée sur l’événement');
-  await a.locator('.timeline-filter', { hasText: 'Diplomatie' }).click();
-  check(await a.locator('.timeline-item h3').count() === 1, 'filtre par étiquette : un seul événement');
-  await a.locator('.timeline-filter', { hasText: 'Tous' }).click();
+  // Panneau « Étiquettes » (en bas à gauche, comme la légende de la carte) : replié par défaut.
+  const tagbar = a.locator('.timeline-tagbar');
+  const tagToggle = tagbar.locator('.legend__toggle');
+  check(await tagToggle.getAttribute('aria-expanded') === 'false' && await tagbar.locator('.legend__items').count() === 0,
+    'panneau Étiquettes replié par défaut');
+  await tagToggle.click();
+  const tagItems = a.locator(`[id="${await tagToggle.getAttribute('aria-controls')}"]`);
+  await tagItems.waitFor({ timeout: 5000 });
+  check(await tagToggle.getAttribute('aria-expanded') === 'true', 'panneau Étiquettes déplié (aria-expanded, aria-controls)');
+  const diplo = tagItems.getByRole('button', { name: 'Diplomatie' });
+  check(await diplo.getAttribute('aria-pressed') === 'false' && await tagItems.getByRole('button', { name: 'Tout afficher' }).count() === 0,
+    'sans filtre : pas de « Tout afficher »');
+  await diplo.click();
+  check(await a.locator('.timeline-item h3').count() === 1 && await diplo.getAttribute('aria-pressed') === 'true',
+    'filtre par étiquette : un seul événement');
+  await diplo.click();
+  check(await a.locator('.timeline-item h3').count() === 4, 'second clic sur l’étiquette : filtre retiré');
+  await diplo.click();
+  await tagItems.getByRole('button', { name: 'Tout afficher' }).click();
+  check(await a.locator('.timeline-item h3').count() === 4, '« Tout afficher » retire le filtre');
+  await diplo.click();
+  await tagToggle.click();
+  check(await tagbar.locator('.legend__items').count() === 0 && (await tagToggle.innerText()).includes('Diplomatie'),
+    'replié avec un filtre : le bouton montre l’étiquette filtrée');
+  await tagbar.getByRole('button', { name: 'Retirer le filtre « Diplomatie »' }).click();
+  check(await a.locator('.timeline-item h3').count() === 4 && (await tagToggle.innerText()).includes('Étiquettes'),
+    '« × » : filtre retiré, panneau toujours replié');
   await settle(a);
   await a.screenshot({ path: path.join(SHOTS, 'chronologie-liste.png') });
 
@@ -256,7 +450,10 @@ try {
   await p.screenshot({ path: path.join(SHOTS, 'chronologie-frise-telephone.png') });
   await phone.close();
 
-  // --- 10. Désactivation : tout est masqué, rien n'est supprimé -------------------------------------------------------
+  // --- 10. Affichage : liste compacte, frise compacte, mini-carte (seconde campagne, 15 événements) -------------
+  await displayChecks(browser, ctx, a);
+
+  // --- 11. Désactivation : tout est masqué, rien n'est supprimé -------------------------------------------------------
   await openMenu();
   await a.getByRole('menuitem', { name: 'Désactiver la chronologie' }).click();
   const dialog = a.locator('.modal', { has: a.locator('h2', { hasText: 'Désactiver la chronologie' }) });
@@ -282,6 +479,9 @@ try {
   ok = true;
 } catch (e) {
   console.error('ÉCHEC :', e.message);
+  for (const pg of browser.contexts().flatMap((c) => c.pages())) {
+    await pg.screenshot({ path: path.join(SHOTS, `echec-${pg.viewportSize()?.width}.png`) }).catch(() => {});
+  }
 } finally {
   await browser.close();
 }

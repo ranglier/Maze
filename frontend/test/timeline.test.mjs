@@ -115,3 +115,65 @@ test('mode d’affichage : choix gardé, sinon liste sur téléphone en portrait
   assert.equal(T.initialMode(null, false), 'frieze');
   assert.equal(T.initialMode('nimporte', false), 'frieze');
 });
+
+test('liste compacte : 3 pastilles d’étiquettes au plus, puis « +n »', () => {
+  assert.deepEqual(T.tagDots(['a', 'b']), { shown: ['a', 'b'], more: 0 });
+  assert.deepEqual(T.tagDots(['a', 'b', 'c']), { shown: ['a', 'b', 'c'], more: 0 });
+  assert.deepEqual(T.tagDots(['a', 'b', 'c', 'd', 'e']), { shown: ['a', 'b', 'c'], more: 2 });
+  assert.deepEqual(T.tagDots(undefined), { shown: [], more: 0 });
+  assert.deepEqual(T.tagDots(['a', 'b'], 1), { shown: ['a'], more: 1 });
+});
+
+test('densité gardée séparément pour la liste et la frise', () => {
+  assert.equal(T.densityKey('frieze'), 'maze:timeline:density', 'frise : clé d’avant, choix déjà fait conservé');
+  assert.equal(T.densityKey('list'), 'maze:timeline:density:list');
+  assert.notEqual(T.densityKey('list'), T.densityKey('frieze'));
+  assert.equal(T.densityKey('autre'), T.densityKey('list'));
+  assert.equal(T.initialDensity('compact'), 'compact');
+  assert.equal(T.initialDensity('normal'), 'normal');
+  assert.equal(T.initialDensity(null), 'normal');
+  assert.equal(T.initialDensity('serré'), 'normal');
+  assert.deepEqual(T.DENSITIES, ['normal', 'compact']);
+});
+
+test('mini-carte : rectangle de la partie visible', () => {
+  const view = { scrollLeft: 0, clientWidth: 500, scrollWidth: 2000 };
+  assert.deepEqual(T.minimapWindow(view), { left: 0, width: 0.25 });
+  assert.deepEqual(T.minimapWindow({ ...view, scrollLeft: 1500 }), { left: 0.75, width: 0.25 });
+  assert.deepEqual(T.minimapWindow({ ...view, scrollLeft: 1800 }), { left: 0.75, width: 0.25 }, 'borné à la fin');
+  assert.deepEqual(T.minimapWindow({ scrollLeft: 0, clientWidth: 800, scrollWidth: 600 }), { left: 0, width: 1 });
+  assert.deepEqual(T.minimapWindow({}), { left: 0, width: 1 });
+  assert.equal(T.overflows(view), true);
+  assert.equal(T.overflows({ scrollLeft: 0, clientWidth: 800, scrollWidth: 800 }), false, 'tout tient : pas de mini-carte');
+});
+
+test('mini-carte : clic, glissement et clavier vers scrollLeft', () => {
+  const view = { scrollLeft: 300, clientWidth: 500, scrollWidth: 2000 };
+  assert.equal(T.scrollForFraction(0.5, view), 750, 'clic au milieu : frise centrée');
+  assert.equal(T.scrollForFraction(0, view), 0);
+  assert.equal(T.scrollForFraction(0.98, view), 1500, 'près de la fin : tout au bout');
+  assert.equal(T.scrollForDrag(300, 50, 400, view), 550, '50 px sur 400 : un huitième de 2000');
+  assert.equal(T.scrollForDrag(300, -400, 400, view), 0);
+  assert.equal(T.scrollForDrag(300, 10, 0, view), 300);
+  assert.equal(T.sliderScroll('ArrowRight', view), 800, 'flèche : un écran');
+  assert.equal(T.sliderScroll('ArrowLeft', view), 0);
+  assert.equal(T.sliderScroll('End', view), 1500);
+  assert.equal(T.sliderScroll('Home', view), 0);
+  assert.equal(T.sliderScroll('ArrowRight', { ...view, scrollLeft: 1400 }), 1500, 'borné');
+  assert.equal(T.sliderScroll('Enter', view), null);
+  assert.equal(T.scrollPercent(view), 20);
+  assert.equal(T.scrollPercent({ scrollLeft: 0, clientWidth: 9, scrollWidth: 9 }), 0);
+});
+
+test('mini-carte : traits et événements visibles', () => {
+  const layout = { start: 60, slot: 100 };
+  const view = { scrollLeft: 0, clientWidth: 500, scrollWidth: 1000 };
+  assert.equal(T.markFraction(0, layout, view), 0.11);
+  assert.equal(T.markFraction(8, layout, view), 0.91);
+  assert.deepEqual(T.eventsInView(view, 9, layout), [1, 4], 'milieux visibles : 110, 210, 310, 410');
+  assert.deepEqual(T.eventsInView({ ...view, scrollLeft: 500 }, 9, layout), [5, 9]);
+  assert.equal(T.eventsInView(view, 0, layout), null);
+  assert.equal(T.viewText([12, 24], 80), 'événements 12 à 24 sur 80');
+  assert.equal(T.viewText([3, 3], 80), 'événement 3 sur 80');
+  assert.equal(T.viewText(null, 0), '');
+});

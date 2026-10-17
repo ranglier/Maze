@@ -22,32 +22,55 @@ export function Legend({ graph, filters, onFilters }) {
   };
 
   return (
-    <div className={`legend${open ? ' is-open' : ''}`}>
-      <button type="button" className="legend__toggle" aria-expanded={open} aria-controls="legend-items"
-        onClick={toggleOpen} title={open ? t('Replier la légende') : t('Afficher la légende des liens')}>
-        <span className="legend__dots" aria-hidden="true">
-          {types.slice(0, 4).map(([key, type]) => <span key={key} style={{ background: type.color }} />)}
-        </span>
-        {t('Légende')}
-        {hiddenCount > 0 && (
-          <span className="badge" title={tn('{n} type de lien masqué', '{n} types de lien masqués', hiddenCount)}>{hiddenCount}</span>
-        )}
+    <LegendPanel open={open} onToggle={toggleOpen} itemsId="legend-items" itemsLabel={t('Types de liens')}
+      title={open ? t('Replier la légende') : t('Afficher la légende des liens')}
+      toggle={(
+        <>
+          <LegendDots colors={types.slice(0, 4).map(([, type]) => type.color)} />
+          {t('Légende')}
+          {hiddenCount > 0 && (
+            <span className="badge" title={tn('{n} type de lien masqué', '{n} types de lien masqués', hiddenCount)}>{hiddenCount}</span>
+          )}
+        </>
+      )}>
+      {types.map(([key, type]) => {
+        const off = filters.hiddenTypes.includes(key);
+        return (
+          <button key={key} type="button" className={`legend__item${off ? ' is-off' : ''}`}
+            style={{ '--rel': type.color }} aria-pressed={!off} onClick={() => toggleType(key)}
+            title={off ? t('Afficher les liens « {label} »', { label: type.label }) : t('Masquer les liens « {label} »', { label: type.label })}>
+            <span className="legend__swatch" />{type.label}
+          </button>
+        );
+      })}
+    </LegendPanel>
+  );
+}
+
+/** Pastilles empilées du bouton d'un panneau flottant (4 couleurs au plus). */
+export function LegendDots({ colors }) {
+  return (
+    <span className="legend__dots" aria-hidden="true">
+      {colors.slice(0, 4).map((color, i) => <span key={i} style={{ background: color }} />)}
+    </span>
+  );
+}
+
+/**
+ * Panneau flottant en bas à gauche, replié derrière un bouton à chevron (légende de la carte des relations,
+ * étiquettes de la chronologie). `toggle` : contenu du bouton ; `after` : éléments à côté du bouton ; `children` :
+ * boutons affichés une fois déplié.
+ */
+export function LegendPanel({ open, onToggle, itemsId, itemsLabel, title, label, className = '', toggle, after = null, children }) {
+  return (
+    <div className={`legend${className ? ` ${className}` : ''}${open ? ' is-open' : ''}`}>
+      <button type="button" className="legend__toggle" aria-expanded={open} aria-controls={itemsId}
+        onClick={onToggle} title={title} aria-label={label}>
+        {toggle}
         <span className="legend__chevron"><Icon name="chevron" size={14} /></span>
       </button>
-      {open && (
-        <div className="legend__items" id="legend-items" aria-label={t('Types de liens')}>
-          {types.map(([key, type]) => {
-            const off = filters.hiddenTypes.includes(key);
-            return (
-              <button key={key} type="button" className={`legend__item${off ? ' is-off' : ''}`}
-                style={{ '--rel': type.color }} aria-pressed={!off} onClick={() => toggleType(key)}
-                title={off ? t('Afficher les liens « {label} »', { label: type.label }) : t('Masquer les liens « {label} »', { label: type.label })}>
-                <span className="legend__swatch" />{type.label}
-              </button>
-            );
-          })}
-        </div>
-      )}
+      {after}
+      {open && <div className="legend__items" id={itemsId} role="group" aria-label={itemsLabel}>{children}</div>}
     </div>
   );
 }

@@ -3,6 +3,7 @@
  * test/timeline.test.mjs. L'ordre des événements est manuel (sort_order côté serveur) : l'interface calcule la
  * nouvelle liste complète des identifiants (PUT /api/campaigns/<id>/events/order) ou le before_id d'une insertion.
  */
+import { t } from './i18n/core.js';
 
 /** Identifiants dans l'ordre d'affichage. */
 export const idsOf = (events) => (events || []).map((e) => e.id);
@@ -144,3 +145,82 @@ export function initialMode(stored, phonePortrait) {
   if (MODES.includes(stored)) return stored;
   return phonePortrait ? 'list' : 'frieze';
 }
+
+/** Pastilles d'étiquettes d'une ligne compacte : les `max` premières, et le nombre des autres (« +n »). */
+export function tagDots(tags, max = 3) {
+  const list = tags || [];
+  return { shown: list.slice(0, max), more: Math.max(0, list.length - max) };
+}
+
+export const DENSITIES = ['normal', 'compact'];
+/**
+ * Clé de stockage de la densité, propre à chaque mode (liste, frise). La frise garde la clé d'avant la liste
+ * compacte : le choix déjà fait est conservé.
+ */
+export const densityKey = (mode) => (mode === 'frieze' ? 'maze:timeline:density' : `maze:timeline:density:${MODES.includes(mode) ? mode : 'list'}`);
+/** Densité gardée : « compact » ou, pour toute autre valeur (rien, valeur inconnue), « normal ». */
+export const initialDensity = (stored) => (stored === 'compact' ? 'compact' : 'normal');
+
+/*
+ * Mini-carte de la frise : bande sous la frise, un trait par événement selon son rang, et un rectangle pour la
+ * partie visible. `view` : { scrollLeft, clientWidth, scrollWidth } de la frise ; `layout` : { start, slot },
+ * position (px) du premier emplacement dans la piste et largeur d'un emplacement.
+ */
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+const maxScroll = (view) => Math.max(0, (view.scrollWidth || 0) - (view.clientWidth || 0));
+
+/** La frise déborde-t-elle de l'écran (mini-carte utile) ? */
+export const overflows = (view) => maxScroll(view) > 1;
+
+/** Rectangle de la partie visible, en fractions de la largeur totale : { left, width } (0 à 1). */
+export function minimapWindow(view) {
+  const total = view.scrollWidth || 0;
+  if (total <= 0) return { left: 0, width: 1 };
+  const width = clamp((view.clientWidth || 0) / total, 0, 1);
+  return { left: clamp((view.scrollLeft || 0) / total, 0, 1 - width), width };
+}
+
+/** scrollLeft qui centre la frise sur la fraction `fraction` de sa largeur (clic dans la mini-carte), borné. */
+export const scrollForFraction = (fraction, view) =>
+  Math.round(clamp(fraction * (view.scrollWidth || 0) - (view.clientWidth || 0) / 2, 0, maxScroll(view)));
+
+/** scrollLeft après un glissement du rectangle de `dx` px dans une mini-carte large de `mapWidth` px. */
+export const scrollForDrag = (startLeft, dx, mapWidth, view) =>
+  Math.round(clamp(startLeft + (mapWidth > 0 ? dx * (view.scrollWidth || 0) / mapWidth : 0), 0, maxScroll(view)));
+
+/** Position du trait de l'événement de rang `index` (fraction de la largeur totale : milieu de son emplacement). */
+export const markFraction = (index, layout, view) =>
+  ((view.scrollWidth || 0) > 0 ? clamp((layout.start + (index + 0.5) * layout.slot) / view.scrollWidth, 0, 1) : 0);
+
+/** Rangs (base 1) du premier et du dernier événement dont le milieu est visible : [first, last], ou null. */
+export function eventsInView(view, count, layout) {
+  if (!count || !(layout.slot > 0)) return null;
+  const left = view.scrollLeft || 0;
+  const right = left + (view.clientWidth || 0);
+  const first = clamp(Math.ceil((left - layout.start) / layout.slot - 0.5), 0, count - 1);
+  const last = clamp(Math.floor((right - layout.start) / layout.slot - 0.5), 0, count - 1);
+  if (last < first) return [first + 1, first + 1];
+  return [first + 1, last + 1];
+}
+
+/** Texte lu de la mini-carte (aria-valuetext) : « événements 12 à 24 sur 80 ». */
+export function viewText(range, count) {
+  if (!range) return '';
+  const [first, last] = range;
+  if (first === last) return t('événement {n} sur {count}', { n: first, count });
+  return t('événements {first} à {last} sur {count}', { first, last, count });
+}
+
+/** Mini-carte au clavier : flèches = un écran, Début / Fin ; scrollLeft visé, ou null pour une autre touche. */
+export function sliderScroll(key, view) {
+  const left = view.scrollLeft || 0;
+  const page = view.clientWidth || 0;
+  if (key === 'ArrowRight' || key === 'ArrowDown' || key === 'PageDown') return Math.min(left + page, maxScroll(view));
+  if (key === 'ArrowLeft' || key === 'ArrowUp' || key === 'PageUp') return Math.max(left - page, 0);
+  if (key === 'Home') return 0;
+  if (key === 'End') return maxScroll(view);
+  return null;
+}
+
+/** Valeur de la mini-carte (aria-valuenow) : défilement en pourcentage, 0 à 100. */
+export const scrollPercent = (view) => (maxScroll(view) > 0 ? Math.round((100 * (view.scrollLeft || 0)) / maxScroll(view)) : 0);

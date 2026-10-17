@@ -2582,22 +2582,29 @@ select.maps__select { width: auto; max-width: 210px; min-height: 34px; padding: 
 /* ---------- Chronologie (module facultatif : liste et frise ordinale) ---------- */
 /* Menu de campagne : accès à la chronologie, sur téléphone seulement (l'onglet est dans l'en-tête ailleurs). */
 .campaign-menu__phone { display: none !important; }
-.timeline__body { position: relative; display: grid; grid-template-rows: auto minmax(0, 1fr); min-height: 0; }
+.timeline__body { --map-h: 28px; position: relative; display: grid; grid-template-rows: minmax(0, 1fr); min-height: 0; }
 .timeline__scroll { overflow-y: auto; min-height: 0; }
 .timeline__none { padding: 24px 40px; }
 .timeline__modes button { display: inline-flex; align-items: center; gap: 6px; }
 .timeline__density.is-active { background: var(--brass-soft); color: var(--brass); }
-.timeline-filters {
-  display: flex; flex-wrap: wrap; gap: 6px; padding: 12px 40px 4px; grid-row: 1;
+/* Panneau « Étiquettes » : légende flottante (classes .legend*), bornée en hauteur pour ne jamais atteindre l'axe
+   de la frise ; au-dessus de la mini-carte quand elle est affichée. */
+.timeline-tagbar {
+  z-index: 6; max-width: min(640px, calc(100% - 32px)); max-height: calc(50% - 40px); overflow-y: auto; scrollbar-width: thin;
 }
-.timeline-filter {
-  display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 11px;
-  border: 1px solid var(--line); border-radius: 999px; background: none; color: var(--mist); cursor: pointer; font-size: 13px;
+.timeline__body:has(.frieze-map) .timeline-tagbar { bottom: calc(var(--map-h) + 12px); max-height: calc(50% - 40px - var(--map-h)); }
+.timeline-tagbar__dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.timeline-tagbar__active { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--bone); }
+.timeline-tagbar.has-filter:not(.is-open) .legend__toggle { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--brass) 45%, transparent); }
+.timeline-tagbar__clear {
+  display: inline-grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; border-radius: var(--r-md);
+  background: none; color: var(--mist); cursor: pointer;
 }
-.timeline-filter:hover { color: var(--bone); background: var(--slate); }
-.timeline-filter.is-active { color: var(--bone); border-color: var(--tag, var(--brass)); background: color-mix(in srgb, var(--tag, var(--brass)) 16%, transparent); }
-.timeline-filter__dot { width: 9px; height: 9px; border-radius: 50%; background: var(--tag); }
-.timeline__body > :not(.timeline-filters) { grid-row: 2; }
+.timeline-tagbar__clear:hover { background: var(--slate-2); color: var(--bone); }
+.timeline-tagbar .legend__item.is-active {
+  color: var(--bone); background: color-mix(in srgb, var(--rel) 20%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--rel) 60%, transparent);
+}
+.timeline-tagbar__all { color: var(--brass); }
 
 .timeline-empty {
   align-self: center; justify-self: center; display: grid; justify-items: center; gap: 10px; text-align: center;
@@ -2674,6 +2681,33 @@ select.maps__select { width: auto; max-width: 210px; min-height: 34px; padding: 
 .timeline-insert--end { height: auto; padding-top: 12px; }
 .timeline-insert--end::before { bottom: 50%; }
 .timeline-insert--end button { position: static; transform: none; opacity: 1; height: 34px; padding: 0 14px 0 10px; font-size: 13.5px; }
+/* Liste compacte : une ligne par événement (date, titre, pastilles des étiquettes, nombre de fiches citées). */
+.timeline-line { position: relative; display: flex; align-items: center; gap: 2px; min-height: 36px; border-radius: var(--r-md); }
+.timeline-line:hover, .timeline-line:focus-within { background: var(--slate); }
+.timeline-line .timeline-item__marker { top: 50%; left: -26px; width: 12px; height: 12px; margin-top: -6px; }
+.timeline-line .timeline-grip { margin-left: 0; height: 28px; opacity: 0; }
+.timeline-line:hover .timeline-grip { opacity: 1; }
+.timeline-line__open {
+  flex: 1; min-width: 0; display: grid; grid-template-columns: 150px minmax(0, 1fr) auto auto; align-items: center; column-gap: 12px;
+  min-height: 36px; padding: 0 8px; border: 0; border-radius: var(--r-md); background: none; color: var(--bone); text-align: left; cursor: pointer;
+}
+.timeline-line__date, .timeline-line__title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.timeline-line__date { font-size: 12.5px; font-weight: 600; color: var(--brass); }
+.timeline-line__title { font-family: var(--serif); font-size: 15.5px; }
+.timeline-line__tags { display: inline-flex; align-items: center; gap: 3px; }
+.timeline-line__tag { width: 9px; height: 9px; border-radius: 50%; background: var(--tag); }
+.timeline-line__more, .timeline-line__cited { font-size: 12px; color: var(--mist); }
+.timeline-line__cited { display: inline-flex; align-items: center; gap: 3px; }
+.timeline-line .timeline-card__tools { opacity: 0; }
+.timeline-line:hover .timeline-card__tools, .timeline-line:focus-within .timeline-card__tools { opacity: 1; }
+.timeline-line .timeline-card__tools .icon-btn { width: 30px; height: 30px; }
+.timeline-item.is-target .timeline-line { animation: timeline-glow 2.4s ease-out; }
+.timeline-list--compact .timeline-insert { height: 6px; }
+.timeline-list--compact .timeline-insert button { width: 20px; height: 20px; z-index: 2; }
+.timeline-list--compact .timeline-insert--end { height: auto; padding-top: 10px; }
+.timeline-list--compact .timeline-insert--end button { width: auto; height: 34px; }
+.timeline-card.is-unfolded { cursor: pointer; }
+.timeline-card.is-unfolded :is(.timeline-desc, .timeline-mentions) { cursor: auto; }
 .timeline-form { padding: 14px 16px 0; border: 1px solid var(--brass); border-radius: var(--r-md); background: var(--slate); }
 .timeline-form .sheet-form__actions { margin: 8px -16px 0; padding: 12px 16px; bottom: 0; border-radius: 0 0 var(--r-md) var(--r-md); }
 .timeline-form__grid { grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); }
@@ -2681,12 +2715,12 @@ select.maps__select { width: auto; max-width: 210px; min-height: 34px; padding: 
 
 /* Frise ordinale : emplacements réguliers, cartes alternées au-dessus et en dessous de l'axe. */
 .timeline__stage { position: relative; min-height: 0; overflow: hidden; }
+.frieze-wrap { height: 100%; display: flex; flex-direction: column; }
 .frieze {
-  height: 100%; overflow-x: auto; overflow-y: hidden; cursor: grab; touch-action: pan-x; overscroll-behavior-x: contain;
+  flex: 1; min-height: 0; overflow-x: auto; overflow-y: hidden; cursor: grab; touch-action: pan-x; overscroll-behavior-x: contain;
   scrollbar-width: thin; --slot: 210px; --arm: 34px;
 }
 .frieze.is-grabbing { cursor: grabbing; user-select: none; }
-.frieze--compact { --slot: 160px; --arm: 22px; }
 .frieze__track {
   list-style: none; margin: 0; padding: 0 60px; height: 100%; min-height: 360px;
   display: grid; grid-auto-flow: column; grid-auto-columns: var(--slot); position: relative; width: max-content;
@@ -2716,16 +2750,58 @@ select.maps__select { width: auto; max-width: 210px; min-height: 34px; padding: 
 .frieze__slot.is-selected .frieze__open { border-color: var(--brass); background: var(--slate-2); }
 .frieze__date { font-size: 12px; font-weight: 600; color: var(--brass); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .frieze__title { font-family: var(--serif); font-size: 15.5px; line-height: 1.25; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
-.frieze--compact .frieze__open { padding: 7px 9px; }
-.frieze--compact .frieze__title { font-size: 14px; -webkit-line-clamp: 2; }
-.frieze__insert {
-  position: absolute; left: 0; top: 50%; width: 22px; height: 22px; margin: -11px 0 0 -11px; z-index: 2;
+.frieze__insert {   /* même taille partout, « + » de fin compris */
+  position: absolute; left: 0; top: 50%; width: 24px; height: 24px; margin: -12px 0 0 -12px; z-index: 2;
   display: grid; place-items: center; padding: 0; border: 1px solid var(--line); border-radius: 50%;
   background: var(--ink); color: var(--mist); cursor: pointer; opacity: 0; transition: opacity 120ms;
 }
 .frieze:hover .frieze__insert, .frieze__insert:focus-visible { opacity: 1; }
 .frieze__insert:hover { color: var(--brass); border-color: var(--brass); }
-.frieze__slot--end .frieze__insert { left: 24px; opacity: 1; width: 30px; height: 30px; margin: -15px 0 0 -15px; }
+.frieze__slot--end .frieze__insert { left: 24px; opacity: 1; }
+
+/* Frise compacte : étiquettes en quinconce (paires au-dessus, impaires en dessous), tournées à 45° depuis le point
+   de l'axe et lues de gauche à droite. Deux étiquettes d'un même côté sont à deux emplacements d'écart, soit
+   2 × --slot × sin 45° (48 px pour 34 px) perpendiculairement : la place d'une date et d'un titre. Longueur des
+   titres (--label) bornée par la hauteur de la frise (unités cqh) : une vue basse raccourcit les titres. */
+.frieze--compact { --slot: 34px; container-type: size; --label: clamp(90px, calc((50cqh - 16px) * 1.41 - 48px), 232px); }
+.frieze--compact .frieze__track { min-height: 240px; padding: 0 180px 0 40px; }
+.frieze--compact .frieze__slot::after { display: none; }
+/* Les étiquettes débordent sur les emplacements suivants : seuls les boutons reçoivent le pointeur. */
+.frieze--compact .frieze__slot { pointer-events: none; }
+.frieze--compact .frieze__slot :is(.frieze__open, .frieze__insert) { pointer-events: auto; }
+.frieze--compact .frieze__dot { width: 10px; height: 10px; margin: -5px 0 0 -5px; box-shadow: 0 0 0 3px var(--ink); }
+.frieze--compact .frieze__slot.is-selected .frieze__dot { box-shadow: 0 0 0 3px var(--ink), 0 0 0 5px var(--brass); }
+.frieze--compact .frieze__card { left: 50%; right: auto; width: max-content; display: block; }
+.frieze--compact .is-above .frieze__card { bottom: 50%; transform-origin: 0 100%; transform: rotate(-45deg) translateX(7px); }
+.frieze--compact .is-below .frieze__card { top: 50%; transform-origin: 0 0; transform: rotate(45deg) translateX(7px); }
+.frieze--compact .frieze__open {
+  display: grid; gap: 0; width: auto; max-width: var(--label); padding: 2px 8px 2px 6px; border: 0; border-left: 2px solid var(--tag);
+  border-radius: 0 var(--r-sm) var(--r-sm) 0; background: rgba(23, 30, 41, 0.72); line-height: 1.25;
+}
+.frieze--compact .frieze__open:hover { background: var(--slate-2); }
+.frieze--compact .frieze__date { font-size: 12px; }
+.frieze--compact .frieze__title { display: block; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.frieze--compact .frieze__slot.is-selected .frieze__open { border-left-color: var(--brass); background: var(--slate-2); }
+.frieze--compact .frieze__slot.is-selected .frieze__title { color: var(--brass); }
+.frieze--compact .frieze__insert { left: 0; }
+.frieze.frieze--compact:hover .frieze__slot:not(.frieze__slot--end):not(:hover, :focus-within) .frieze__insert:not(:focus-visible) { opacity: 0; }
+.frieze--compact .frieze__slot:is(:hover, :focus-within) .frieze__insert { opacity: 1; }
+
+/* Mini-carte : bande sous la frise, un trait par événement, rectangle de la partie visible. */
+.frieze-map {
+  position: relative; flex: none; height: var(--map-h); border-top: 1px solid var(--line); background: rgba(23, 30, 41, 0.6);
+  cursor: pointer; touch-action: none; user-select: none;
+}
+.frieze-map:focus-visible { outline: 2px solid var(--brass); outline-offset: -2px; }
+.frieze-map__mark {
+  position: absolute; top: 50%; width: 2px; height: 10px; margin: -5px 0 0 -1px; border-radius: 1px; background: var(--tag); opacity: 0.85;
+}
+.frieze-map__mark.is-selected { width: 4px; height: 18px; margin: -9px 0 0 -2px; background: var(--brass); opacity: 1; box-shadow: 0 0 0 1px var(--ink); }
+.frieze-map__window {
+  position: absolute; top: 3px; bottom: 3px; min-width: 8px; border: 1px solid color-mix(in srgb, var(--brass) 70%, transparent);
+  border-radius: var(--r-sm); background: color-mix(in srgb, var(--brass) 12%, transparent); cursor: grab;
+}
+.frieze-map__window:active { cursor: grabbing; }
 .timeline-panel { z-index: 20; }
 .timeline-panel .timeline-form { padding: 0; border: 0; background: none; }
 .timeline-panel .timeline-form .sheet-form__actions { margin: 8px -24px -28px; padding: 12px 24px; bottom: -28px; border-radius: 0; }
@@ -2735,6 +2811,9 @@ select.maps__select { width: auto; max-width: 210px; min-height: 34px; padding: 
 
 @media (hover: none) {
   .timeline-card__tools { opacity: 1; }
+  /* Liste compacte au doigt : sans survol, outils et « + » intermédiaires laisseraient peu de place au titre ;
+     ils sont sur la carte dépliée, « + » de fin et « Déplacer vers… » suffisent (comme la frise compacte). */
+  .timeline-line .timeline-card__tools, .timeline-list--compact .timeline-insert:not(.timeline-insert--end) { display: none; }
   .timeline-insert button, .frieze__insert { opacity: 1; }
 }
 @media (pointer: coarse) {
@@ -2743,8 +2822,15 @@ select.maps__select { width: auto; max-width: 210px; min-height: 34px; padding: 
   .timeline-insert button { width: 40px; height: 40px; }
   .timeline-insert--end button { width: auto; height: 44px; }
   .frieze__insert { width: 40px; height: 40px; margin: -20px 0 0 -20px; }
-  .frieze__slot--end .frieze__insert { width: 44px; height: 44px; margin: -22px 0 0 -22px; }
-  .timeline-filter { height: 40px; padding: 0 14px; }
+  .frieze--compact { --slot: 44px; }
+  .frieze--compact .frieze__slot:not(.frieze__slot--end) .frieze__insert { display: none; }
+  .timeline__body { --map-h: 36px; }
+  .timeline-tagbar__clear { width: 38px; height: 38px; }
+  .timeline-line, .timeline-line__open { min-height: 44px; }
+  .timeline-line .timeline-card__tools .icon-btn { width: 40px; height: 40px; }
+  .timeline-list--compact .timeline-insert { height: 26px; }
+  .timeline-list--compact .timeline-insert button { width: 32px; height: 32px; }
+  .timeline-list--compact .timeline-insert--end button { height: 44px; }
   .timeline-mention { height: 34px; }
   .timeline-more { min-height: 40px; }
   .frieze__open { min-height: 44px; }
@@ -2752,15 +2838,21 @@ select.maps__select { width: auto; max-width: 210px; min-height: 34px; padding: 
 }
 @media (max-width: 760px), (pointer: coarse) and (max-height: 500px) {
   .campaign-menu__phone { display: flex !important; }
-  .timeline-filters { padding: 10px 12px 2px; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
-  .timeline-filter { flex: none; }
-  .timeline-list { padding: 10px 12px 40px 12px; }
+  .timeline-list { padding: 10px 12px 96px 12px;   /* sous le panneau Étiquettes flottant */ }
+  .timeline-list--compact .timeline-line__open { grid-template-columns: minmax(0, 1fr) auto auto; grid-template-rows: auto auto; row-gap: 0; column-gap: 8px; padding: 3px 6px; }
+  .timeline-line__date { grid-row: 1; grid-column: 1; font-size: 11.5px; }
+  .timeline-line__title { grid-row: 2; grid-column: 1; font-size: 15px; }
+  .timeline-line__tags { grid-row: 1 / 3; grid-column: 2; }
+  .timeline-line__cited { grid-row: 1 / 3; grid-column: 3; }
+  .timeline-line__date:empty { display: none; }
+  /* Comme la légende de la carte ; masqué quand la feuille basse d'un événement est ouverte. */
+  .timeline-tagbar { left: 12px; bottom: 12px; max-width: calc(100% - 24px); }
+  .timeline__body:has(.timeline-panel) .timeline-tagbar { display: none; }
   .timeline__none { padding: 16px; }
   .timeline-item.is-editing { padding: 8px 0 0 0; }
   .timeline-form__grid { grid-template-columns: minmax(0, 1fr); }
   .timeline__modes span { display: none; }
-  .frieze { --slot: 170px; --arm: 24px; }
-  .frieze--compact { --slot: 140px; }
+  .frieze--normal { --slot: 170px; --arm: 24px; }
   .frieze__track { padding: 0 36px; min-height: 320px; }
   .timeline-panel .timeline-form .sheet-form__actions { margin: 8px -16px -24px; padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px)); bottom: -24px; }
 }
