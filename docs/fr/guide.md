@@ -21,6 +21,13 @@ Premier module livré : **PNJ et factions**, sous forme de carte interactive (gr
 - Filtres : types de relation (légende cliquable), factions, PNJ morts, relations secrètes, liens d'appartenance.
 - Textes en Markdown, avec liens entre fiches : [[Nom du PNJ]]. Le HTML glissé dans ces textes se limite à celui de l'éditeur (gras, mentions, encadrés, alignements, tableaux, images de la fiche, commentaires) et à quelques balises de mise en forme sans risque (surlignage, touche, abréviation, liste de définitions, légende de tableau ou de figure, largeur d'une image…) : le reste (classes, styles, identifiants, dialogues, liens `//hôte`…) est retiré à l'affichage.
 - Plusieurs campagnes.
+- **Onglet Personnages** : la liste de tous les PNJ et factions de la campagne.
+  - « Ranger par faction » : arbre des factions. Les factions racines sont au premier niveau ; chaque faction se déplie sur ses sous-factions puis sur ses PNJ (chefs en tête), à toute profondeur.
+  - Une faction membre de plusieurs factions apparaît sous chacune, avec la mention « Aussi membre de : … ».
+  - La fiche ouverte déplie les branches qui y mènent. Recherche et filtre de statut gardent les fiches trouvées et leurs factions parentes, dépliées.
+  - Glisser-déposer pour réordonner des factions sœurs ou les PNJ d'un même groupe.
+  - Les PNJ qui n'appartiennent à aucune faction sont regroupés sous « Sans faction ».
+  - Le filtre affiche « Tous », les « PNJ » seuls ou les « Factions » seules (l'arbre sans les PNJ) ; « Classer par ordre alphabétique » donne une liste à plat.
 - **Formulaire d'une fiche** (PNJ, faction, lieu) : seuls les champs modifiés sont enregistrés (un champ complété entre-temps par Claude ou un autre MJ n'est pas remis à l'ancienne valeur). Si la fiche a changé depuis l'ouverture du formulaire, les changements des autres sur d'autres champs sont repris d'eux-mêmes ; un champ modifié des deux côtés est signalé en haut du formulaire, avec la version actuelle : garder sa saisie ou reprendre la leur, rien n'est enregistré avant ce choix et la saisie n'est jamais perdue (le texte remplacé reste dans l'historique de la fiche). Quitter une saisie non enregistrée (autre fiche, fond de la carte, autre onglet de Maze, fermeture de l'onglet du navigateur) demande confirmation.
 
 ## Recherche globale
