@@ -2,8 +2,9 @@
 
 Claude se connecte au serveur MCP de Maze (/mcp, voir mcp.py) avec un jeton OAuth (oauth.py), délivré
 après qu'un administrateur a saisi son mot de passe. Il agit alors au nom de cet administrateur, mais
-seulement sur les campagnes ouvertes ici (lecture seule, ou lecture et écriture), et seulement tant que
-l'accès est activé : le bouton de l'administration suffit à tout suspendre.
+seulement sur les campagnes ouvertes ici (lecture seule ; lecture et écriture ; ou lecture, écriture et
+suppression, migration 033), et seulement tant que l'accès est activé : le bouton de l'administration suffit à
+tout suspendre.
 """
 
 from __future__ import annotations
@@ -77,7 +78,8 @@ def load_settings_row(conn: sqlite3.Connection) -> dict[str, Any]:
 
 
 def grants(conn: sqlite3.Connection) -> dict[int, str]:
-    """Campagnes ouvertes à Claude : {id: "read" | "write"}."""
+    """Campagnes ouvertes à Claude : {id: "read" | "write" | "delete"} (delete : lecture, écriture et suppression,
+    migration 033 ; il permet tout ce que permet write)."""
     return {r[0]: r[1] for r in conn.execute("SELECT campaign_id, mode FROM mcp_grants")}
 
 

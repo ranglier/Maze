@@ -419,7 +419,8 @@ class MembersUpdate(_Strict):
 
 class ConnectorGrant(_Strict):
     campaign_id: int
-    mode: Literal["none", "read", "write"]
+    # delete : lecture, écriture et suppression (migration 033).
+    mode: Literal["none", "read", "write", "delete"]
 
 
 class ConnectorUpdate(_Strict):

@@ -3,7 +3,9 @@
 Chaque requête porte un jeton OAuth (oauth.py). Les outils passent par les routes de l'API REST,
 appelées en interne avec l'identité de Claude (connector.acting_user) : mêmes validations, mêmes droits,
 mêmes effets (index de recherche, historique, éditeurs ouverts rechargés) que depuis l'interface.
-Les outils d'écriture ne voient que les campagnes ouvertes en lecture et écriture.
+Les outils d'écriture ne voient que les campagnes ouvertes en écriture (lecture et écriture, ou lecture, écriture et
+suppression) ; les outils de suppression (delete_entry, delete_document, delete_event, delete_map, delete_comment),
+seulement celles ouvertes en lecture, écriture et suppression (migration 033).
 """
 
 from __future__ import annotations
@@ -44,6 +46,9 @@ RELATIONS_DEFAULT, RELATIONS_MAX = 50, 100
 EVENTS_DEFAULT, EVENTS_MAX = 100, 200
 ENTRY_PATHS = {"npc": "npcs", "faction": "factions", "place": "places"}
 ENTRY_TABLES = {"npc": "npcs", "faction": "factions", "place": "places"}
+# Niveaux d'accès d'une campagne (mcp_grants.mode) : delete permet tout ce que permet write (migration 033).
+WRITE_MODES = ("write", "delete")
+ACCESS_LABELS = {"read": "lecture seule", "write": "lecture et écriture", "delete": "lecture, écriture et suppression"}
 SUSPENDED = ("L'accès de Claude à Maze est suspendu. Un administrateur peut le réactiver dans "
              "Administration > Connecteur Claude.")
 
@@ -70,6 +75,9 @@ interactive) : list_maps, view_map (aperçu quadrillé tous les 10 %), place_on_
 set_place_kind pour donner un type (clé, voir get_campaign) à plusieurs lieux d'un coup.
 Chronologie (module facultatif, activé par le MJ campagne par campagne : get_campaign l'indique) :
 list_events, create_event, update_event ; date en texte libre, ordre manuel (before_id pour insérer ou déplacer).
+Suppression (delete_entry, delete_document, delete_event, delete_map, delete_comment) : seulement sur demande du MJ,
+dans une campagne ouverte en « lecture, écriture et suppression » (access de list_campaigns), avec le nom ou le titre
+exact de l'élément ; définitive (pas de corbeille, seules les sauvegardes de Maze permettent de revenir en arrière).
 Répondre aux MJ en français."""
 
 
@@ -87,7 +95,7 @@ class Blocks:
 class Context:
     app: Any
     user: dict[str, Any]              # administrateur au nom duquel Claude agit
-    grants: dict[int, str]            # campagnes ouvertes : {id: "read" | "write"}
+    grants: dict[int, str]            # campagnes ouvertes : {id: "read" | "write" | "delete"}
     campaign_id: int | None = None    # campagne concernée par l'appel (journal)
     target: str = ""
 
@@ -97,7 +105,12 @@ class Context:
 
     @property
     def writable(self) -> set[int]:
-        return {cid for cid, mode in self.grants.items() if mode == "write"}
+        return {cid for cid, mode in self.grants.items() if mode in WRITE_MODES}
+
+    @property
+    def deletable(self) -> set[int]:
+        """Campagnes ouvertes en lecture, écriture et suppression (migration 033)."""
+        return {cid for cid, mode in self.grants.items() if mode == "delete"}
 
     def transaction(self):
         """Lecture dans la boucle d'événements (outils du connecteur) : instantané en lecture seule, qui n'attend pas
@@ -116,8 +129,9 @@ class Context:
     # --- Appel interne de l'API REST ----------------------------------------------------------
 
     async def api(self, method: str, path: str, body: Any = None, query: dict[str, Any] | None = None,
-                  write: bool = False) -> Any:
-        user = connector.acting_user(self.user, self.writable if write else self.readable)
+                  write: bool = False, delete: bool = False) -> Any:
+        scope = self.deletable if delete else self.writable if write else self.readable
+        user = connector.acting_user(self.user, scope)
         # Appels internes, hors des middlewares HTTP : même refus des écritures pendant une restauration (audit M7).
         hub = getattr(self.app.state, "hub", None)
         if method not in ("GET", "HEAD", "OPTIONS") and hub is not None and hub.restoring():
@@ -181,10 +195,20 @@ class Context:
 
     def check_write(self, cid: int | None, what: str = "Fiche") -> int:
         self.check_read(cid, what)
-        if self.grants[cid] != "write":
+        if self.grants[cid] not in WRITE_MODES:
             with self.transaction() as conn:
                 name = self.campaign_name(conn, cid)
             raise ToolError(f"La campagne « {name} » est ouverte à Claude en lecture seule.")
+        return cid
+
+    def check_delete(self, cid: int | None, what: str = "Fiche") -> int:
+        """Outils de suppression : campagne ouverte en lecture, écriture et suppression (migration 033)."""
+        self.check_read(cid, what)
+        if self.grants[cid] != "delete":
+            with self.transaction() as conn:
+                name = self.campaign_name(conn, cid)
+            raise ToolError(f"La campagne « {name} » n'autorise pas Claude à supprimer (Administration > "
+                            "Connecteur Claude).")
         return cid
 
     def campaign_of(self, table: str, row_id: int) -> int | None:
@@ -192,6 +216,7 @@ class Context:
             "memberships": "SELECT f.campaign_id FROM memberships m JOIN factions f ON f.id = m.faction_id "
                            "WHERE m.id = ?",
             "place_links": "SELECT p.campaign_id FROM place_links l JOIN places p ON p.id = l.place_id WHERE l.id = ?",
+            "comments": "SELECT d.campaign_id FROM comments c JOIN documents d ON d.id = c.document_id WHERE c.id = ?",
         }
         sql = queries.get(table, f"SELECT campaign_id FROM {table} WHERE id = ?")
         with self.transaction() as conn:
@@ -316,7 +341,7 @@ async def list_campaigns(ctx: Context, args: dict[str, Any]) -> Any:
                   FROM campaigns c WHERE c.id IN ({marks}) ORDER BY c.updated_at DESC""",
             visible).fetchall()
     return {"campaigns": [{**dict(r), "description": _short(r["description"], 300),
-                           "access": "lecture et écriture" if ctx.grants[r["id"]] == "write" else "lecture seule"}
+                           "access": ACCESS_LABELS[ctx.grants[r["id"]]]}
                           for r in rows]}
 
 
@@ -391,7 +416,7 @@ async def get_campaign(ctx: Context, args: dict[str, Any]) -> Any:
     }
     out = {
         "campaign": {"id": cid, "name": campaign["name"], "description": campaign["description"],
-                     "access": "lecture et écriture" if ctx.grants[cid] == "write" else "lecture seule"},
+                     "access": ACCESS_LABELS[ctx.grants[cid]]},
         "documents": {"root_id": docs["root_id"], "tree": [
             {k: d[k] for k in ("id", "parent_id", "kind", "title", "status")} for d in docs["documents"]]},
         "totals": totals,
@@ -887,6 +912,124 @@ async def update_event(ctx: Context, args: dict[str, Any]) -> Any:
     return await _event_result(ctx, cid, eid)
 
 
+# --- Suppression (niveau « lecture, écriture et suppression », migration 033) ---------------------
+# Chaque outil vérifie d'abord le niveau d'accès de la campagne de l'objet (Context.check_delete), puis exige le nom
+# ou le titre actuel de l'objet (garde-fou contre un identifiant mal recopié), et passe par la route REST de
+# l'interface (mêmes effets : cascades, fichiers, éditeurs ouverts fermés).
+
+def _same(args: dict[str, Any], key: str, current: str, refusal: str) -> None:
+    given = args.get(key)
+    if not isinstance(given, str):
+        raise ToolError(f"Paramètre manquant : {key}")
+    if given.strip() != (current or "").strip():
+        raise ToolError(f"{refusal} ; rien n'a été supprimé.")
+
+
+async def delete_entry(ctx: Context, args: dict[str, Any]) -> Any:
+    kind = _kind(args)
+    eid = _int(args, "id")
+    table = ENTRY_TABLES[kind]
+    ctx.target = f"{kind}:{eid}"
+    ctx.check_delete(ctx.campaign_of(table, eid), "Fiche")
+    with ctx.transaction() as conn:
+        found = conn.execute(f"SELECT name FROM {table} WHERE id = ?", (eid,)).fetchone()
+        children = conn.execute("SELECT COUNT(*) FROM places WHERE parent_id = ?", (eid,)).fetchone()[0] \
+            if kind == "place" else 0
+    if found is None:
+        raise ToolError("Fiche introuvable (déjà supprimée ?)")
+    name = found[0]
+    ctx.target = f"{kind}:{eid} « {name} »"
+    _same(args, "name", name, f"Nom différent : la fiche n°{eid} s'appelle « {name} »")
+    await ctx.api("DELETE", f"/api/{ENTRY_PATHS[kind]}/{eid}", delete=True)
+    message = f"{_KIND_NAMES[kind]} « {name} » supprimé{'e' if kind == 'faction' else ''}."
+    if children:
+        message += f" Ses sous-lieux ({children}) remontent d'un niveau."
+    return {"deleted": {"kind": kind, "id": eid, "name": name}, "message": message}
+
+
+async def delete_document(ctx: Context, args: dict[str, Any]) -> Any:
+    did = _int(args, "document_id")
+    ctx.target = f"doc:{did}"
+    ctx.check_delete(ctx.campaign_of("documents", did), "Fiche")
+    with ctx.transaction() as conn:
+        found = conn.execute("SELECT title, kind FROM documents WHERE id = ?", (did,)).fetchone()
+        pages = conn.execute(
+            """WITH RECURSIVE tree(id) AS (SELECT id FROM documents WHERE parent_id = ? UNION ALL
+                   SELECT d.id FROM documents d JOIN tree t ON d.parent_id = t.id)
+               SELECT COUNT(*) FROM tree""", (did,)).fetchone()[0]
+    if found is None:
+        raise ToolError("Fiche introuvable (déjà supprimée ?)")
+    title = found[0]
+    ctx.target = f"doc:{did} « {title} »"
+    if found[1] == "campaign":   # comme la route (et l'interface) : avant même de comparer le titre
+        raise ToolError("La fiche de campagne ne peut pas être supprimée")
+    _same(args, "title", title, f"Titre différent : la fiche n°{did} s'intitule « {title} »")
+    await ctx.api("DELETE", f"/api/documents/{did}", delete=True)
+    message = f"Fiche « {title} » supprimée"
+    message += f", avec ses sous-pages ({pages})." if pages else "."
+    return {"deleted": {"document_id": did, "title": title, "subpages": pages}, "message": message}
+
+
+async def delete_event(ctx: Context, args: dict[str, Any]) -> Any:
+    eid = _int(args, "event_id")
+    ctx.target = f"event:{eid}"
+    cid = ctx.check_delete(ctx.campaign_of("timeline_events", eid), "Événement")
+    _check_timeline_write(ctx, cid)
+    with ctx.transaction() as conn:
+        found = conn.execute("SELECT title FROM timeline_events WHERE id = ?", (eid,)).fetchone()
+    if found is None:
+        raise ToolError("Événement introuvable (déjà supprimé ?)")
+    title = found[0]
+    ctx.target = f"event:{eid} « {title} »"
+    _same(args, "title", title, f"Titre différent : l'événement n°{eid} s'intitule « {title} »")
+    await ctx.api("DELETE", f"/api/events/{eid}", delete=True)
+    return {"deleted": {"event_id": eid, "title": title}, "message": f"Événement « {title} » supprimé."}
+
+
+async def delete_map(ctx: Context, args: dict[str, Any]) -> Any:
+    mid = _int(args, "map_id")
+    ctx.target = f"carte:{mid}"
+    ctx.check_delete(ctx.campaign_of("maps", mid), "Carte")
+    with ctx.transaction() as conn:
+        found = conn.execute("SELECT name, (SELECT COUNT(*) FROM map_pins WHERE map_id = maps.id) FROM maps "
+                             "WHERE id = ?", (mid,)).fetchone()
+    if found is None:
+        raise ToolError("Carte introuvable (déjà supprimée ?)")
+    name, pins = found[0], found[1]
+    ctx.target = f"carte:{mid} « {name} »"
+    _same(args, "name", name, f"Nom différent : la carte n°{mid} s'appelle « {name} »")
+    await ctx.api("DELETE", f"/api/maps/{mid}", delete=True)
+    return {"deleted": {"map_id": mid, "name": name, "pins": pins},
+            "message": f"Carte « {name} » supprimée, avec ses épingles ({pins}) ; les lieux restent."}
+
+
+COMMENT_TABLES = {"document": ("comments", "/api/comments"), "entry": ("entry_comments", "/api/entry-comments")}
+
+
+async def delete_comment(ctx: Context, args: dict[str, Any]) -> Any:
+    cid = _int(args, "comment_id")
+    on = _kind(args, "on", tuple(COMMENT_TABLES))
+    table, path = COMMENT_TABLES[on]
+    ctx.target = f"commentaire:{cid}"
+    ctx.check_delete(ctx.campaign_of(table, cid), "Commentaire")
+    owner = ("'doc:' || document_id" if on == "document"
+             else "COALESCE('npc:' || npc_id, 'faction:' || faction_id, 'place:' || place_id)")
+    with ctx.transaction() as conn:
+        found = conn.execute(f"SELECT parent_id, {owner}, (SELECT COUNT(*) FROM {table} r WHERE r.parent_id = c.id) "
+                             f"FROM {table} c WHERE id = ?", (cid,)).fetchone()
+    if found is None:
+        raise ToolError("Commentaire introuvable (déjà supprimé ?)")
+    parent_id, where, replies = found
+    ctx.target = f"commentaire:{cid} {where}"
+    await ctx.api("DELETE", f"{path}/{cid}", delete=True)
+    if parent_id is not None:
+        message = "Réponse supprimée (le reste du fil est gardé)."
+    else:
+        message = f"Fil de commentaires supprimé{f', avec ses réponses ({replies})' if replies else ''}."
+    return {"deleted": {"comment_id": cid, "on": on, "replies": 0 if parent_id is not None else replies},
+            "message": message}
+
+
 # --- Catalogue ---------------------------------------------------------------------------------
 
 ID = {"type": "integer"}
@@ -910,19 +1053,25 @@ COMMENT_FIELDS_DOC = " ; ".join(f"{_KIND_NAMES[kind]} : {', '.join(entries.keys(
                                 for kind in entries.KINDS)
 STATUS = {"type": "string", "enum": ["brouillon", "pret", "en_cours", "joue"]}
 CONTENT = {"type": "string", "description": "HTML de l'éditeur (voir les instructions du serveur)"}
+DELETE_DOC = ("Définitif : pas de corbeille, seules les sauvegardes de Maze permettent de revenir en arrière ; ne "
+              "supprimer qu'à la demande du MJ. Exige que la campagne soit ouverte à Claude en « lecture, écriture et "
+              "suppression » (Administration > Connecteur Claude).")
 
 Handler = Callable[[Context, dict[str, Any]], Awaitable[Any]]
 
 
 def _tool(name: str, title: str, description: str, properties: dict[str, Any], required: list[str],
-          handler: Handler, write: bool = False, destructive: bool = False) -> dict[str, Any]:
+          handler: Handler, write: bool = False, destructive: bool = False, delete: bool = False) -> dict[str, Any]:
+    """delete : outil de suppression (niveau « lecture, écriture et suppression », vérifié par Context.check_delete
+    à l'appel) ; c'est aussi un outil d'écriture, destructeur. Listé pour tous : le refus se fait à l'appel."""
+    write, destructive = write or delete, destructive or delete
     return {
         "name": name, "title": title, "description": description,
         "inputSchema": {"type": "object", "properties": properties, "required": required,
                         "additionalProperties": False},
         "annotations": {"title": title, "readOnlyHint": not write, "destructiveHint": destructive,
                         "idempotentHint": not write, "openWorldHint": False},
-        "_handler": handler, "_write": write,
+        "_handler": handler, "_write": write, "_delete": delete,
     }
 
 
@@ -1042,11 +1191,46 @@ TOOLS = [
           "Modifie les champs donnés d'un événement (les autres restent inchangés ; description : remplace tout le "
           "texte, HTML ou Markdown comme create_event). base_revision (conseillé) : la révision lue avec list_events "
           "ou renvoyée par le dernier appel ; refus si l'événement a changé depuis (le relire). Déplacer : before_id "
-          "(placer avant cet événement) ou to_end (le mettre à la fin). Pas de suppression par Claude.",
+          "(placer avant cet événement) ou to_end (le mettre à la fin). Supprimer : delete_event.",
           {"event_id": ID, "base_revision": ID, "title": {"type": "string"}, "date_label": {"type": "string"},
            "description": CONTENT, "tags": {"type": "array", "items": {"type": "string"}}, "before_id": ID,
            "to_end": {"type": "boolean"}},
           ["event_id"], update_event, write=True),
+
+    _tool("delete_entry", "Supprimer une fiche PNJ, faction ou lieu",
+          "Supprime un PNJ, une faction ou un lieu. name : le nom actuel exact de la fiche (get_entry ; casse "
+          "comprise), sinon refus sans rien supprimer. Partent avec la fiche : ses liens, ses appartenances (comme "
+          "membre ou comme faction : les PNJ et sous-factions membres restent, sans cette faction), ses rattachements "
+          "à des lieux, sa galerie d'images, son historique et ses commentaires, ses mentions dans les fiches rédigées "
+          "et la chronologie (le texte reste, sans lien), sa place sur les cartes de scénario (PNJ, faction) ; pour un "
+          "lieu, ses "
+          "épingles sur les cartes interactives (une carte qui le représentait reste, sans lieu) et ses sous-lieux "
+          "remontent d'un niveau (rien d'autre n'est perdu). " + DELETE_DOC,
+          {"kind": ENTRY_KIND, "id": ID, "name": {"type": "string"}}, ["kind", "id", "name"], delete_entry,
+          delete=True),
+    _tool("delete_document", "Supprimer une fiche rédigée",
+          "Supprime un scénario ou une page, AVEC TOUTES SES SOUS-PAGES (get_document : children). title : le titre "
+          "actuel exact (casse comprise), sinon refus sans rien supprimer. La fiche de campagne (racine) ne peut pas "
+          "être supprimée. Partent aussi : versions, commentaires, illustrations qu'aucune autre fiche n'affiche ; les "
+          "MJ qui l'avaient ouverte la voient fermée. " + DELETE_DOC,
+          {"document_id": ID, "title": {"type": "string"}}, ["document_id", "title"], delete_document, delete=True),
+    _tool("delete_event", "Supprimer un événement",
+          "Supprime un événement de la chronologie (activée par le MJ). title : le titre actuel exact (list_events ; "
+          "casse comprise), sinon refus sans rien supprimer. Les fiches citées restent. " + DELETE_DOC,
+          {"event_id": ID, "title": {"type": "string"}}, ["event_id", "title"], delete_event, delete=True),
+    _tool("delete_map", "Supprimer une carte interactive",
+          "Supprime une carte interactive : son fond et toutes ses épingles ; les lieux restent. name : le nom "
+          "actuel exact de la carte (list_maps ; casse comprise), sinon refus sans rien supprimer. " + DELETE_DOC,
+          {"map_id": ID, "name": {"type": "string"}}, ["map_id", "name"], delete_map, delete=True),
+    _tool("delete_comment", "Supprimer un commentaire",
+          "Supprime un commentaire : on=document pour une fiche rédigée (get_document avec include_comments), "
+          "on=entry pour un PNJ, une faction ou un lieu (get_entry avec include_comments). Un fil part avec toutes "
+          "ses réponses ; une réponse seule laisse le reste du fil. Seulement les commentaires signés Claude ou "
+          "écrits par l'administrateur qui a autorisé Claude (les autres sont refusés). Fiche rédigée : le passage "
+          "surligné (<span data-comment>) reste dans le texte, à retirer avec update_document si besoin. "
+          + DELETE_DOC,
+          {"comment_id": ID, "on": {"type": "string", "enum": list(COMMENT_TABLES)}}, ["comment_id", "on"],
+          delete_comment, delete=True),
 ]
 from . import mcp_images, mcp_maps  # noqa: E402 - outils d'images et de cartes, qui s'appuient sur ce qui précède
 
