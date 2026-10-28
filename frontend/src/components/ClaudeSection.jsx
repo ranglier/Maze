@@ -9,6 +9,7 @@ const MODES = [
   { key: 'none', label: () => t('Aucun') },
   { key: 'read', label: () => pt('access', 'Lecture') },
   { key: 'write', label: () => pt('access', 'Lecture et écriture') },
+  { key: 'delete', label: () => pt('access', 'Lecture, écriture et suppression') },
 ];
 
 // Libellés traduits à l'affichage (t(…)) : N_ les signale seulement à l'extraction.
@@ -21,6 +22,7 @@ const TOOL_LABEL = {
   get_document: N_('Lecture d’une fiche rédigée'),
   create_entry: N_('Création d’une fiche'),
   update_entry: N_('Modification d’une fiche'),
+  delete_entry: N_('Suppression d’une fiche'),
   create_relation: N_('Création d’un lien'),
   update_relation: N_('Modification d’un lien'),
   delete_relation: N_('Suppression d’un lien'),
@@ -30,7 +32,10 @@ const TOOL_LABEL = {
   remove_place_link: N_('Retrait d’un lieu'),
   create_document: N_('Création d’une fiche rédigée'),
   update_document: N_('Modification d’une fiche rédigée'),
+  delete_document: N_('Suppression d’une fiche rédigée'),
   add_comment: N_('Commentaire'),
+  add_entry_comment: N_('Commentaire'),
+  delete_comment: N_('Suppression d’un commentaire'),
   view_image: N_('Lecture d’une image'),
   add_image: N_('Ajout d’une image'),
   update_image: N_('Modification d’une image'),
@@ -43,12 +48,14 @@ const TOOL_LABEL = {
   view_map: N_('Lecture d’une carte'),
   create_map: N_('Création d’une carte'),
   update_map: N_('Modification d’une carte'),
+  delete_map: N_('Suppression d’une carte'),
   place_on_map: N_('Épingle posée sur une carte'),
   remove_from_map: N_('Épingle retirée d’une carte'),
   set_place_kind: N_('Type de lieux modifié'),
   list_events: N_('Lecture de la chronologie'),
   create_event: N_('Création d’un événement'),
   update_event: N_('Modification d’un événement'),
+  delete_event: N_('Suppression d’un événement'),
 };
 
 const LOG_VISIBLE = 10;   // actions visibles sans défiler ; les suivantes dans la barre de défilement du journal
@@ -152,7 +159,18 @@ export default function ClaudeSection({ campaigns }) {
   const toggle = () => save({ enabled: !state.enabled },
     state.enabled ? t('Accès de Claude suspendu') : t('Accès de Claude activé'));
 
-  const setMode = (campaignId, mode) => save({ grant: { campaign_id: campaignId, mode } });
+  const setMode = async (campaign, mode) => {
+    if (mode === 'delete') {
+      const yes = await confirm({
+        title: t('Autoriser les suppressions'),
+        message: t('Claude pourra supprimer définitivement des fiches, des fiches rédigées, des événements, des cartes '
+          + 'interactives et des commentaires de « {name} ». À réserver à une campagne sauvegardée.', { name: campaign.name }),
+        confirmLabel: t('Autoriser'),
+      });
+      if (!yes) return;
+    }
+    save({ grant: { campaign_id: campaign.id, mode } });
+  };
 
   const generate = async () => {
     if (state.client_id) {
@@ -240,6 +258,10 @@ export default function ClaudeSection({ campaigns }) {
 
       <section className="admin__block">
         <h2>{t('Campagnes ouvertes à Claude')}</h2>
+        <p className="field__hint">
+          {t('{level} permet aussi à Claude de supprimer définitivement des fiches, fiches rédigées, événements, cartes interactives et commentaires : à réserver aux campagnes sauvegardées.',
+            { level: <strong>{pt('access', 'Lecture, écriture et suppression')}</strong> })}
+        </p>
         {!campaigns ? <p className="muted">{t('Chargement…')}</p> : campaigns.length === 0 ? (
           <p className="muted">{t('Aucune campagne pour l’instant.')}</p>
         ) : (
@@ -257,7 +279,7 @@ export default function ClaudeSection({ campaigns }) {
                           {MODES.map((m) => (
                             <button key={m.key} type="button" role="radio" aria-checked={current === m.key}
                               className={current === m.key ? 'is-active' : ''} disabled={busy}
-                              onClick={() => current !== m.key && setMode(c.id, m.key)}>
+                              onClick={() => current !== m.key && setMode(c, m.key)}>
                               {m.label()}
                             </button>
                           ))}
