@@ -87,7 +87,7 @@ Order: database > server > interface > tests. Every REST call of the interface i
 
 **Timeline (optional module)**
 - DB: `032_timeline.sql` (`campaigns.timeline_enabled`, `timeline_events`, `timeline_mentions`, search type `event`).
-- Server: `timeline.py` (events, order, `sync_event_mentions`), `api.py` (`timeline_enabled` on campaigns), `search.py`; export / import in `transfer.py`; connector tools `list_events`, `create_event`, `update_event` in `mcp.py`.
+- Server: `timeline.py` (events, order, `sync_event_mentions`), `api.py` (`timeline_enabled` on campaigns), `search.py`; export / import in `transfer.py`; connector tools `list_events`, `create_event`, `update_event`, `delete_event` in `mcp.py`.
 - Interface: `components/TimelineView.jsx` (list and ordinal timeline), `timeline.js`; "Chronologie" section on NPC, faction and place sheets.
 - Tests: `test_timeline`, `test_api` (`TimelineTransferTest`), `test_connector` (`test_timeline`); node `timeline.test.mjs`; e2e `chronologie`.
 
@@ -112,8 +112,8 @@ Order: database > server > interface > tests. Every REST call of the interface i
 - Tests: `test_deploy` (scripts replayed with a simulated Docker), `test_api` (`AdminSystemTest`); e2e `mise-a-jour`.
 
 **Claude connector (MCP)**
-- DB: `015_claude_connector.sql`, `024_mcp_log_campaign_name.sql`.
-- Server: `mcp.py` (`/mcp`, tools, `Context`), `mcp_images.py`, `mcp_maps.py`, `oauth.py` (OAuth 2.1), `connector.py` (settings, grants, log).
+- DB: `015_claude_connector.sql`, `024_mcp_log_campaign_name.sql`, `033_mcp_delete_grant.sql` (grant mode `delete`: read, write and delete).
+- Server: `mcp.py` (`/mcp`, tools, `Context`: `check_write`, `check_delete`; delete tools `delete_entry`, `delete_document`, `delete_event`, `delete_map`, `delete_comment`), `mcp_images.py`, `mcp_maps.py`, `oauth.py` (OAuth 2.1), `connector.py` (settings, grants, log).
 - Interface: `components/ClaudeSection.jsx`.
 - Tests: `test_connector`.
 
@@ -146,7 +146,7 @@ Order: database > server > interface > tests. Every REST call of the interface i
 
 ### Recipe: add a migration
 
-1. New file `backend/maze/migrations/NNN_name.sql`, NNN = highest existing + 1 (currently 032). Never edit a released one (checksum recorded).
+1. New file `backend/maze/migrations/NNN_name.sql`, NNN = highest existing + 1 (currently 033). Never edit a released one (checksum recorded).
 2. No `BEGIN`/`COMMIT` in the file: `db.migrate` wraps it in one transaction with foreign keys suspended, then checked.
 3. New table whose id is cited elsewhere: `INTEGER PRIMARY KEY AUTOINCREMENT`. Rebuilt table: recreate all its indexes and triggers.
 4. Data that belongs to a campaign: give it a foreign key to its campaign (or parent row) with `ON DELETE CASCADE`, since deleting a campaign relies on cascades; add it to export / import (`transfer.SECTIONS`); restore needs nothing (whole database).
