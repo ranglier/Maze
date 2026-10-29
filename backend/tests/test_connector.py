@@ -1009,7 +1009,133 @@ class ConnectorTest(unittest.TestCase):
         self.assertIn("n'est pas activée", err)
         names = {t["name"] for t in self.rpc(token, "tools/list")[2]["result"]["tools"]}
         self.assertTrue({"list_events", "create_event", "update_event"} <= names)
-        self.assertNotIn("delete_event", names)
+
+    def test_delete_tools(self):
+        """Niveau d'accès « suppression » (migration 033) : delete_entry, delete_document, delete_event, delete_map et
+        delete_comment refusés en lecture et en écriture, permis en suppression ; nom ou titre exact exigé ; journal ;
+        les outils destructeurs d'avant (delete_relation…) restent permis en écriture."""
+        from tests.test_maps import form
+        token = self.connect()["access_token"]
+        s = self.s
+        _, camp = s.call("POST", "/api/campaigns", {"name": "Suppressions Claude"})
+        w = camp["id"]
+        code, state = s.call("PUT", "/api/admin/claude", {"grant": {"campaign_id": w, "mode": "delete"}})
+        self.assertEqual(code, 200, state)
+        self.assertEqual({g["campaign_id"]: g["mode"] for g in state["grants"]}[w], "delete")
+        self.addCleanup(s.call, "PUT", "/api/admin/claude", {"grant": {"campaign_id": w, "mode": "none"}})
+        self.assertEqual(s.call("PUT", "/api/admin/claude", {"grant": {"campaign_id": w, "mode": "tout"}})[0], 422)
+        s.call("PATCH", f"/api/campaigns/{w}", {"timeline_enabled": True})
+
+        _, npc = s.call("POST", f"/api/campaigns/{w}/npcs", {"name": "Inquisitrice Vael"})
+        _, faction = s.call("POST", f"/api/campaigns/{w}/factions", {"name": "Ordo Hereticus"})
+        _, sector = s.call("POST", f"/api/campaigns/{w}/places", {"name": "Morvane"})
+        _, world = s.call("POST", f"/api/campaigns/{w}/places", {"name": "Valdis", "parent_id": sector["id"]})
+        _, scenario = s.call("POST", f"/api/campaigns/{w}/documents", {"title": "Acte I"})
+        _, scene = s.call("POST", f"/api/campaigns/{w}/documents", {"title": "Scène 1", "parent_id": scenario["id"]})
+        root_id = s.call("GET", f"/api/campaigns/{w}/documents")[1]["root_id"]
+        _, event = s.call("POST", f"/api/campaigns/{w}/events", {"title": "Fondation"})
+        body, ctype = form({"name": "Secteur"}, ("fond.png", png_bytes()))
+        _, smap = s.call("POST", f"/api/campaigns/{w}/maps", raw=body, content_type=ctype)
+        _, relation = s.call("POST", f"/api/campaigns/{w}/relations", {
+            "source_kind": "npc", "source_id": npc["id"], "target_kind": "faction", "target_id": faction["id"]})
+        ok, thread = self.tool(token, "add_comment", document_id=root_id, body="À revoir")
+        self.assertTrue(ok, thread)
+        ok, reply = self.tool(token, "add_comment", document_id=root_id, body="D'accord", parent_id=thread["id"])
+        ok, entry_comment = self.tool(token, "add_entry_comment", kind="faction", id=faction["id"], body="Trop vague")
+        self.assertTrue(ok, entry_comment)
+
+        calls = [
+            ("delete_entry", {"kind": "npc", "id": npc["id"], "name": "Inquisitrice Vael"}),
+            ("delete_entry", {"kind": "place", "id": sector["id"], "name": "Morvane"}),
+            ("delete_document", {"document_id": scenario["id"], "title": "Acte I"}),
+            ("delete_event", {"event_id": event["id"], "title": "Fondation"}),
+            ("delete_map", {"map_id": smap["id"], "name": smap["name"]}),
+            ("delete_comment", {"comment_id": thread["id"], "on": "document"}),
+            ("delete_comment", {"comment_id": entry_comment["id"], "on": "entry"}),
+        ]
+        for mode in ("write", "read"):
+            s.call("PUT", "/api/admin/claude", {"grant": {"campaign_id": w, "mode": mode}})
+            for name, args in calls:
+                ok, err = self.tool(token, name, **args)
+                self.assertFalse(ok, (mode, name))
+                self.assertIn("La campagne « Suppressions Claude » n'autorise pas Claude à supprimer", err)
+        self.assertEqual(s.call("GET", f"/api/npcs/{npc['id']}")[0], 200)
+        # Non-régression : les outils destructeurs d'avant restent permis en écriture.
+        s.call("PUT", "/api/admin/claude", {"grant": {"campaign_id": w, "mode": "write"}})
+        self.assertTrue(self.tool(token, "delete_relation", relation_id=relation["id"])[0])
+
+        s.call("PUT", "/api/admin/claude", {"grant": {"campaign_id": w, "mode": "delete"}})
+        ok, listing = self.tool(token, "list_campaigns")
+        self.assertEqual({c["id"]: c["access"] for c in listing["campaigns"]}[w], "lecture, écriture et suppression")
+        self.assertEqual(self.tool(token, "get_campaign", campaign_id=w)[1]["campaign"]["access"],
+                         "lecture, écriture et suppression")
+        self.assertTrue(self.tool(token, "update_entry", kind="npc", id=npc["id"], fields={"title": "Inquisitrice"})[0])
+
+        # Nom ou titre différent (casse comprise) : rien n'est supprimé.
+        ok, err = self.tool(token, "delete_entry", kind="npc", id=npc["id"], name="inquisitrice vael")
+        self.assertFalse(ok)
+        self.assertIn(f"Nom différent : la fiche n°{npc['id']} s'appelle « Inquisitrice Vael »", err)
+        self.assertEqual(s.call("GET", f"/api/npcs/{npc['id']}")[0], 200)
+        ok, err = self.tool(token, "delete_document", document_id=scenario["id"], title="Acte 1")
+        self.assertIn("Acte I", err)
+        self.assertEqual(s.call("GET", f"/api/documents/{scenario['id']}")[0], 200)
+        # Fiche invisible pour Claude, type inconnu.
+        ok, err = self.tool(token, "delete_entry", kind="npc", id=self.hidden_npc["id"], name="Invisible Varnak")
+        self.assertIn("introuvable", err)
+        self.assertEqual(s.call("GET", f"/api/npcs/{self.hidden_npc['id']}")[0], 200)
+        self.assertFalse(self.tool(token, "delete_comment", comment_id=thread["id"], on="fiche")[0])
+
+        ok, out = self.tool(token, "delete_entry", kind="npc", id=npc["id"], name=" Inquisitrice Vael ")
+        self.assertTrue(ok, out)
+        self.assertEqual(s.call("GET", f"/api/npcs/{npc['id']}")[0], 404)
+        ok, out = self.tool(token, "delete_comment", comment_id=entry_comment["id"], on="entry")
+        self.assertTrue(ok, out)
+        self.assertEqual(s.call("GET", f"/api/factions/{faction['id']}/comments")[1], [])
+        self.assertTrue(self.tool(token, "delete_entry", kind="faction", id=faction["id"], name="Ordo Hereticus")[0])
+        # Lieu : ses sous-lieux remontent d'un niveau.
+        ok, out = self.tool(token, "delete_entry", kind="place", id=sector["id"], name="Morvane")
+        self.assertTrue(ok, out)
+        self.assertIsNone(s.call("GET", f"/api/places/{world['id']}")[1]["parent_id"])
+        # Fiche rédigée : ses sous-pages partent avec elle ; la fiche de campagne ne se supprime pas.
+        ok, out = self.tool(token, "delete_document", document_id=scenario["id"], title="Acte I")
+        self.assertTrue(ok, out)
+        self.assertEqual(s.call("GET", f"/api/documents/{scene['id']}")[0], 404)
+        root_title = s.call("GET", f"/api/documents/{root_id}")[1]["title"]
+        ok, err = self.tool(token, "delete_document", document_id=root_id, title=root_title)
+        self.assertFalse(ok)
+        self.assertIn("fiche de campagne", err)
+        ok, out = self.tool(token, "delete_event", event_id=event["id"], title="Fondation")
+        self.assertTrue(ok, out)
+        self.assertEqual(self.tool(token, "list_events", campaign_id=w)[1]["total"], 0)
+        ok, out = self.tool(token, "delete_map", map_id=smap["id"], name=smap["name"])
+        self.assertTrue(ok, out)
+        self.assertEqual(s.call("GET", f"/api/maps/{smap['id']}")[0], 404)
+        # Commentaire : un fil part avec ses réponses.
+        ok, out = self.tool(token, "delete_comment", comment_id=thread["id"], on="document")
+        self.assertTrue(ok, out)
+        self.assertEqual(s.call("GET", f"/api/documents/{root_id}/comments")[1], [])
+        self.assertFalse(self.tool(token, "delete_comment", comment_id=reply["id"], on="document")[0])
+        # Commentaire d'un autre MJ : la route le réserve à son auteur (Claude agit en MJ, pas en administrateur).
+        _, user = s.call("POST", "/api/admin/users", {"username": "mj-commente", "password": "motdepasse-mjc",
+                                                      "role": "mj"})
+        s.call("PUT", f"/api/admin/campaigns/{w}/members", {"user_ids": [user["id"]]})
+        mj = s.client()
+        mj.login("mj-commente", "motdepasse-mjc")
+        code, other = mj.call("POST", f"/api/documents/{root_id}/comments", {"body": "Mon avis"})
+        self.assertEqual(code, 201, other)
+        ok, err = self.tool(token, "delete_comment", comment_id=other["id"], on="document")
+        self.assertIn("Seul l'auteur", err)
+        self.assertEqual(len(s.call("GET", f"/api/documents/{root_id}/comments")[1]), 1)
+
+        log = s.call("GET", "/api/admin/claude")[1]["log"]
+        done = [(e["tool"], e["target"], e["ok"]) for e in log if e["campaign_id"] == w]
+        self.assertIn(("delete_entry", f"npc:{npc['id']} « Inquisitrice Vael »", True), done)
+        self.assertIn(("delete_document", f"doc:{scenario['id']} « Acte I »", True), done)
+        self.assertIn(("delete_entry", f"npc:{npc['id']} « Inquisitrice Vael »", False), done)
+        tools = {t["name"]: t for t in self.rpc(token, "tools/list")[2]["result"]["tools"]}
+        for name in ("delete_entry", "delete_document", "delete_event", "delete_map", "delete_comment"):
+            self.assertTrue(tools[name]["annotations"]["destructiveHint"], name)
+            self.assertFalse(tools[name]["annotations"]["readOnlyHint"], name)
 
     def test_maps(self):
         from PIL import Image

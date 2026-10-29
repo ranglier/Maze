@@ -1,7 +1,8 @@
 // Parcours navigateur du lot 1 de l'audit (Playwright, Chromium headless) : jetons Foundry révoqués avec leur
 // créateur (M12, Administration > Foundry VTT), origine des sauvegardes (M8), restauration qui ferme les autres
 // sessions mais garde celle de l'administrateur qui restaure, et compte supprimé depuis l'archive restauré
-// désactivé et annoncé (M11).
+// désactivé et annoncé (M11). Enfin, niveau d'accès « Lecture, écriture et suppression » du connecteur Claude
+// (Administration > Connecteur Claude), demandé avec confirmation.
 //
 // Base vide ou déjà initialisée. Usage : node sauvegardes-acces.mjs [url]   (défaut : $MAZE_URL ou http://127.0.0.1:8765)
 // Variables : MAZE_E2E_USER (admin), MAZE_E2E_PASSWORD (requis si la base a déjà un compte), HEADED=1,
@@ -178,6 +179,26 @@ try {
   await login(c, MJ, OTHER_PW);
   check((await (await c.request.get(BASE + '/api/auth/status')).json()).authenticated, `${MJ} se reconnecte avec son mot de passe`);
   await a.screenshot({ path: path.join(SHOTS, 'lot1-sauvegardes.png') });
+
+  // 5. Connecteur Claude : le niveau qui permet les suppressions demande confirmation avant d'être enregistré.
+  await adminSection(a, 'claude', 'Connecteur Claude');
+  const access = a.getByRole('radiogroup', { name: `Accès de Claude à ${camp.name}` });
+  const deleteLevel = access.getByRole('radio', { name: 'Lecture, écriture et suppression' });
+  await deleteLevel.click();
+  const ask = a.locator('.modal[role=dialog]', { hasText: 'Autoriser les suppressions' });
+  await ask.waitFor({ timeout: 10000 });
+  check((await ask.textContent()).includes(camp.name), 'Connecteur Claude : confirmation avant d’autoriser les suppressions');
+  await ask.getByRole('button', { name: 'Annuler' }).click();
+  await ask.waitFor({ state: 'detached', timeout: 10000 });
+  check(await access.getByRole('radio', { name: 'Aucun' }).getAttribute('aria-checked') === 'true',
+    'Connecteur Claude : accès inchangé après Annuler');
+  await deleteLevel.click();
+  await ask.getByRole('button', { name: 'Autoriser', exact: true }).click();
+  await a.waitForFunction((name) => document.querySelector(`[role=radiogroup][aria-label="Accès de Claude à ${name}"] `
+    + '[role=radio][aria-checked=true]')?.textContent === 'Lecture, écriture et suppression', camp.name, { timeout: 10000 });
+  const grant = (await api(a, 'GET', '/api/admin/claude')).grants.find((g) => g.campaign_id === camp.id);
+  check(grant?.mode === 'delete', 'Connecteur Claude : niveau « Lecture, écriture et suppression » enregistré');
+  await a.screenshot({ path: path.join(SHOTS, 'lot1-connecteur-claude.png') });
   ok = true;
 } catch (e) {
   console.error('ÉCHEC :', e.message);
