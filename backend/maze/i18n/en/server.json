@@ -223,6 +223,7 @@
   "{what} introuvable": "{what} not found",
   "« {faction} » est déjà membre, directement ou non, de « {member} » : cette appartenance formerait un cycle": "“{faction}” is already a member, directly or indirectly, of “{member}”: this membership would create a loop",
   "« {member} » est déjà membre de « {faction} »": "“{member}” is already a member of “{faction}”",
+  "« {name} » est trop volumineux pour la corbeille ({size} Mo, {max} Mo au plus) : rien n'a été supprimé. Supprimez d'abord des versions de son historique.": "“{name}” is too large for the trash ({size} MB, {max} MB at most): nothing was deleted. Delete versions from its history first.",
   "« {name} » ne peut pas être restauré : sa fiche parente a été supprimée. Restaurez d'abord « {parent} » depuis la corbeille.": "“{name}” cannot be restored: its parent page was deleted. Restore “{parent}” from the trash first.",
   "« {name} » ne peut pas être restauré : sa fiche parente n'existe plus.": "“{name}” cannot be restored: its parent page no longer exists.",
   "« {name} » ne peut pas être restauré : son numéro est déjà pris par un autre élément.": "“{name}” cannot be restored: its number is already used by another item.",

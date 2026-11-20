@@ -36,16 +36,21 @@ vers .trash, par la restauration, de la validation à la remise en place des fic
 des fichiers à garder à la fin du parcours de .trash : la purge ne voit jamais un fichier déplacé mais pas encore
 cité, ou plus cité mais pas encore remis en place. Un fichier déplacé vers .trash prend la date du déplacement :
 l'âge des fichiers sans élément (STRAY_AGE) se compte depuis l'entrée dans la corbeille.
+
+Payload (BLOB) : PAYLOAD_MAGIC, puis zlib de « longueur de l'en-tête (4 octets) + en-tête JSON + valeurs binaires
+brutes à la suite » ; dans l'en-tête, une valeur binaire (versions compressées, journal temps réel) vaut
+{"bin": rang} et "bins" donne leurs longueurs : pas de base64. Au-delà de MAX_PAYLOAD octets (ou de MAX_RAW octets
+avant compression), la suppression est refusée (413) et annulée.
 """
 
 from __future__ import annotations
 
-import base64
 import json
 import logging
 import os
 import re
 import sqlite3
+import struct
 import threading
 import time
 import zlib
@@ -95,6 +100,9 @@ FILE_COLUMNS = {"images": ("file", "thumb"), "document_images": ("file", "thumb"
                 "library_images": ("file", "thumb"), "maps": ("file", "thumb", "preview"),
                 "place_kinds": ("image",)}
 DOC_IMAGE = re.compile(rb'data-doc-image="(\d+)"')
+PAYLOAD_MAGIC = b"MZT1"
+MAX_PAYLOAD = 200 * 1024 * 1024   # octets compressés d'un élément de corbeille, au plus
+MAX_RAW = 1024 * 1024 * 1024      # octets capturés (texte et binaire) avant compression, au plus
 
 _files_lock = threading.Lock()
 _held = threading.local()
@@ -163,12 +171,52 @@ def schema(conn: sqlite3.Connection) -> dict[str, Table]:
     return ordered
 
 
-def _encode(value: Any) -> Any:
-    return {"b64": base64.b64encode(value).decode()} if isinstance(value, (bytes, bytearray, memoryview)) else value
+class _Bins:
+    """Valeurs binaires d'un payload, rangées à part (format : voir l'en-tête du module)."""
+
+    def __init__(self) -> None:
+        self.items: list[bytes] = []
+
+    def encode(self, value: Any) -> Any:
+        if isinstance(value, (bytes, bytearray, memoryview)):
+            self.items.append(bytes(value))
+            return {"bin": len(self.items) - 1}
+        return value
 
 
-def _decode(value: Any) -> Any:
-    return base64.b64decode(value["b64"]) if isinstance(value, dict) else value
+def dump_payload(payload: dict[str, Any], bins: _Bins) -> bytes:
+    head = json.dumps({**payload, "bins": [len(b) for b in bins.items]}, ensure_ascii=False,
+                      separators=(",", ":")).encode()
+    packer = zlib.compressobj(6)
+    parts = [PAYLOAD_MAGIC, packer.compress(struct.pack(">I", len(head))), packer.compress(head)]
+    parts += [packer.compress(b) for b in bins.items]
+    parts.append(packer.flush())
+    return b"".join(parts)
+
+
+def load_payload(raw: bytes | str | None) -> dict[str, Any]:
+    """Payload décodé : valeurs binaires rendues en bytes, dans les lignes et les colonnes modifiées."""
+    if not raw:
+        return {}
+    data = zlib.decompress(bytes(raw)[len(PAYLOAD_MAGIC):])
+    size = struct.unpack(">I", data[:4])[0]
+    payload = json.loads(data[4:4 + size])
+    bins, pos = [], 4 + size
+    for n in payload.pop("bins", []):
+        bins.append(data[pos:pos + n])
+        pos += n
+
+    def dec(value: Any) -> Any:
+        return bins[value["bin"]] if isinstance(value, dict) else value
+    for table in payload.get("tables", []):
+        table["rows"] = [[dec(v) for v in r] for r in table["rows"]]
+    for effect in payload.get("updates", []):
+        effect["set"] = {c: [dec(o), dec(n)] for c, (o, n) in effect["set"].items()}
+    return payload
+
+
+def _raw_size(deleted: dict[str, list[list[Any]]]) -> int:
+    return sum(len(v) for rows in deleted.values() for r in rows for v in r if isinstance(v, (str, bytes)))
 
 
 def now_text(delta: timedelta = timedelta()) -> str:
@@ -222,7 +270,7 @@ class _Capture:
                 self.conn.execute(f"DROP TRIGGER IF EXISTS temp.{_q(f'_trash_{event[0]}_{t.name}')}")
             self.conn.execute(f"DROP TABLE IF EXISTS temp.{self._cap(t)}")
 
-    def collect(self) -> tuple[dict[str, list[list[Any]]], list[dict[str, Any]]]:
+    def collect(self, bins: _Bins) -> tuple[dict[str, list[list[Any]]], list[dict[str, Any]]]:
         """(lignes supprimées par table, valeurs d'avant la transaction ; lignes modifiées : table, rowid, colonnes
         changées avec [ancienne, nouvelle] valeur)."""
         deleted: dict[str, list[list[Any]]] = {}
@@ -239,7 +287,7 @@ class _Capture:
                 if now is None:
                     deleted.setdefault(t.name, []).append(old)
                     continue
-                changed = {c: [_encode(o), _encode(n)] for c, o, n in zip(t.cols, old, tuple(now), strict=True) if o != n}
+                changed = {c: [bins.encode(o), bins.encode(n)] for c, o, n in zip(t.cols, old, tuple(now), strict=True) if o != n}
                 if changed:
                     updated.append({"t": t.name, "rid": rid, "set": changed})
         return deleted, updated
@@ -265,38 +313,50 @@ def put(conn: sqlite3.Connection, request: Request, kind: str, row: dict[str, An
         remove: Callable[[], None]) -> Trashed:
     """Exécute remove() (le code de suppression de la route, dans sa transaction) en capturant tout ce qu'elle
     supprime ou modifie, et range le tout dans la corbeille. Fichiers déplacés après validation, à la sortie de
-    deleting() (à appeler dans ce bloc)."""
+    deleting() (à appeler dans ce bloc). Élément trop volumineux (MAX_PAYLOAD) : HTTPException 413, la transaction
+    de la route est annulée."""
     pending = getattr(_held, "pending", None)
     if pending is None:
         raise RuntimeError("trash.put hors de trash.deleting()")
     tables = schema(conn)
     capture = _Capture(conn, tables)
+    bins = _Bins()
     capture.start()
     try:
         remove()
-        deleted, updated = capture.collect()
+        deleted, updated = capture.collect(bins)
     finally:
         capture.stop()
-    payload = {"v": 1, "tables": [{"name": name, "cols": tables[name].cols,
-                                    "rows": [[_encode(v) for v in r] for r in deleted[name]]}
-                                   for name in tables if name in deleted],
+    name = row.get("name") if kind not in ("document", "event") else row.get("title")
+    if _raw_size(deleted) > MAX_RAW:
+        _too_large(name, _raw_size(deleted))
+    payload = {"v": 1, "tables": [{"name": t, "cols": tables[t].cols,
+                                    "rows": [[bins.encode(v) for v in r] for r in deleted[t]]}
+                                   for t in tables if t in deleted],
                "updates": updated}
+    packed = dump_payload(payload, bins)
+    if len(packed) > MAX_PAYLOAD:
+        _too_large(name, len(packed))
     files: list[str] = []
-    for name, columns in FILE_COLUMNS.items():
-        if name in deleted:
-            idx = [tables[name].cols.index(c) for c in columns if c in tables[name].cols]
-            files += [r[i] for r in deleted[name] for i in idx if isinstance(r[i], str) and r[i]]
+    for tname, columns in FILE_COLUMNS.items():
+        if tname in deleted:
+            idx = [tables[tname].cols.index(c) for c in columns if c in tables[tname].cols]
+            files += [r[i] for r in deleted[tname] for i in idx if isinstance(r[i], str) and r[i]]
     user = auth.current_user(request)
     via = "claude" if user.get("mcp_scope") is not None else "interface"
-    name = row.get("name") if kind not in ("document", "event") else row.get("title")
     trash_id = db.insert(conn, "trash", {
         "campaign_id": row["campaign_id"], "kind": kind, "object_id": row["id"], "name": name or "",
         "deleted_by": user.get("id"), "via": via, "deleted_at": now_text(),
-        "payload": json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
+        "payload": packed,
         "files": json.dumps(files), "counts": json.dumps(_counts(kind, deleted, updated)),
     })
     pending.append(Trashed(trash_id, row["campaign_id"], files))
     return pending[-1]
+
+
+def _too_large(name: str | None, size: int) -> None:
+    raise HTTPException(413, msg("« {name} » est trop volumineux pour la corbeille ({size} Mo, {max} Mo au plus) : rien n'a été supprimé. Supprimez d'abord des versions de son historique.",  # noqa: E501
+                                 name=name or "", size=-(-size // (1024 * 1024)), max=MAX_PAYLOAD // (1024 * 1024)))
 
 
 # --- Fichiers -------------------------------------------------------------------------------------
@@ -373,7 +433,7 @@ def _trashed_parent(conn: sqlite3.Connection, campaign_id: int, doc_id: int) -> 
     """Titre de la fiche rédigée doc_id si elle est elle-même dans la corbeille de la campagne."""
     for name, payload in conn.execute("SELECT name, payload FROM trash WHERE campaign_id = ? AND kind = 'document' "
                                       "ORDER BY id DESC", (campaign_id,)):
-        for table in json.loads(payload).get("tables", []):
+        for table in load_payload(payload).get("tables", []):
             if table["name"] == "documents" and "id" in table["cols"]:
                 i = table["cols"].index("id")
                 if any(r[i] == doc_id for r in table["rows"]):
@@ -383,7 +443,7 @@ def _trashed_parent(conn: sqlite3.Connection, campaign_id: int, doc_id: int) -> 
 
 def restore(conn: sqlite3.Connection, item: dict[str, Any]) -> Restored:
     tables = schema(conn)
-    payload = json.loads(item["payload"])
+    payload = load_payload(item["payload"])
     root_table = KINDS[item["kind"]]
     # Lignes par table, dans l'ordre des dépendances actuel ; colonnes disparues depuis ignorées (migration).
     rows: dict[str, list[dict[str, Any]]] = {}
@@ -391,7 +451,7 @@ def restore(conn: sqlite3.Connection, item: dict[str, Any]) -> Restored:
         t = tables.get(block["name"])
         if t is None:
             continue
-        rows[t.name] = [{c: _decode(v) for c, v in zip(block["cols"], r, strict=True) if c in t.cols} for r in block["rows"]]
+        rows[t.name] = [{c: v for c, v in zip(block["cols"], r, strict=True) if c in t.cols} for r in block["rows"]]
     rows = {name: rows[name] for name in tables if name in rows}
     skipped: dict[str, set[int]] = {name: set() for name in rows}
     in_payload: dict[tuple[str, str], set[Any]] = {}
@@ -507,7 +567,6 @@ def restore(conn: sqlite3.Connection, item: dict[str, Any]) -> Restored:
         for col, (old, new) in effect["set"].items():
             if col not in t.cols:
                 continue
-            old, new = _decode(old), _decode(new)
             target = next(((ref, ref_col) for c, ref, ref_col, _ in t.fks if c == col), None)
             if old is not None and target and not alive(*target, old):
                 continue
@@ -556,13 +615,13 @@ def document_image_refs(conn: sqlite3.Connection, campaign_id: int) -> set[int]:
     found: set[int] = set()
     for (payload,) in conn.execute("SELECT payload FROM trash WHERE campaign_id = ? AND kind = 'document'",
                                    (campaign_id,)):
-        for table in json.loads(payload).get("tables", []):
+        for table in load_payload(payload).get("tables", []):
             column = {"documents": "content", "document_versions": "content"}.get(table["name"])
             if column is None or column not in table["cols"]:
                 continue
             i = table["cols"].index(column)
             for r in table["rows"]:
-                value = _decode(r[i])
+                value = r[i]
                 if isinstance(value, bytes):
                     try:
                         value = zlib.decompress(value)

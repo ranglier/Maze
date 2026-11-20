@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import os
+import random
 import re
 import sqlite3
 import tarfile
@@ -544,6 +545,46 @@ class TrashTest(unittest.TestCase):
             self.restore(tid)
         purge["thread"].join()
         self.assertEqual(s.call("GET", url)[0], 200)
+
+    # --- Volume de la corbeille (revue) ---------------------------------------------------------------
+
+    def _heavy_document(self, cid: int, versions: int) -> dict:
+        _, doc = self.s.call("POST", f"/api/campaigns/{cid}/documents", {"title": "Gros scénario"})
+        rnd = random.Random(1)
+        words = ["".join(rnd.choice("abcdefghijklmnopqrstuvwxyz") for _ in range(rnd.randint(2, 10)))
+                 for _ in range(2000)]
+        for i in range(versions):
+            text = " ".join(rnd.choice(words) for _ in range(3000))
+            self.s.call("PATCH", f"/api/documents/{doc['id']}", {"content": f"<p>{i} {text}</p>"})
+        return doc
+
+    def test_payload_compressed_blob(self):
+        """Payload compressé, en BLOB, sans base64 pour les versions (déjà compressées) : guère plus gros qu'elles."""
+        cid = self.campaign("Corbeille volume")
+        doc = self._heavy_document(cid, 12)
+        with db.transaction(self.db_path, write=False) as conn:
+            versions = conn.execute("SELECT COALESCE(SUM(LENGTH(content)), 0) FROM document_versions "
+                                    "WHERE document_id = ?", (doc["id"],)).fetchone()[0]
+        self.assertGreater(versions, 50_000)
+        tid = self.delete(f"/api/documents/{doc['id']}")
+        with db.transaction(self.db_path, write=False) as conn:
+            payload = conn.execute("SELECT payload FROM trash WHERE id = ?", (tid,)).fetchone()[0]
+        self.assertIsInstance(payload, bytes)
+        self.assertLess(len(payload), versions * 1.1 + 20_000)
+        self.restore(tid)
+        self.assertEqual(self.s.call("GET", f"/api/documents/{doc['id']}/versions")[0], 200)
+
+    def test_payload_too_large_refused(self):
+        s = self.s
+        cid = self.campaign("Corbeille trop lourde")
+        doc = self._heavy_document(cid, 3)
+        before = self.snapshot()
+        with mock.patch.object(trash, "MAX_PAYLOAD", 1000):
+            code, out = s.call("DELETE", f"/api/documents/{doc['id']}")
+        self.assertEqual(code, 413, out)
+        self.assertIn("trop volumineux pour la corbeille", out["detail"])
+        self.assertEqual(self.snapshot(), before)   # suppression annulée
+        self.assertEqual(s.call("GET", f"/api/documents/{doc['id']}")[0], 200)
 
     def test_polymorphic_cleanup_covered(self):
         """Toute table nettoyée par un déclencheur de suppression d'une fiche (sans clé étrangère) est connue de
