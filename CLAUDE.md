@@ -119,9 +119,10 @@ Order: database > server > interface > tests. Every REST call of the interface i
 
 **Claude connector (MCP)**
 - DB: `015_claude_connector.sql`, `024_mcp_log_campaign_name.sql`, `033_mcp_delete_grant.sql` (grant mode `delete`: read, write and delete); `035_upload_tickets.sql` (image upload links).
-- Server: `mcp.py` (`/mcp`, protocol, `list_campaigns`, `get_campaign` (summary under 40 000 characters, paginated sections), `search`, `update_document` (`content` or `operations` by section, `docsections.py`), `Context`: `check_write`, `check_delete`, `fresh`; `Batch` journal one line per item; one-item handlers `create_entry`, `set_membership`, `delete_entry`...), `mcp_tools.py` (the exposed tools: `list`, `get`, `view`, batch writes `create`, `update`, `link`, `unlink`, `delete`, `add_image`, `edit_image` with `items`, 1 to 100), `mcp_images.py`, `mcp_maps.py` (image and map handlers), `oauth.py` (OAuth 2.1), `connector.py` (settings, grants, log); image upload link: `mcp_upload.py` (tool `request_upload`), `uploads.py` (tickets, `/api/uploads/{token}`).
+- Server: `mcp.py` (`/mcp`, protocol, `INSTRUCTIONS` under 3,500 characters naming every tool, `list_campaigns`, `get_campaign` (summary under 40 000 characters, paginated sections), `search`, `update_document` (`content` or `operations` by section, `docsections.py`), `Context`: `check_write`, `check_delete`, `fresh`; `Batch` journal one line per item; one-item handlers `create_entry`, `set_membership`, `delete_entry`...), `mcp_tools.py` (the exposed tools: `list`, `get`, `view`, batch writes `create`, `update`, `link`, `unlink`, `delete`, `add_image`, `edit_image` with `items`, 1 to 100), `mcp_images.py`, `mcp_maps.py` (image and map handlers), `mcp_guide.py` (MCP resources `maze://guide` and `maze://campaign/<id>/summary`, prompts), `oauth.py` (OAuth 2.1), `connector.py` (settings, grants, log); image upload link: `mcp_upload.py` (tool `request_upload`), `uploads.py` (tickets, `/api/uploads/{token}`).
+- claude.ai skill: `docs/claude/maze-skill/SKILL.md`, generated: `cd backend && python -m maze.mcp_guide > ../docs/claude/maze-skill/SKILL.md` (never edit by hand).
 - Interface: `components/ClaudeSection.jsx`; upload page `components/UploadPage.jsx` (route `#/depot/<token>` in `App.jsx`).
-- Tests: `test_connector`, `test_docsections` (`update_document` with `operations`), `test_uploads`; e2e `depot-image`.
+- Tests: `test_connector`, `test_docsections` (`update_document` with `operations`), `test_uploads`, `test_connector_guide` (instructions, resources, prompts, skill in sync); e2e `depot-image`.
 
 **Foundry VTT**
 - DB: `021_foundry.sql`, `023_foundry_token_creator.sql`.
@@ -204,6 +205,6 @@ Run from the repository root unless stated.
 - Database work runs off the event loop: `@api.threaded` routes, or `await api.in_tx(request, work)`; GET is a read-only transaction.
 - Server tests wait with `test_api.wait_until`, not a fixed `sleep`.
 - Images under `media/` are always produced by Maze (WebP, JPEG for large map backgrounds), written to a temp name then renamed.
-- `entry-fields.generated.js` is generated: rerun `python -m maze.entries` instead of editing it.
+- `entry-fields.generated.js` is generated: rerun `python -m maze.entries` instead of editing it. Same for `docs/claude/maze-skill/SKILL.md` (`python -m maze.mcp_guide`) after changing the guide or the entry registry.
 - Browser journeys must accept an empty database and take the server URL as argument; `run-all.sh` starts instances with `MAZE_DEFAULT_LOCALE=fr`.
 - Avoid running several browser sessions (e2e, screenshots) at the same time.

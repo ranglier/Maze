@@ -31,7 +31,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 
-from . import auth, connector, db, docsections, entries
+from . import auth, connector, db, docsections, entries, mcp_guide
 from .collab import RESTORING
 from .api import RequestValidationError, in_tx, settings
 from .documents import UNSAVED_EDITS, has_unsaved_edits
@@ -62,34 +62,20 @@ ACCESS_LABELS = {"read": "lecture seule", "write": "lecture et écriture", "dele
 SUSPENDED = ("L'accès de Claude à Maze est suspendu. Un administrateur peut le réactiver dans "
              "Administration > Connecteur Claude.")
 
-INSTRUCTIONS = """Maze : campagnes de jeu de rôle d'un MJ (PNJ, factions, lieux, scénarios rédigés).
-Commencer par list_campaigns puis get_campaign pour s'orienter ; search pour retrouver une fiche.
-Avant de modifier une fiche rédigée, la lire avec get_document : update_document exige sa révision
-(base_revision) et remplace tout le contenu HTML. Une version « Avant modification par Claude » est
-gardée dans l'historique de la fiche ; les MJ qui l'ont ouverte la voient se recharger.
-update_entry (PNJ, factions, lieux) : passer base_revision (révision de get_entry ou du dernier update_entry).
-Contenu HTML de l'éditeur : <p>, <h1>-<h3>, <strong>, <em>, <u>, <ul>/<ol>/<li>, <blockquote>, <hr>,
-tableaux <table><tr><th>/<td> (paragraphes dans les cellules), liens <a href>. Mention d'une fiche :
-<a class="mention" data-mention="npc:12">Nom</a> (npc, faction, place ou doc). Encadré « Accroche »
-(texte à lire aux joueurs) : <div data-callout="read"><p>…</p></div> ; encadré « Secret » :
-data-callout="secret". Alignement : data-align="center|right|justify" sur <p> ou <h1>-<h3>.
-En modifiant un contenu existant, conserver tels quels les <span data-comment> (commentaires) et
-<img data-doc-image> (images). Les champs longs des PNJ, factions et lieux acceptent le même HTML
-(ou du Markdown). Images : get_entry liste la galerie d'une fiche (image de couverture : cover) ; view_image
-pour la voir ; list_library : images déposées par le MJ sans fiche (bibliothèque) ; add_image depuis une
-adresse web publique, la bibliothèque ou une autre image de Maze ; edit_image pour
-pivoter, retourner ou recadrer (l'originale est gardée en fin de galerie sauf keep_original=false) ;
-add_document_image puis update_document pour illustrer une fiche rédigée. Cartes interactives (Lieux > Carte
-interactive) : list_maps, view_map (aperçu quadrillé tous les 10 %), place_on_map pour épingler un lieu
-(x, y en %) ; les sous-lieux d'un lieu épinglé s'affichent en anneaux autour de lui sans épingle.
-set_place_kind pour donner un type (clé, voir get_campaign) à plusieurs lieux d'un coup.
-Chronologie (module facultatif, activé par le MJ campagne par campagne : get_campaign l'indique) :
-list_events, create_event, update_event ; date en texte libre, ordre manuel (before_id pour insérer ou déplacer).
-Suppression (delete_entry, delete_document, delete_event, delete_map, delete_comment) : seulement sur demande du MJ,
-dans une campagne ouverte en « lecture, écriture et suppression » (access de list_campaigns), avec le nom ou le titre
-exact de l'élément ; PNJ, factions, lieux, fiches, événements et cartes vont dans la corbeille de la campagne
-(30 jours, restaurables par le MJ) ; un commentaire est supprimé définitivement.
-Répondre aux MJ en français."""
+# Instructions du serveur (réponse à initialize), lues par Claude à chaque conversation : courtes (moins de 3 500
+# caractères, tests.test_connector_guide), chaque outil nommé ; le détail est dans le guide (mcp_guide.py, maze://guide).
+INSTRUCTIONS = """Maze : campagnes de jeu de rôle d'un MJ (PNJ, factions, lieux, fiches rédigées dont les scénarios, cartes, chronologie). Guide détaillé : ressource maze://guide.
+Lire : list_campaigns (campagnes ouvertes, niveau d'accès), get_campaign (vue d'ensemble, section summary par défaut), search (plein texte), list (un kind ; filtres query, faction_id, place_id, parent_id, status, tag, type, entity ; offset, limit), get (un élément complet, avec sa révision), view (kind image, document_image, library_image, ou map : carte quadrillée tous les 10 %).
+Écrire (campagne en lecture et écriture) : create, update, link / unlink (membership, place, pin), delete, add_image, edit_image prennent items, de 1 à 100 éléments, chacun traité à part ; résultat par élément {index, ok, id, error} : regrouper en un appel, puis reprendre seulement les éléments en erreur. Vérifier avec search avant de créer.
+update : id et seulement les champs changés, avec base_revision (de get ou du dernier update) ; refus si l'élément a changé : relire, ne pas écraser. Types de lieux et natures de lien : clés de get_campaign.
+update_document (fiche rédigée) : lire d'abord avec get kind document (outline : ses titres) ; base_revision obligatoire. Préférer operations à content, qui remplace tout : replace_section, insert_after_section, insert_before_section, delete_section (heading : titre <h1>-<h3> ; occurrence si plusieurs l'ont), append, prepend, replace_text (find, replace, heading facultatif). Version « Avant modification par Claude » gardée.
+HTML de l'éditeur : <p>, <h1>-<h3>, <strong>, <em>, <u>, <ul>/<ol>/<li>, <blockquote>, <hr>, <table><tr><th>/<td> (paragraphes dans les cellules), <a href>. Mention : <a class="mention" data-mention="npc:12">Nom</a> (npc, faction, place, doc). Encadrés : <div data-callout="read"><p>…</p></div> (Accroche, à lire aux joueurs), data-callout="secret". Alignement : data-align="center|right|justify" sur <p>, <h1>-<h3>. Garder tels quels <span data-comment> (commentaires) et <img data-doc-image> (images). Champs longs des fiches : même HTML, ou Markdown.
+Images : add_image (source url publique, library_image_id ou image_id ; target npc:12, faction:3, place:7, doc:5, ou library ; pour doc:5, insérer ensuite le <img> rendu avec update_document), edit_image (pivoter, retourner, recadrer). Image sur l'ordinateur du MJ : request_upload (target, target_id), donner le lien au MJ (10 min, usage unique), attendre qu'il l'ait déposée, puis request_upload avec ticket seul.
+Commentaire : create kind comment (target doc:5 ou npc:12…, body, quote).
+Chronologie : module facultatif, activé par campagne (get_campaign l'indique) ; date en texte libre, ordre manuel (before_id).
+delete : seulement à la demande du MJ ; items [{id, name}] (nom ou titre exact ; id seul pour relation, image, library_image), [{id, on}] pour un commentaire (on : document ou entry). PNJ, factions, lieux, fiches rédigées, événements, cartes et commentaires exigent l'accès « lecture, écriture et suppression » ; les six premiers vont 30 jours à la corbeille (trash_id, restaurables dans Maze) ; commentaires, liens et images : définitif.
+Résultats longs : paginer ou filtrer. Secrets (champ secrets, encadrés Secret, liens secrets) : jamais dans un texte pour les joueurs.
+Répondre au MJ dans sa langue (français par défaut) ; valeurs internes (statuts, clés) telles quelles."""
 
 
 class ToolError(Exception):
@@ -1408,7 +1394,7 @@ async def _handle(request: Request, user: dict[str, Any], message: Any) -> dict[
         asked = params.get("protocolVersion")
         return {"jsonrpc": "2.0", "id": rid, "result": {
             "protocolVersion": asked if asked in PROTOCOL_VERSIONS else PROTOCOL_VERSIONS[0],
-            "capabilities": {"tools": {"listChanged": False}},
+            "capabilities": {"tools": {"listChanged": False}, **mcp_guide.CAPABILITIES},
             "serverInfo": {"name": "maze", "title": "Maze", "version": settings(request).version},
             "instructions": INSTRUCTIONS,
         }}
@@ -1424,6 +1410,8 @@ async def _handle(request: Request, user: dict[str, Any], message: Any) -> dict[
         if not isinstance(args, dict):
             return _rpc_error(rid, -32602, "Arguments invalides")
         return {"jsonrpc": "2.0", "id": rid, "result": await _call_tool(request, user, tool, args)}
+    if method in mcp_guide.METHODS:   # ressources et invites (guide d'usage)
+        return await mcp_guide.handle(request, user, rid, method, params)
     return _rpc_error(rid, -32601, f"Méthode inconnue : {method}")
 
 
