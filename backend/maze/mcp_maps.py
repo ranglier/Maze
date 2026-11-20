@@ -1,5 +1,6 @@
-"""Outils « cartes interactives » du connecteur Claude : lister, voir (aperçu quadrillé avec les épingles),
-créer une carte, la renommer ou la rattacher à un lieu, épingler et retirer des lieux.
+"""Cartes interactives du connecteur Claude : voir (aperçu quadrillé avec les épingles), créer une carte, la
+renommer ou la rattacher à un lieu, épingler et retirer des lieux. Traitements d'UN élément, appelés par les outils
+regroupés de mcp_tools.py (get et view kind map, list kind map, create et update kind map, link et unlink kind pin).
 
 Les positions sont données à Claude en pourcentages (0 à 100, depuis le coin haut gauche) ; l'aperçu
 porte un quadrillage tous les 10 % pour qu'il puisse situer une planète ou une ville sur le fond.
@@ -22,13 +23,11 @@ from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException
 
 from . import db, imaging
-from .maps import insert_map, map_detail, maps_of
-from .mcp import ID, Blocks, Context, ToolError, _int, _tool
-from .mcp_images import SOURCE, VIEW_SIDE, _media_dir, _source_bytes
+from .maps import insert_map, map_detail
+from .mcp import Blocks, Context, ToolError, _int
+from .mcp_images import VIEW_SIDE, _media_dir, _source_bytes
 
-PCT = {"type": "number", "minimum": 0, "maximum": 100}
 PIN_STYLES = ("dot", "icon", "hidden")
-MAX_KIND_BATCH = 200
 GRID = (255, 255, 255, 90)
 LABEL = (255, 255, 255, 230)
 PIN = (220, 60, 60, 255)
@@ -113,19 +112,6 @@ def _render(path: Path, pins: list[dict[str, Any]], grid: bool) -> bytes:
 
 # --- Outils ------------------------------------------------------------------------------------------
 
-async def list_maps(ctx: Context, args: dict[str, Any]) -> Any:
-    cid = ctx.check_read(_int(args, "campaign_id"))
-    with ctx.transaction() as conn:
-        names = {r[0]: r[1] for r in conn.execute("SELECT id, name FROM places WHERE campaign_id = ?", (cid,))}
-        maps = [{"id": m["id"], "name": m["name"],
-                 "place": {"id": m["place_id"], "name": names.get(m["place_id"])} if m["place_id"] else None,
-                 "width": m["width"], "height": m["height"], "pins": len(m["pins"])} for m in maps_of(conn, cid)]
-    return {"campaign_id": cid, "maps": maps,
-            "note": "Une carte peut représenter un lieu (place) : depuis une carte plus large, l'interface « entre » "
-                    "dans celle du lieu. Les sous-lieux d'un lieu épinglé s'affichent en anneaux autour de lui : "
-                    "seuls les lieux principaux de la carte ont besoin d'une épingle. view_map pour la voir."}
-
-
 async def view_map(ctx: Context, args: dict[str, Any]) -> Any:
     row = _map_row(ctx, _int(args, "map_id"))
     ctx.target = f"carte:{row['id']}"
@@ -136,7 +122,7 @@ async def view_map(ctx: Context, args: dict[str, Any]) -> Any:
     except OSError:
         raise ToolError("Fichier de la carte introuvable sur le serveur") from None
     meta["note"] = (f"Aperçu réduit à {VIEW_SIDE} px, quadrillé tous les 10 % (x de gauche à droite, y de haut en bas) ; "
-                    "épingles numérotées comme dans pins. Positions en pourcentages pour place_on_map. "
+                    "épingles numérotées comme dans pins. Positions en pourcentages pour link (kind pin). "
                     "unplaced : lieux à épingler de préférence (sous-lieux directs du lieu représenté, ou lieux "
                     "racines pour une carte générale).")
     return Blocks([{"type": "text", "text": json.dumps(meta, ensure_ascii=False)},
@@ -191,35 +177,6 @@ async def update_map(ctx: Context, args: dict[str, Any]) -> Any:
     return {"map_id": out["id"], "name": out["name"], "place_id": out["place_id"], "pin_style": out["pin_style"]}
 
 
-async def set_place_kind(ctx: Context, args: dict[str, Any]) -> Any:
-    """Même type pour plusieurs lieux (ex. tous les mondes-ruches d'après la légende d'une carte)."""
-    ids = args.get("place_ids")
-    if not isinstance(ids, list) or not ids or len(ids) > MAX_KIND_BATCH:
-        raise ToolError(f"place_ids : liste de 1 à {MAX_KIND_BATCH} identifiants de lieux")
-    kind = args.get("kind")
-    if not isinstance(kind, str) or not kind:
-        raise ToolError("kind : clé d'un type de lieu de la campagne (voir get_campaign, place_kinds)")
-    place_ids = [_int({"id": v}, "id") for v in ids]
-    campaigns = {ctx.campaign_of("places", pid) for pid in place_ids}
-    if len(campaigns) != 1 or None in campaigns:
-        raise ToolError("Lieux introuvables, ou de plusieurs campagnes : un appel par campagne")
-    cid = ctx.check_write(campaigns.pop(), "Lieu")
-    ctx.target = f"type:{kind} x{len(place_ids)}"
-    with ctx.transaction() as conn:
-        if not conn.execute("SELECT 1 FROM place_kinds WHERE campaign_id = ? AND key = ?", (cid, kind)).fetchone():
-            keys = [r[0] for r in conn.execute("SELECT key FROM place_kinds WHERE campaign_id = ? ORDER BY sort_order",
-                                               (cid,))]
-            raise ToolError(f"Type inconnu dans cette campagne. Types : {', '.join(keys)}")
-    updated, failed = [], []
-    for pid in place_ids:   # lieu par lieu : un échec (lieu supprimé entre-temps…) n'arrête pas les autres
-        try:
-            await ctx.api("PATCH", f"/api/places/{pid}", {"kind": kind}, write=True)
-            updated.append(pid)
-        except ToolError as exc:
-            failed.append({"place_id": pid, "error": str(exc)})
-    return {"kind": kind, "updated": updated, "failed": failed}
-
-
 async def place_on_map(ctx: Context, args: dict[str, Any]) -> Any:
     row = _map_row(ctx, _int(args, "map_id"))
     pid = _int(args, "place_id")
@@ -242,40 +199,3 @@ async def remove_from_map(ctx: Context, args: dict[str, Any]) -> Any:
     ctx.check_write(row["campaign_id"], "Carte")
     await ctx.api("DELETE", f"/api/maps/{row['id']}/pins/{pid}", write=True)
     return {"map_id": row["id"], "removed": pid}
-
-
-TOOLS = [
-    _tool("list_maps", "Cartes interactives",
-          "Cartes interactives d'une campagne (Lieux > Carte interactive) : fond importé et lieux épinglés.",
-          {"campaign_id": ID}, ["campaign_id"], list_maps),
-    _tool("view_map", "Voir une carte",
-          "Aperçu d'une carte interactive quadrillé tous les 10 %, avec ses épingles numérotées, la liste des "
-          "lieux épinglés (positions en %) et des lieux à épingler. grid=false pour l'image sans quadrillage.",
-          {"map_id": ID, "grid": {"type": "boolean"}}, ["map_id"], view_map),
-    _tool("create_map", "Créer une carte interactive",
-          "Crée une carte depuis une adresse web publique ou une image de Maze (gardée jusqu'à 8192 px). "
-          "place_id : lieu que la carte représente (la carte de Valdis), facultatif.",
-          {"campaign_id": ID, "name": {"type": "string"}, "place_id": ID, **SOURCE},
-          ["campaign_id"], create_map, write=True),
-    _tool("update_map", "Modifier une carte",
-          "Renomme une carte (name), change le lieu qu'elle représente (place_id, null pour aucun) ou le style "
-          "de ses épingles (pin_style).",
-          {"map_id": ID, "name": {"type": "string"}, "place_id": {"type": ["integer", "null"]},
-           "pin_style": {"type": "string", "enum": list(PIN_STYLES),
-                         "description": "dot : pastille ; icon : icône du type de lieu ; hidden : discrète, posée sur "
-                                        "le symbole déjà imprimé sur le fond"}},
-          ["map_id"], update_map, write=True),
-    _tool("set_place_kind", "Typer des lieux",
-          "Donne le même type (kind, clé d'un type de lieu de la campagne, voir get_campaign) à plusieurs lieux d'une "
-          "campagne, par exemple tous les mondes-ruches d'après la légende de la carte (200 au plus par appel).",
-          {"place_ids": {"type": "array", "items": ID, "minItems": 1, "maxItems": MAX_KIND_BATCH},
-           "kind": {"type": "string"}}, ["place_ids", "kind"], set_place_kind, write=True),
-    _tool("place_on_map", "Épingler un lieu",
-          "Pose ou déplace l'épingle d'un lieu sur une carte : x et y en pourcentages de l'image (0 à 100, depuis "
-          "le coin haut gauche ; voir le quadrillage de view_map). Inutile pour les sous-lieux d'un lieu épinglé.",
-          {"map_id": ID, "place_id": ID, "x": PCT, "y": PCT}, ["map_id", "place_id", "x", "y"],
-          place_on_map, write=True),
-    _tool("remove_from_map", "Retirer une épingle",
-          "Retire l'épingle d'un lieu d'une carte (le lieu lui-même n'est pas touché).",
-          {"map_id": ID, "place_id": ID}, ["map_id", "place_id"], remove_from_map, write=True),
-]

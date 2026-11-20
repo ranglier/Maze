@@ -12,8 +12,17 @@ const MODES = [
   { key: 'delete', label: () => pt('access', 'Lecture, écriture et suppression') },
 ];
 
-// Libellés traduits à l'affichage (t(…)) : N_ les signale seulement à l'extraction.
+// Libellés traduits à l'affichage (t(…)) : N_ les signale seulement à l'extraction. Outils regroupés (novembre 2026)
+// en tête ; les anciens noms restent pour les lignes du journal écrites avant (une ligne par élément d'un lot).
 const TOOL_LABEL = {
+  list: N_('Liste filtrée'),
+  get: N_('Lecture d’un élément'),
+  view: N_('Aperçu d’une image ou d’une carte'),
+  create: N_('Création'),
+  update: N_('Modification'),
+  link: N_('Liaison'),
+  unlink: N_('Détachement'),
+  delete: N_('Suppression'),
   list_campaigns: N_('Liste des campagnes'),
   search: N_('Recherche'),
   get_campaign: N_('Vue d’ensemble'),
@@ -163,8 +172,9 @@ export default function ClaudeSection({ campaigns }) {
     if (mode === 'delete') {
       const yes = await confirm({
         title: t('Autoriser les suppressions'),
-        message: t('Claude pourra supprimer définitivement des fiches, des fiches rédigées, des événements, des cartes '
-          + 'interactives et des commentaires de « {name} ». À réserver à une campagne sauvegardée.', { name: campaign.name }),
+        message: t('Claude pourra supprimer des fiches, des fiches rédigées, des événements et des cartes interactives de '
+          + '« {name} » (placés dans la corbeille pendant 30 jours), ainsi que des commentaires (définitivement).',
+        { name: campaign.name }),
         confirmLabel: t('Autoriser'),
       });
       if (!yes) return;
@@ -259,7 +269,7 @@ export default function ClaudeSection({ campaigns }) {
       <section className="admin__block">
         <h2>{t('Campagnes ouvertes à Claude')}</h2>
         <p className="field__hint">
-          {t('{level} permet aussi à Claude de supprimer définitivement des fiches, fiches rédigées, événements, cartes interactives et commentaires : à réserver aux campagnes sauvegardées.',
+          {t('{level} permet aussi à Claude de supprimer des fiches, fiches rédigées, événements et cartes interactives (placés dans la corbeille pendant 30 jours) et des commentaires.',
             { level: <strong>{pt('access', 'Lecture, écriture et suppression')}</strong> })}
         </p>
         {!campaigns ? <p className="muted">{t('Chargement…')}</p> : campaigns.length === 0 ? (
