@@ -12,8 +12,17 @@ const MODES = [
   { key: 'delete', label: () => pt('access', 'Lecture, écriture et suppression') },
 ];
 
-// Libellés traduits à l'affichage (t(…)) : N_ les signale seulement à l'extraction.
+// Libellés traduits à l'affichage (t(…)) : N_ les signale seulement à l'extraction. Outils regroupés (novembre 2026)
+// en tête ; les anciens noms restent pour les lignes du journal écrites avant (une ligne par élément d'un lot).
 const TOOL_LABEL = {
+  list: N_('Liste filtrée'),
+  get: N_('Lecture d’un élément'),
+  view: N_('Aperçu d’une image ou d’une carte'),
+  create: N_('Création'),
+  update: N_('Modification'),
+  link: N_('Liaison'),
+  unlink: N_('Détachement'),
+  delete: N_('Suppression'),
   list_campaigns: N_('Liste des campagnes'),
   search: N_('Recherche'),
   get_campaign: N_('Vue d’ensemble'),
