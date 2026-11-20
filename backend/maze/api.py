@@ -6,6 +6,7 @@ import asyncio
 import functools
 import hashlib
 import json
+import shutil
 import sqlite3
 from collections.abc import Awaitable, Callable
 from typing import Any, TypeVar
@@ -20,6 +21,7 @@ from starlette.routing import Route
 from . import auth, db, defaults, i18n, imaging, limits, throttle
 from .config import LICENSE, Settings
 from .i18n import msg, msgn
+from .mediafiles import TRASH_DIR
 from .schemas import (
     CampaignCreate, CampaignUpdate, EntityOrder, FactionCreate, FactionUpdate, ImageUpdate, LocaleChange, Login,
     PasswordChange, Setup,
@@ -395,6 +397,8 @@ def delete_campaign(request: Request) -> Response:
     media_dir = settings(request).media_dir
     for f in files:
         imaging.delete_files(media_dir, f["file"], f["thumb"])
+    # Corbeille de la campagne (trash.py) : ses lignes partent par cascade, ses fichiers ici.
+    shutil.rmtree(media_dir / str(cid) / TRASH_DIR, ignore_errors=True)
     # Seulement s'il est vide (fichiers ajoutés pendant la suppression : laissés, sans effet sur une autre campagne).
     try:
         (media_dir / str(cid)).rmdir()
@@ -604,17 +608,16 @@ def _update_entity(kind: str, model: type[BaseModel]):
 def _delete_entity(kind: str):
     @threaded
     def handler(request: Request) -> Response:
+        """Fiche mise à la corbeille (trash.py), avec sa galerie, ses relations, appartenances, liens de lieux,
+        mentions et son historique : 200 {"trash_id"}."""
+        from . import trash  # import circulaire évité
         eid = path_id(request)
-        with tx(request) as conn:
+        with trash.deleting(request) as conn:
             current = scoped(conn, request, TABLES[kind], eid, "Fiche")
-            files = conn.execute(
-                "SELECT file, thumb FROM images WHERE owner_kind = ? AND owner_id = ?",
-                (kind, eid)).fetchall()
-            conn.execute(f"DELETE FROM {TABLES[kind]} WHERE id = ?", (eid,))
+            trashed = trash.put(conn, request, kind, current,
+                                lambda: conn.execute(f"DELETE FROM {TABLES[kind]} WHERE id = ?", (eid,)))
             touch_campaign(conn, current["campaign_id"])
-        for f in files:
-            imaging.delete_files(settings(request).media_dir, f["file"], f["thumb"])
-        return Response(status_code=204)
+        return trash.stash(request, trashed)
     return handler
 
 

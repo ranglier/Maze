@@ -13,7 +13,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 
-from . import auth, db, i18n, imaging, scenemap, versions
+from . import auth, db, i18n, imaging, scenemap, trash, versions
 from .i18n import msg
 from .api import in_tx, parse_body, path_id, scoped, settings, threaded, touch_campaign, tx
 from .schemas import DocumentCreate, DocumentMove, DocumentOrder, DocumentUpdate
@@ -257,45 +257,46 @@ def update_document(request: Request) -> Response:
 
 @threaded
 def delete_document(request: Request) -> Response:
+    """Fiche et sous-pages mises à la corbeille (trash.py), avec commentaires, versions, journal temps réel, carte du
+    scénario et illustrations qui n'appartiennent qu'à elles : 200 {"trash_id"}."""
     did = path_id(request)
-    with tx(request) as conn:
+    with trash.deleting(request) as conn:
         current = scoped(conn, request, "documents", did, "Fiche")
         if current["kind"] == "campaign":
             raise HTTPException(400, "La fiche de campagne ne peut pas être supprimée")
         levels = tree_levels(conn, "?", (did,))
         tree_ids = [doc_id for doc_id, _ in levels]
-        marks = ",".join("?" * len(tree_ids))
-        images = conn.execute(f"SELECT id, file, thumb FROM document_images WHERE document_id IN ({marks})",
-                              tree_ids).fetchall()
-        delete_tree(conn, levels)
-        # Une image reprise (copier-coller) dans une autre fiche de la campagne y reste affichée.
-        files = []
-        # Images encore présentes dans une version d'une autre fiche : gardées pour une restauration.
-        in_versions: dict[int, int] = {}
-        if images:
-            for vdoc, blob in conn.execute(
-                    """SELECT v.document_id, v.content FROM document_versions v
-                         JOIN documents d ON d.id = v.document_id WHERE d.campaign_id = ?""",
-                    (current["campaign_id"],)):
-                for image_id in DOC_IMAGE.findall(zlib.decompress(blob).decode(errors="replace")):
-                    in_versions.setdefault(int(image_id), vdoc)
-        for img in images:
-            user_doc = conn.execute(
-                "SELECT id FROM documents WHERE campaign_id = ? AND content LIKE ? LIMIT 1",
-                (current["campaign_id"], f'%data-doc-image="{img["id"]}"%')).fetchone()
-            if not user_doc and img["id"] in in_versions:
-                user_doc = (in_versions[img["id"]],)
-            if user_doc:
-                conn.execute("UPDATE document_images SET document_id = ? WHERE id = ?", (user_doc[0], img["id"]))
-            else:
-                conn.execute("DELETE FROM document_images WHERE id = ?", (img["id"],))
-                files.append(img)
+
+        def remove() -> None:
+            marks = ",".join("?" * len(tree_ids))
+            images = conn.execute(f"SELECT id FROM document_images WHERE document_id IN ({marks})",
+                                  tree_ids).fetchall()
+            delete_tree(conn, levels)
+            # Une image reprise (copier-coller) dans une autre fiche de la campagne y reste affichée.
+            # Images encore présentes dans une version d'une autre fiche : gardées pour une restauration.
+            in_versions: dict[int, int] = {}
+            if images:
+                for vdoc, blob in conn.execute(
+                        """SELECT v.document_id, v.content FROM document_versions v
+                             JOIN documents d ON d.id = v.document_id WHERE d.campaign_id = ?""",
+                        (current["campaign_id"],)):
+                    for image_id in DOC_IMAGE.findall(zlib.decompress(blob).decode(errors="replace")):
+                        in_versions.setdefault(int(image_id), vdoc)
+            for img in images:
+                user_doc = conn.execute(
+                    "SELECT id FROM documents WHERE campaign_id = ? AND content LIKE ? LIMIT 1",
+                    (current["campaign_id"], f'%data-doc-image="{img["id"]}"%')).fetchone()
+                if not user_doc and img["id"] in in_versions:
+                    user_doc = (in_versions[img["id"]],)
+                if user_doc:
+                    conn.execute("UPDATE document_images SET document_id = ? WHERE id = ?", (user_doc[0], img["id"]))
+                else:   # ligne et fichiers à la corbeille avec la fiche
+                    conn.execute("DELETE FROM document_images WHERE id = ?", (img["id"],))
+        trashed = trash.put(conn, request, "document", current, remove)
         touch_campaign(conn, current["campaign_id"])
     if hub(request) is not None:
         hub(request).close_documents(tree_ids, "deleted")
-    for f in files:
-        imaging.delete_files(settings(request).media_dir, f["file"], f["thumb"])
-    return Response(status_code=204)
+    return trash.stash(request, trashed)
 
 
 @threaded

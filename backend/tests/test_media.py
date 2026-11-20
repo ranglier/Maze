@@ -104,9 +104,11 @@ class MediaAdminTest(unittest.TestCase):
                  + [{"source": "map", "id": c["map"]["id"]}, {"source": "library", "id": library[0]["id"]}])  # doublon
         code, out = s.call("POST", f"/api/admin/campaigns/{cid}/images/delete", {"items": items})
         self.assertEqual(code, 200, out)
+        trash_ids = out.pop("trash_ids")   # carte : à la corbeille (trash.py), une entrée
+        self.assertEqual(len(trash_ids), 1)
         self.assertEqual(out, {"deleted": 9, "by_source": {"library": 2, "gallery": 3, "document": 3, "map": 1},
                                "documents": [doc["id"]], "skipped": []})
-        # Fichiers retirés du disque (carte : fond et miniature).
+        # Fichiers retirés de leur place (carte : fond et miniature, déplacés dans media/<campagne>/.trash).
         for url in ([i["url"] for i in library] + [gallery[0]["url"], gallery[1]["url"], faction["images"][0]["url"]]
                     + [c[k]["url"] for k in ("shown", "shown2", "hidden")]
                     + [c["map"]["url"], c["map"]["thumb_url"]]):

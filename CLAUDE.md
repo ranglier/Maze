@@ -91,6 +91,12 @@ Order: database > server > interface > tests. Every REST call of the interface i
 - Interface: `components/TimelineView.jsx` (list and ordinal timeline), `timeline.js`; "Chronologie" section on NPC, faction and place sheets.
 - Tests: `test_timeline`, `test_api` (`TimelineTransferTest`), `test_connector` (`test_timeline`); node `timeline.test.mjs`; e2e `chronologie`.
 
+**Trash (deleted NPCs, factions, places, written pages, events, maps)**
+- DB: `034_trash.sql` (`trash`: payload of every row removed or changed by the deletion, a zlib BLOB read with `trash.load_payload`, files, counts, `via`).
+- Server: `trash.py` (`put` wraps a route's deletion code and captures it with TEMP triggers, delete routes open their transaction with `trash.deleting(request)`, which moves files to `media/<campaign>/.trash/` on exit under the process lock `moving()`, also held by restore and purge, `restore`, `purge_expired`, routes `/api/campaigns/{id}/trash`, `/api/trash/{id}`, `/api/trash/{id}/restore`), delete routes in `api.py`, `places.py`, `documents.py`, `timeline.py`, `maps.py`, `media_admin.delete_images` (maps); daily purge task in `app.py`; `mediafiles.TRASH_DIR` (not served by `/media`, accepted by `backup.py`).
+- Interface: trash view and confirmations (`api.js`, lot corbeille-ui).
+- Tests: `test_trash` (round trip of every kind compared table by table, conflicts, purge, access, connector, backup).
+
 **Campaign export and import**
 - Server: `transfer.py` (`SECTIONS`, import limits, id rewriting), `limits.py` (`MAZE_MAX_IMPORT_MB`).
 - Interface: `exportCampaign` in `api.js`, `components/CampaignMenu.jsx`, `AdminPage.jsx`.
@@ -146,7 +152,7 @@ Order: database > server > interface > tests. Every REST call of the interface i
 
 ### Recipe: add a migration
 
-1. New file `backend/maze/migrations/NNN_name.sql`, NNN = highest existing + 1 (currently 033). Never edit a released one (checksum recorded).
+1. New file `backend/maze/migrations/NNN_name.sql`, NNN = highest existing + 1 (currently 034). Never edit a released one (checksum recorded).
 2. No `BEGIN`/`COMMIT` in the file: `db.migrate` wraps it in one transaction with foreign keys suspended, then checked.
 3. New table whose id is cited elsewhere: `INTEGER PRIMARY KEY AUTOINCREMENT`. Rebuilt table: recreate all its indexes and triggers.
 4. Data that belongs to a campaign: give it a foreign key to its campaign (or parent row) with `ON DELETE CASCADE`, since deleting a campaign relies on cascades; add it to export / import (`transfer.SECTIONS`); restore needs nothing (whole database).

@@ -15,7 +15,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 
-from . import db
+from . import db, trash
 from .api import get_or_404, parse_body, path_id, scoped, threaded, touch_campaign, tx
 from .documents import MENTION
 from .i18n import msg
@@ -143,12 +143,14 @@ def update_event(request: Request) -> Response:
 
 @threaded
 def delete_event(request: Request) -> Response:
+    """Événement mis à la corbeille (trash.py), avec ses mentions : 200 {"trash_id"}."""
     eid = path_id(request)
-    with tx(request) as conn:
+    with trash.deleting(request) as conn:
         current = scoped(conn, request, "timeline_events", eid, "Événement")
-        conn.execute("DELETE FROM timeline_events WHERE id = ?", (eid,))
+        trashed = trash.put(conn, request, "event", current,
+                            lambda: conn.execute("DELETE FROM timeline_events WHERE id = ?", (eid,)))
         touch_campaign(conn, current["campaign_id"])
-    return Response(status_code=204)
+    return trash.stash(request, trashed)
 
 
 @threaded

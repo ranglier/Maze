@@ -7,7 +7,8 @@ Trois sortes d'images :
   copiées vers une fiche à la demande (depuis cette page ou par Claude, outils du connecteur) ;
 - fonds des cartes interactives (table maps, migration 017), gérés depuis Lieux > Carte interactive.
 Le ménage ne supprime que des illustrations citées nulle part : ni dans le texte d'une fiche, ni dans
-une version de son historique (une restauration les réafficherait).
+une version de son historique (une restauration les réafficherait), ni dans une fiche de la corbeille (trash.py).
+Les fichiers de la corbeille eux-mêmes (media/<campagne>/.trash/) ne sont cités par aucune table : jamais listés ici.
 """
 
 from __future__ import annotations
@@ -24,7 +25,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 
-from . import auth, db, i18n, imaging, limits, versions
+from . import auth, db, i18n, imaging, limits, trash, versions
 from .i18n import msg
 from .connector import _require_json
 from .api import (IMAGE_FIELD, TABLES, _store_images, delete_gallery_images, get_or_404, in_tx, parse_body, path_id,
@@ -57,6 +58,9 @@ def doc_image_usage(conn: sqlite3.Connection, campaign_id: int, with_versions: b
         for (blob,) in conn.execute("""SELECT v.content FROM document_versions v JOIN documents d ON d.id = v.document_id
                                         WHERE d.campaign_id = ?""", (campaign_id,)):
             in_versions.update(int(i) for i in DOC_IMAGE.findall(zlib.decompress(blob).decode(errors="replace")))
+        # Fiches rédigées de la corbeille (texte et versions) : comptées comme l'historique, pour qu'une fiche
+        # restaurée retrouve ses illustrations (une illustration rattachée à une autre fiche, citée par elle).
+        in_versions |= trash.document_image_refs(conn, campaign_id)
     return in_content, in_versions
 
 
@@ -304,13 +308,15 @@ SOURCE_TABLE = {"library": "library_images", "gallery": "images", "document": "d
 def delete_images(request: Request) -> Response:
     """Suppression groupée (Administration > Images) : bibliothèque, galeries, illustrations, fonds de cartes, en
     une transaction. Un élément absent ou d'une autre campagne est ignoré (skipped « missing ») ; une illustration
-    affichée par une fiche aux frappes pas encore enregistrées est laissée, avec sa fiche (skipped « editing »)."""
+    affichée par une fiche aux frappes pas encore enregistrées est laissée, avec sa fiche (skipped « editing »).
+    Les cartes interactives vont à la corbeille (une entrée par carte, identifiants dans trash_ids) ; les
+    autres images sont supprimées définitivement, comme leurs routes de suppression unitaires."""
     user = auth.require_admin(request)
     _require_json(request)
     cid = path_id(request)
     data = parse_body(request, ImagesDelete)
     items = list(dict.fromkeys((i.source, i.id) for i in data.items))   # doublons ignorés, ordre gardé
-    with tx(request) as conn:
+    with trash.deleting(request) as conn:
         get_or_404(conn, "campaigns", cid, "Campagne")
         rows: dict[str, dict[int, dict[str, Any]]] = {}
         for source in SOURCES:
@@ -326,19 +332,25 @@ def delete_images(request: Request) -> Response:
         delete_library_rows(conn, list(rows["library"].values()))
         delete_gallery_images(conn, list(rows["gallery"].values()))
         conn.executemany("DELETE FROM document_images WHERE id = ?", [(i,) for i in rows["document"]])
-        conn.executemany("DELETE FROM maps WHERE id = ?", [(i,) for i in rows["map"]])   # épingles en cascade
+        # Cartes interactives : à la corbeille (trash.py), une entrée par carte, avec ses épingles et ses fichiers.
+        trashed = [trash.put(conn, request, "map", row,
+                             lambda mid=mid: conn.execute("DELETE FROM maps WHERE id = ?", (mid,)))
+                   for mid, row in rows["map"].items()]
         if rows["map"]:
             touch_campaign(conn, cid)
     _reset_documents(request, touched)
     media_dir = settings(request).media_dir
     for source in SOURCES:
+        if source == "map":
+            continue
         for r in rows[source].values():
             imaging.delete_files(media_dir, r["file"], r["thumb"], r.get("preview") or "")
+    # Fichiers des cartes déjà déplacés sous .trash à la sortie de trash.deleting().
     skipped = [{"source": s, "id": i, "reason": "editing" if s == "document" and i in editing else "missing"}
                for s, i in items if i not in rows[s]]
     by_source = {source: len(rows[source]) for source in SOURCES}
     return JSONResponse({"deleted": sum(by_source.values()), "by_source": by_source, "documents": touched,
-                         "skipped": skipped})
+                         "skipped": skipped, "trash_ids": [t.trash_id for t in trashed]})
 
 
 def _in_journal(conn: sqlite3.Connection, campaign_id: int, rows: list[sqlite3.Row]) -> set[int]:

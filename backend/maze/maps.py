@@ -19,7 +19,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 
-from . import db, i18n, imaging
+from . import db, i18n, imaging, trash
 from .i18n import msg
 from .api import in_tx, parse, parse_body, path_id, scoped, settings, threaded, touch_campaign, tx
 from .image_copy import SOURCES
@@ -317,13 +317,14 @@ async def _set_image(request: Request, mid: int, img: imaging.StoredImage, origi
 
 @threaded
 def delete_map(request: Request) -> Response:
+    """Carte mise à la corbeille (trash.py), avec ses épingles ; fond et aperçus déplacés sous media/.trash.
+    200 {"trash_id"}."""
     mid = path_id(request)
-    with tx(request) as conn:
+    with trash.deleting(request) as conn:
         row = scoped(conn, request, "maps", mid, "Carte")
-        conn.execute("DELETE FROM maps WHERE id = ?", (mid,))
+        trashed = trash.put(conn, request, "map", row, lambda: conn.execute("DELETE FROM maps WHERE id = ?", (mid,)))
         touch_campaign(conn, row["campaign_id"])
-    imaging.delete_files(settings(request).media_dir, row["file"], row["thumb"], row["preview"])
-    return Response(status_code=204)
+    return trash.stash(request, trashed)
 
 
 @threaded

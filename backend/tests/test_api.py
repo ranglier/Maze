@@ -178,6 +178,11 @@ def undo_timeline(conn: sqlite3.Connection) -> None:
     """)
 
 
+def undo_trash(conn: sqlite3.Connection) -> None:
+    """Défait la migration 034 (corbeille), pour rejouer les migrations depuis une base plus ancienne."""
+    conn.executescript("DROP TABLE trash;")
+
+
 def rewind_schema(conn: sqlite3.Connection, version: int) -> None:
     """Ramène l'enregistrement des migrations à `version` (user_version et schema_migrations), une fois le schéma
     lui-même défait par le test : les migrations suivantes seront rejouées par db.migrate."""
@@ -301,15 +306,17 @@ class OpenApiTest(unittest.TestCase):
         self.assertEqual(maelis["pos_x"], 10.5)
         self.assertTrue(maelis["portrait_thumb"].startswith("/media/"))
 
-        # Suppression d'un PNJ : relations, appartenances et fichiers nettoyés
+        # Suppression d'un PNJ : relations, appartenances retirées, fichiers déplacés dans la corbeille (trash.py)
         media_files = list(Path(os.environ["MAZE_DATA_DIR"], "media").rglob("*.webp"))
         self.assertEqual(len(media_files), 4)
-        code, _ = s.call("DELETE", f"/api/npcs/{a['id']}")
-        self.assertEqual(code, 204)
+        code, out = s.call("DELETE", f"/api/npcs/{a['id']}")
+        self.assertEqual(code, 200)
+        self.assertIn("trash_id", out)
         code, graph = s.call("GET", f"/api/campaigns/{cid}/graph")
         self.assertEqual(graph["relations"], [])
         self.assertEqual(graph["memberships"], [])
-        self.assertEqual(list(Path(os.environ["MAZE_DATA_DIR"], "media").rglob("*.webp")), [])
+        self.assertEqual([p.parent.name for p in Path(os.environ["MAZE_DATA_DIR"], "media").rglob("*.webp")],
+                         [".trash"] * 4)
 
         code, _ = s.call("GET", "/media/../maze.db")
         self.assertIn(code, (403, 404))
@@ -710,7 +717,7 @@ class DocumentsTest(unittest.TestCase):
 
         # Suppression d'un scénario : sous-pages, mentions et images supprimées
         self.assertEqual(s.call("DELETE", f"/api/documents/{root}")[0], 400)
-        self.assertEqual(s.call("DELETE", f"/api/documents/{sc1['id']}")[0], 204)
+        self.assertEqual(s.call("DELETE", f"/api/documents/{sc1['id']}")[0], 200)
         self.assertEqual(s.call("GET", f"/api/documents/{page['id']}")[0], 404)
         self.assertEqual(s.call("GET", img["url"])[0], 404)
         _, detail = s.call("GET", f"/api/npcs/{npc['id']}")
@@ -1330,7 +1337,7 @@ class PlacesTest(unittest.TestCase):
         # Désépingler ; lieu supprimé : l'épingle disparaît avec lui
         self.assertEqual(s.call("DELETE", f"/api/places/{a['id']}/pin")[0], 204)
         s.call("PUT", f"/api/places/{a['id']}/pin")
-        self.assertEqual(s.call("DELETE", f"/api/places/{a['id']}")[0], 204)
+        self.assertEqual(s.call("DELETE", f"/api/places/{a['id']}")[0], 200)
         _, outsider = s.call("POST", "/api/campaigns", {"name": "Ailleurs"})
         _, c = s.call("POST", f"/api/campaigns/{outsider['id']}/places", {"name": "Hors"})
         self.assertEqual(mj.call("PUT", f"/api/places/{c['id']}/pin")[0], 404, "lieu d'une campagne non attribuée")
@@ -1434,10 +1441,10 @@ class PlacesTest(unittest.TestCase):
                                 {"parent_id": ys["id"], "ids": [port["id"], basse["id"]]})[0], 204)
         self.assertEqual(s.call("PUT", f"/api/campaigns/{cid}/places/order",
                                 {"parent_id": ys["id"], "ids": [port["id"]]})[0], 400)
-        self.assertEqual(s.call("DELETE", f"/api/places/{basse['id']}")[0], 204)
+        self.assertEqual(s.call("DELETE", f"/api/places/{basse['id']}")[0], 200)
         _, moved = s.call("GET", f"/api/places/{taverne['id']}")
         self.assertEqual(moved["parent_id"], ys["id"])
-        self.assertEqual(s.call("DELETE", f"/api/places/{taverne['id']}")[0], 204)
+        self.assertEqual(s.call("DELETE", f"/api/places/{taverne['id']}")[0], 200)
         self.assertEqual(s.call("GET", f"/api/npcs/{npc['id']}")[1]["places"], [])
         self.assertEqual(s.call("GET", f"/api/campaigns/{cid}/documents/mentions")[1]["mentions"], {})
         self.assertEqual(s.call("GET", f"/api/search?q=biere&campaign={cid}")[1]["results"], [])
@@ -2009,7 +2016,7 @@ class DeepTreeTest(unittest.TestCase):
         self.assertEqual(code, 400)
         self.assertIn(str(MAX_DEPTH), err["detail"])
         # Suppression d'un scénario puis de la campagne : 204 (avant : « too many levels of trigger recursion »).
-        self.assertEqual(s.call("DELETE", f"/api/documents/{copy['id']}")[0], 204)
+        self.assertEqual(s.call("DELETE", f"/api/documents/{copy['id']}")[0], 200)
         self.assertEqual(self.max_depth("documents", cid), (1101, 1102))
         self.assertEqual(s.call("DELETE", f"/api/campaigns/{cid}")[0], 204)
         self.assertEqual(self.db().execute("SELECT COUNT(*) FROM documents WHERE campaign_id = ?", (cid,)).fetchone()[0], 0)
@@ -2064,7 +2071,7 @@ class DeepTreeTest(unittest.TestCase):
         code, err = s.call("POST", f"/api/campaigns/{cid}/places", {"name": "Trop", "parent_id": deepest})
         self.assertEqual((code, err["detail"]), (400, f"Trop de niveaux de sous-lieux ({MAX_DEPTH} au plus)"))
         # Suppression d'un lieu de la chaîne (ses sous-lieux remontent) puis de la campagne.
-        self.assertEqual(s.call("DELETE", f"/api/places/{top['id']}")[0], 204)
+        self.assertEqual(s.call("DELETE", f"/api/places/{top['id']}")[0], 200)
         self.assertEqual(s.call("DELETE", f"/api/campaigns/{cid}")[0], 204)
         self.assertEqual(self.db().execute("SELECT COUNT(*) FROM places WHERE campaign_id = ?", (cid,)).fetchone()[0], 0)
 

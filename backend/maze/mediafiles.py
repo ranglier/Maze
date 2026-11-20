@@ -27,6 +27,10 @@ def temp_name(name: str) -> str:
 def is_temp(name: str) -> bool:
     return name.startswith(".") and name.endswith(TEMP_SUFFIX)
 PIL_FORMATS = {".webp": "WEBP", ".jpg": "JPEG"}                # extension > format attendu par Pillow
+# Corbeille (trash.py, migration 034) : fichiers des éléments supprimés, déplacés sous media/<campagne>/.trash/<nom>
+# (même nom, même volume : simple renommage), remis en place à la restauration. Jamais servis par /media ; sauvegardés
+# et restaurés avec le reste de media/ (backup.py) ; supprimés avec la campagne (api.delete_campaign).
+TRASH_DIR = ".trash"
 # Nom d'un fichier de media/<campagne>/ : uuid hexadécimal, suffixe _t, _p ou _i éventuel, extension admise.
 FILE_NAME = r"[\w-]{1,80}\.(?:" + "|".join(sorted(ext.lstrip(".") for ext in MEDIA_TYPES)) + ")"
 FILE_NAME_RE = re.compile(rf"^{FILE_NAME}$")

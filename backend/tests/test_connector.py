@@ -888,7 +888,7 @@ class ConnectorTest(unittest.TestCase):
             self.assertIn("réessayez", err)
         ok, data = self.tool(token, "update_entry", kind="npc", id=npc["id"], fields={"summary": "après"})
         self.assertTrue(ok, data)
-        self.assertEqual(self.s.call("DELETE", f"/api/npcs/{npc['id']}")[0], 204)   # les autres tests comptent les PNJ
+        self.assertEqual(self.s.call("DELETE", f"/api/npcs/{npc['id']}")[0], 200)   # les autres tests comptent les PNJ
 
     def test_settings_row_created_from_read_transaction(self):
         """load_settings_row sous query_only (route GET, outil) : ligne manquante créée dans une transaction d'écriture

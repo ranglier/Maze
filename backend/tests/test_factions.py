@@ -153,10 +153,10 @@ class NestedFactionsApiTest(unittest.TestCase):
         self.nest(mid, top)
         self.nest(low, mid)
         self.assertEqual(len(self.graph(cid)["memberships"]), 3)
-        self.assertEqual(s.call("DELETE", f"/api/factions/{mid['id']}")[0], 204)
+        self.assertEqual(s.call("DELETE", f"/api/factions/{mid['id']}")[0], 200)
         self.assertEqual(self.graph(cid)["memberships"], [])   # comme membre et comme faction
         self.nest(low, top)
-        self.assertEqual(s.call("DELETE", f"/api/factions/{top['id']}")[0], 204)
+        self.assertEqual(s.call("DELETE", f"/api/factions/{top['id']}")[0], 200)
         self.assertEqual(self.graph(cid)["memberships"], [])
         # Campagne supprimée : plus aucune appartenance d'elle en base.
         a, b = self.faction(cid, "A"), self.faction(cid, "B")
