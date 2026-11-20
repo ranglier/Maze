@@ -10,6 +10,7 @@ import ScenariosView from './components/ScenariosView.jsx';
 import SearchPalette from './components/SearchPalette.jsx';
 import TimelineView from './components/TimelineView.jsx';
 import TrashView from './components/TrashView.jsx';
+import UploadPage from './components/UploadPage.jsx';
 import UserMenu from './components/UserMenu.jsx';
 import Workspace from './components/Workspace.jsx';
 import { Icon, useConfirm } from './components/ui.jsx';
@@ -38,6 +39,7 @@ const TREE_LABEL = {
  *   #/c/<id>/chronologie[?event=<n>]    chronologie (module facultatif, campaign.timeline_enabled), événement ouvert
  *   #/c/<id>/corbeille                  corbeille de la campagne (éléments supprimés gardés 30 jours)
  *   #/admin/<section>
+ *   #/depot/<jeton>                    dépôt d'une image demandée par Claude (UploadPage, outil request_upload)
  */
 function parseHash() {
   const [hash, qs] = window.location.hash.split('?');
@@ -59,6 +61,8 @@ function parseHash() {
 }
 
 function parsePath(hash) {
+  const upload = hash.match(/^#\/depot\/([\w-]+)/);
+  if (upload) return { view: 'upload', token: upload[1] };
   const admin = hash.match(/^#\/admin(?:\/([\w-]+))?/);
   if (admin) return { view: 'admin', section: admin[1] || 'comptes' };
   const m = hash.match(/^#\/c\/(\d+)(?:\/(scenarios|cartes|carte|personnages|fiche|lieux|chronologie|corbeille)(?:\/([\w-]+))?)?/);
@@ -250,7 +254,7 @@ export default function App() {
   if (!auth.authenticated) {
     // Après connexion : fiche de la campagne, sauf lien direct vers une page précise (session expirée, lien partagé).
     return <LoginScreen sourceUrl={auth.source_url} onLoggedIn={() => {
-      if (!/^#\/(c\/\d+\/|admin)/.test(window.location.hash)) window.history.replaceState(window.history.state, '', '#/');
+      if (!/^#\/(c\/\d+\/|admin|depot\/)/.test(window.location.hash)) window.history.replaceState(window.history.state, '', '#/');
       setRoute(parseHash());
       checkAuth();
     }} />;
@@ -272,6 +276,16 @@ export default function App() {
   );
   // Effacer ?find= / ?comment= / ?scenario= une fois pris en compte (un rechargement ne les rejoue pas).
   const consumeQuery = (path) => { window.history.replaceState(window.history.state, '', path); setRoute(parseHash()); };
+
+  // Dépôt d'image : page à part, sans liste des campagnes (connexion d'abord, puis retour ici).
+  if (route.view === 'upload') {
+    return (
+      <>
+        <UploadPage key={route.token} token={route.token} user={user} corner={userMenu} />
+        {logoutDialog}
+      </>
+    );
+  }
 
   if (route.view === 'admin') {
     if (user.role !== 'admin') {

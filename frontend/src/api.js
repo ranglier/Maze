@@ -280,6 +280,15 @@ export const api = {
     body: JSON.stringify(data),
   }).catch(() => {}),
 
+  // Dépôt d'une image demandée par Claude (page #/depot/<jeton>, UploadPage.jsx).
+  uploadTicket: (token) => request('GET', `/api/uploads/${encodeURIComponent(token)}`),
+  depositImage: (token, file, caption, onProgress) => {
+    const form = new FormData();
+    if (caption !== null && caption !== undefined) form.append('caption', caption);
+    form.append('file', file);
+    return uploadRaw(`/api/uploads/${encodeURIComponent(token)}`, form, null, onProgress);
+  },
+
   updateImage: (id, data) => request('PATCH', `/api/images/${id}`, data),
   deleteImage: (id) => request('DELETE', `/api/images/${id}`),
 

@@ -30,7 +30,7 @@ const ZONE_RULES = {
   common: ['App.jsx', 'main.jsx', 'api.js', 'constants.js', 'util.js', 'viewport.js', 'markdown.js', 'relationTypes.js',
     'cast.js', 'styles.css', 'i18n/', 'components/ui.jsx', 'components/UserMenu.jsx', 'components/LoginScreen.jsx',
     'components/MoveDialog.jsx', 'components/RichField.jsx', 'components/PlaceIcon.jsx', 'components/treeDrag.js',
-    'components/mentionEntities.js'],
+    'components/mentionEntities.js', 'components/UploadPage.jsx'],
   admin: ['components/AdminPage.jsx', 'components/ClaudeSection.jsx', 'components/ImagesSection.jsx',
     'components/FoundrySection.jsx', 'components/CampaignMenu.jsx', 'components/SessionNotices.jsx',
     'components/SearchPalette.jsx', 'components/TrashView.jsx', 'session.js', 'imageSelection.js', 'trash.js'],
