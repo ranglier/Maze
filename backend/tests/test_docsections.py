@@ -9,7 +9,7 @@ from __future__ import annotations
 import asyncio
 import unittest
 
-from maze import db, docsections, mcp
+from maze import db, docsections, mcp, mcp_tools
 from maze.docsections import SectionError, apply_operations, outline
 from tests.test_api import Server, recv, recv_until
 
@@ -212,7 +212,7 @@ class UpdateDocumentOperationsTest(unittest.TestCase):
 
     def test_operations(self):
         doc = self.document()
-        read = self.tool(mcp.get_document, document_id=doc["id"])
+        read = self.tool(mcp_tools.get_item, kind="document", id=doc["id"])   # outil get, kind document
         self.assertEqual([h["text"] for h in read["outline"]], ["Acte I", "Scène 1", "Scène 2", "Acte II"])
         out = self.tool(mcp.update_document, document_id=doc["id"], base_revision=read["revision"], status="pret",
                         operations=[{"op": "replace_section", "heading": "scène 2", "content": "<p>Le marché.</p>"},

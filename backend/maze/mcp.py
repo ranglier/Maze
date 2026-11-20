@@ -869,7 +869,7 @@ async def update_document(ctx: Context, args: dict[str, Any]) -> Any:
             if room is not None and room.peers:
                 names = ", ".join(sorted({p.name for p in room.peers.values()}))
                 raise ToolError(f"La fiche est ouverte ({names}) et ses dernières modifications ne sont pas encore "
-                                "enregistrées. Réessayez dans quelques secondes, puis relisez-la avec get_document.")
+                                "enregistrées. Réessayez dans quelques secondes, puis relisez-la avec get (kind document).")
             raise ToolError(UNSAVED_EDITS)
     changes = None
     if operations is not None:
@@ -878,7 +878,7 @@ async def update_document(ctx: Context, args: dict[str, Any]) -> Any:
         current = await ctx.api("GET", f"/api/documents/{did}")
         if current["revision"] != body["base_revision"]:
             raise ToolError(f"Cette fiche a été modifiée depuis sa lecture (révision actuelle {current['revision']}) : "
-                            "la relire avec get_document avant de la modifier.")
+                            "la relire avec get (kind document) avant de la modifier.")
         try:
             body["content"], changes = docsections.apply_operations(current.get("content") or "", operations)
         except docsections.SectionError as exc:

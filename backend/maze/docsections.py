@@ -1,5 +1,5 @@
 """Modification ciblée d'une fiche rédigée par sections (outil update_document du connecteur Claude, paramètre
-operations) et plan de ses titres (get_document : outline). Module pur, sans base ni serveur.
+operations) et plan de ses titres (outil get, kind document : outline). Module pur, sans base ni serveur.
 
 Section : un titre <h1>-<h3> de premier niveau (hors encadré, citation, liste ou tableau) et tout ce qui le suit
 jusqu'au prochain titre de premier niveau de niveau égal ou supérieur, sous-sections comprises. <h4>-<h6> comptent
@@ -63,7 +63,7 @@ OPERATIONS_SCHEMA: dict[str, Any] = {
         "Modifications ciblées, appliquées dans l'ordre au contenu enregistré (exclusif avec content ; tout ou rien). "
         "Section : un titre <h1>-<h3> hors encadré, liste ou tableau, et ce qui le suit jusqu'au prochain titre de "
         "niveau égal ou supérieur (sous-sections comprises) ; heading : texte du titre (casse et espaces ignorés ; "
-        "voir outline de get_document), occurrence (1, 2…) si plusieurs titres l'ont. replace_section {heading, "
+        "voir outline de get, kind document), occurrence (1, 2…) si plusieurs titres l'ont. replace_section {heading, "
         "content, include_heading?} : remplace le contenu sous le titre (le titre aussi si include_heading) ; "
         "insert_after_section / insert_before_section {heading, content} ; append / prepend {content} : fin / début "
         "de la fiche ; delete_section {heading} ; replace_text {find, replace, max?, heading?} : texte simple dans le "
