@@ -41,6 +41,7 @@ UPLOAD_ROUTES = [
     (re.compile(r"/api/campaigns/\d+/maps"), 1),
     (re.compile(r"/api/maps/\d+/image"), 1),
     (re.compile(r"/api/place-kinds/\d+/image"), 1),
+    (re.compile(r"/api/uploads/[\w-]{1,100}"), 1),   # page de dépôt d'une image demandée par Claude (uploads.py)
 ]
 TEXT_ROUTES = re.compile(
     r"/api/(campaigns/\d+/(documents|npcs|factions|places)|documents/\d+(/versions(/\d+(/restore)?)?)?"

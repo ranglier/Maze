@@ -20,7 +20,7 @@ from maze import foundry
 from maze.foundry_html import clean, field_html, markdown_to_html
 from tests.test_api import (
     ADMIN_PASSWORD, Server, multipart, png_bytes, rewind_schema, undo_entry_revision, undo_nested_factions,
-    undo_timeline, undo_trash, undo_user_locale,
+    undo_timeline, undo_trash, undo_upload_tickets, undo_user_locale,
 )
 from tests.test_maps import form, jpeg
 
@@ -584,6 +584,7 @@ class FoundryTokenLifecycleTest(unittest.TestCase):
             undo_nested_factions(conn)   # migration 031
             undo_timeline(conn)   # migration 032
             undo_trash(conn)   # migration 034
+            undo_upload_tickets(conn)   # migration 035
             rewind_schema(conn, 22)
         db.migrate(db_path)
         with sqlite3.connect(db_path) as conn:

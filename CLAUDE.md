@@ -118,10 +118,10 @@ Order: database > server > interface > tests. Every REST call of the interface i
 - Tests: `test_deploy` (scripts replayed with a simulated Docker), `test_api` (`AdminSystemTest`); e2e `mise-a-jour`.
 
 **Claude connector (MCP)**
-- DB: `015_claude_connector.sql`, `024_mcp_log_campaign_name.sql`, `033_mcp_delete_grant.sql` (grant mode `delete`: read, write and delete).
-- Server: `mcp.py` (`/mcp`, protocol, `list_campaigns`, `get_campaign` (summary under 40 000 characters, paginated sections), `search`, `update_document` (`content` or `operations` by section, `docsections.py`), `Context`: `check_write`, `check_delete`, `fresh`; `Batch` journal one line per item; one-item handlers `create_entry`, `set_membership`, `delete_entry`...), `mcp_tools.py` (the exposed tools: `list`, `get`, `view`, batch writes `create`, `update`, `link`, `unlink`, `delete`, `add_image`, `edit_image` with `items`, 1 to 100), `mcp_images.py`, `mcp_maps.py` (image and map handlers), `oauth.py` (OAuth 2.1), `connector.py` (settings, grants, log).
-- Interface: `components/ClaudeSection.jsx`.
-- Tests: `test_connector`, `test_docsections` (`update_document` with `operations`).
+- DB: `015_claude_connector.sql`, `024_mcp_log_campaign_name.sql`, `033_mcp_delete_grant.sql` (grant mode `delete`: read, write and delete); `035_upload_tickets.sql` (image upload links).
+- Server: `mcp.py` (`/mcp`, protocol, `list_campaigns`, `get_campaign` (summary under 40 000 characters, paginated sections), `search`, `update_document` (`content` or `operations` by section, `docsections.py`), `Context`: `check_write`, `check_delete`, `fresh`; `Batch` journal one line per item; one-item handlers `create_entry`, `set_membership`, `delete_entry`...), `mcp_tools.py` (the exposed tools: `list`, `get`, `view`, batch writes `create`, `update`, `link`, `unlink`, `delete`, `add_image`, `edit_image` with `items`, 1 to 100), `mcp_images.py`, `mcp_maps.py` (image and map handlers), `oauth.py` (OAuth 2.1), `connector.py` (settings, grants, log); image upload link: `mcp_upload.py` (tool `request_upload`), `uploads.py` (tickets, `/api/uploads/{token}`).
+- Interface: `components/ClaudeSection.jsx`; upload page `components/UploadPage.jsx` (route `#/depot/<token>` in `App.jsx`).
+- Tests: `test_connector`, `test_docsections` (`update_document` with `operations`), `test_uploads`; e2e `depot-image`.
 
 **Foundry VTT**
 - DB: `021_foundry.sql`, `023_foundry_token_creator.sql`.
@@ -152,7 +152,7 @@ Order: database > server > interface > tests. Every REST call of the interface i
 
 ### Recipe: add a migration
 
-1. New file `backend/maze/migrations/NNN_name.sql`, NNN = highest existing + 1 (currently 034). Never edit a released one (checksum recorded).
+1. New file `backend/maze/migrations/NNN_name.sql`, NNN = highest existing + 1 (currently 035). Never edit a released one (checksum recorded).
 2. No `BEGIN`/`COMMIT` in the file: `db.migrate` wraps it in one transaction with foreign keys suspended, then checked.
 3. New table whose id is cited elsewhere: `INTEGER PRIMARY KEY AUTOINCREMENT`. Rebuilt table: recreate all its indexes and triggers.
 4. Data that belongs to a campaign: give it a foreign key to its campaign (or parent row) with `ON DELETE CASCADE`, since deleting a campaign relies on cascades; add it to export / import (`transfer.SECTIONS`); restore needs nothing (whole database).

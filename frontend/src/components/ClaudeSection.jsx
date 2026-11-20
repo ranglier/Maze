@@ -65,6 +65,7 @@ const TOOL_LABEL = {
   create_event: N_('Création d’un événement'),
   update_event: N_('Modification d’un événement'),
   delete_event: N_('Suppression d’un événement'),
+  request_upload: N_('Lien de dépôt d’image'),
 };
 
 const LOG_VISIBLE = 10;   // actions visibles sans défiler ; les suivantes dans la barre de défilement du journal

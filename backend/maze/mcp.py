@@ -117,6 +117,7 @@ class Context:
     grants: dict[int, str]            # campagnes ouvertes : {id: "read" | "write" | "delete"}
     campaign_id: int | None = None    # campagne concernée par l'appel (journal)
     target: str = ""
+    base: str = ""                    # adresse publique de Maze (connector.public_base : liens de request_upload)
 
     def fresh(self) -> Context:
         """Même identité et mêmes accès, journal vierge : un contexte par élément d'un lot."""
@@ -1294,9 +1295,9 @@ TOOLS = [
            "operations": docsections.OPERATIONS_SCHEMA},
           ["document_id", "base_revision"], update_document, write=True, destructive=True),
 ]
-from . import mcp_images, mcp_maps, mcp_tools  # noqa: E402,F401 - outils regroupés, qui s'appuient sur ce qui précède
+from . import mcp_images, mcp_maps, mcp_tools, mcp_upload  # noqa: E402,F401 - outils regroupés et dépôt d'image
 
-TOOLS += mcp_tools.TOOLS
+TOOLS += mcp_tools.TOOLS + mcp_upload.TOOLS
 TOOLS_BY_NAME = {t["name"]: t for t in TOOLS}
 PUBLIC_TOOLS = [{k: v for k, v in t.items() if not k.startswith("_")} for t in TOOLS]
 
@@ -1335,7 +1336,8 @@ async def _call_tool(request: Request, user: dict[str, Any], tool: dict[str, Any
 
     def load(conn: sqlite3.Connection) -> tuple[bool, Context]:
         return (connector.load_settings_row(conn)["enabled"],
-                Context(app=request.app, user=user, grants=connector.grants(conn)))
+                Context(app=request.app, user=user, grants=connector.grants(conn),
+                        base=connector.public_base(request)))
     enabled, ctx = await in_tx(request, load, write=False)
     if not enabled:
         return _text_result(SUSPENDED, True)

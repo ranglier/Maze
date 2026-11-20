@@ -183,6 +183,11 @@ def undo_trash(conn: sqlite3.Connection) -> None:
     conn.executescript("DROP TABLE trash;")
 
 
+def undo_upload_tickets(conn: sqlite3.Connection) -> None:
+    """Défait la migration 035 (liens de dépôt d'image), pour rejouer les migrations depuis une base plus ancienne."""
+    conn.executescript("DROP TABLE upload_tickets;")
+
+
 def rewind_schema(conn: sqlite3.Connection, version: int) -> None:
     """Ramène l'enregistrement des migrations à `version` (user_version et schema_migrations), une fois le schéma
     lui-même défait par le test : les migrations suivantes seront rejouées par db.migrate."""
