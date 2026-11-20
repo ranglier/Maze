@@ -260,7 +260,7 @@ def delete_document(request: Request) -> Response:
     """Fiche et sous-pages mises à la corbeille (trash.py), avec commentaires, versions, journal temps réel, carte du
     scénario et illustrations qui n'appartiennent qu'à elles : 200 {"trash_id"}."""
     did = path_id(request)
-    with tx(request) as conn:
+    with trash.deleting(request) as conn:
         current = scoped(conn, request, "documents", did, "Fiche")
         if current["kind"] == "campaign":
             raise HTTPException(400, "La fiche de campagne ne peut pas être supprimée")

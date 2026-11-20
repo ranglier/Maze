@@ -320,7 +320,7 @@ def delete_map(request: Request) -> Response:
     """Carte mise à la corbeille (trash.py), avec ses épingles ; fond et aperçus déplacés sous media/.trash.
     200 {"trash_id"}."""
     mid = path_id(request)
-    with tx(request) as conn:
+    with trash.deleting(request) as conn:
         row = scoped(conn, request, "maps", mid, "Carte")
         trashed = trash.put(conn, request, "map", row, lambda: conn.execute("DELETE FROM maps WHERE id = ?", (mid,)))
         touch_campaign(conn, row["campaign_id"])

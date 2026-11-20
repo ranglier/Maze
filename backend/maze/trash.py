@@ -30,6 +30,12 @@ Fiches rédigées : journal temps réel (document_updates) et content_seq restau
 Purge : éléments de plus de TRASH_DAYS jours supprimés définitivement (lignes et fichiers), au démarrage puis chaque
 jour (app.py) ; suppression définitive d'un élément ou de toute la corbeille d'une campagne (routes ci-dessous).
 La corbeille n'est pas exportée avec la campagne (transfer.py) ; la sauvegarde la contient (base et media/.trash).
+
+Fichiers : moving() (verrou du processus) est tenu par chaque suppression, de la capture à la fin des déplacements
+vers .trash, par la restauration, de la validation à la remise en place des fichiers, et par la purge, de la lecture
+des fichiers à garder à la fin du parcours de .trash : la purge ne voit jamais un fichier déplacé mais pas encore
+cité, ou plus cité mais pas encore remis en place. Un fichier déplacé vers .trash prend la date du déplacement :
+l'âge des fichiers sans élément (STRAY_AGE) se compte depuis l'entrée dans la corbeille.
 """
 
 from __future__ import annotations
@@ -40,9 +46,11 @@ import logging
 import os
 import re
 import sqlite3
+import threading
 import time
 import zlib
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -87,6 +95,32 @@ FILE_COLUMNS = {"images": ("file", "thumb"), "document_images": ("file", "thumb"
                 "library_images": ("file", "thumb"), "maps": ("file", "thumb", "preview"),
                 "place_kinds": ("image",)}
 DOC_IMAGE = re.compile(rb'data-doc-image="(\d+)"')
+
+_files_lock = threading.Lock()
+_held = threading.local()
+
+
+@contextmanager
+def moving() -> Iterator[None]:
+    """Verrou des fichiers de la corbeille (voir l'en-tête) : à prendre AVANT la transaction (même ordre partout :
+    ce verrou, puis celui d'écriture de SQLite), et à garder jusqu'à la fin des déplacements de fichiers."""
+    with _files_lock:
+        yield
+
+
+@contextmanager
+def deleting(request: Request) -> Iterator[sqlite3.Connection]:
+    """Transaction d'une route de suppression, sous moving() : après validation, les fichiers des éléments mis à la
+    corbeille par put() y sont déplacés (stash_files) avant que le verrou ne soit rendu."""
+    with moving():
+        _held.pending = []
+        try:
+            with tx(request) as conn:
+                yield conn
+            for t in _held.pending:
+                stash_files(settings(request).media_dir, t.campaign_id, t.files)
+        finally:
+            _held.pending = None
 
 
 # --- Schéma ---------------------------------------------------------------------------------------
@@ -230,7 +264,11 @@ def _counts(kind: str, deleted: dict[str, list[list[Any]]], updated: list[dict[s
 def put(conn: sqlite3.Connection, request: Request, kind: str, row: dict[str, Any],
         remove: Callable[[], None]) -> Trashed:
     """Exécute remove() (le code de suppression de la route, dans sa transaction) en capturant tout ce qu'elle
-    supprime ou modifie, et range le tout dans la corbeille. Fichiers à déplacer ensuite, après validation : stash."""
+    supprime ou modifie, et range le tout dans la corbeille. Fichiers déplacés après validation, à la sortie de
+    deleting() (à appeler dans ce bloc)."""
+    pending = getattr(_held, "pending", None)
+    if pending is None:
+        raise RuntimeError("trash.put hors de trash.deleting()")
     tables = schema(conn)
     capture = _Capture(conn, tables)
     capture.start()
@@ -257,7 +295,8 @@ def put(conn: sqlite3.Connection, request: Request, kind: str, row: dict[str, An
         "payload": json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
         "files": json.dumps(files), "counts": json.dumps(_counts(kind, deleted, updated)),
     })
-    return Trashed(trash_id, row["campaign_id"], files)
+    pending.append(Trashed(trash_id, row["campaign_id"], files))
+    return pending[-1]
 
 
 # --- Fichiers -------------------------------------------------------------------------------------
@@ -281,6 +320,7 @@ def stash_files(media_dir: Path, campaign_id: int, files: list[str]) -> None:
         try:
             dest.parent.mkdir(parents=True, exist_ok=True)
             os.replace(src, dest)
+            os.utime(dest)   # âge (STRAY_AGE) compté depuis l'entrée dans la corbeille
         except OSError as exc:
             log.warning("Corbeille : fichier %s non déplacé (%s)", rel, exc)
 
@@ -309,8 +349,7 @@ def drop_files(media_dir: Path, campaign_id: int, files: list[str]) -> None:
 
 
 def stash(request: Request, trashed: Trashed) -> JSONResponse:
-    """Après validation de la suppression : fichiers déplacés, réponse de la route ({"trash_id"})."""
-    stash_files(settings(request).media_dir, trashed.campaign_id, trashed.files)
+    """Réponse d'une route de suppression ({"trash_id"}) ; fichiers déjà déplacés à la sortie de deleting()."""
     return JSONResponse({"trash_id": trashed.trash_id})
 
 
@@ -489,20 +528,23 @@ def restore(conn: sqlite3.Connection, item: dict[str, Any]) -> Restored:
 
 def purge_expired(db_path: Path, media_dir: Path) -> int:
     """Supprime définitivement les éléments de plus de TRASH_DAYS jours (lignes, puis fichiers), et les fichiers de
-    .trash qu'aucun élément ne cite plus (déplacement interrompu), passé STRAY_AGE. Renvoie le nombre d'éléments."""
-    with db.transaction(db_path) as conn:
-        expired = conn.execute("SELECT id, campaign_id, files FROM trash WHERE deleted_at < ?", (cutoff(),)).fetchall()
-        conn.executemany("DELETE FROM trash WHERE id = ?", [(r["id"],) for r in expired])
-        kept = {Path(f).name for (files,) in conn.execute("SELECT files FROM trash") for f in json.loads(files)}
-    for r in expired:
-        drop_files(media_dir, r["campaign_id"], json.loads(r["files"]))
-    for folder in media_dir.glob(f"*/{TRASH_DIR}"):
-        for path in folder.iterdir():
-            try:
-                if path.is_file() and path.name not in kept and time.time() - path.stat().st_mtime > STRAY_AGE:
-                    path.unlink()
-            except OSError:
-                continue
+    .trash qu'aucun élément ne cite plus (déplacement interrompu), passé STRAY_AGE. Renvoie le nombre d'éléments.
+    Sous moving() de bout en bout : aucune suppression ni restauration ne déplace de fichier pendant ce temps."""
+    with moving():
+        with db.transaction(db_path) as conn:
+            expired = conn.execute("SELECT id, campaign_id, files FROM trash WHERE deleted_at < ?",
+                                   (cutoff(),)).fetchall()
+            conn.executemany("DELETE FROM trash WHERE id = ?", [(r["id"],) for r in expired])
+            kept = {Path(f).name for (files,) in conn.execute("SELECT files FROM trash") for f in json.loads(files)}
+        for r in expired:
+            drop_files(media_dir, r["campaign_id"], json.loads(r["files"]))
+        for folder in media_dir.glob(f"*/{TRASH_DIR}"):
+            for path in folder.iterdir():
+                try:
+                    if path.is_file() and path.name not in kept and time.time() - path.stat().st_mtime > STRAY_AGE:
+                        path.unlink()
+                except OSError:
+                    continue
     if expired:
         log.info("Corbeille : %s élément(s) de plus de %s jours supprimé(s)", len(expired), TRASH_DAYS)
     return len(expired)
@@ -576,21 +618,23 @@ def _item(conn: sqlite3.Connection, request: Request) -> dict[str, Any]:
 
 @threaded
 def restore_item(request: Request) -> Response:
-    try:
-        with tx(request) as conn:
-            item = _item(conn, request)
-            done = restore(conn, item)
-            conn.execute("DELETE FROM trash WHERE id = ?", (item["id"],))
-            touch_campaign(conn, item["campaign_id"])
-    except RestoreRefused as exc:
-        raise HTTPException(409, i18n.message(exc)) from None
-    except sqlite3.IntegrityError:
-        # Clé étrangère encore cassée à la validation (cas non prévu par la vérification) : rien n'est restauré.
-        log.warning("Corbeille : restauration de l'élément %s refusée par la base", path_id(request), exc_info=True)
-        raise HTTPException(409, "Restauration impossible : des éléments liés ont changé entre-temps. Rien n'a été restauré.") from None  # noqa: E501
-    media_dir = settings(request).media_dir
-    unstash_files(media_dir, done.campaign_id, done.files_back)
-    drop_files(media_dir, done.campaign_id, done.files_lost)
+    with moving():   # de la validation à la remise en place des fichiers : la purge attend
+        try:
+            with tx(request) as conn:
+                item = _item(conn, request)
+                done = restore(conn, item)
+                conn.execute("DELETE FROM trash WHERE id = ?", (item["id"],))
+                touch_campaign(conn, item["campaign_id"])
+        except RestoreRefused as exc:
+            raise HTTPException(409, i18n.message(exc)) from None
+        except sqlite3.IntegrityError:
+            # Clé étrangère encore cassée à la validation (cas non prévu par la vérification) : rien n'est restauré.
+            log.warning("Corbeille : restauration de l'élément %s refusée par la base", path_id(request),
+                        exc_info=True)
+            raise HTTPException(409, "Restauration impossible : des éléments liés ont changé entre-temps. Rien n'a été restauré.") from None  # noqa: E501
+        media_dir = settings(request).media_dir
+        unstash_files(media_dir, done.campaign_id, done.files_back)
+        drop_files(media_dir, done.campaign_id, done.files_lost)
     hub = getattr(request.app.state, "hub", None)
     if hub is not None and done.documents:
         hub.close_documents(done.documents, "reset")
@@ -599,22 +643,24 @@ def restore_item(request: Request) -> Response:
 
 @threaded
 def delete_item(request: Request) -> Response:
-    with tx(request) as conn:
-        item = scoped(conn, request, "trash", path_id(request), WHAT)
-        conn.execute("DELETE FROM trash WHERE id = ?", (item["id"],))
-    drop_files(settings(request).media_dir, item["campaign_id"], json.loads(item["files"]))
+    with moving():
+        with tx(request) as conn:
+            item = scoped(conn, request, "trash", path_id(request), WHAT)
+            conn.execute("DELETE FROM trash WHERE id = ?", (item["id"],))
+        drop_files(settings(request).media_dir, item["campaign_id"], json.loads(item["files"]))
     return Response(status_code=204)
 
 
 @threaded
 def empty_trash(request: Request) -> Response:
     cid = path_id(request)
-    with tx(request) as conn:
-        scoped(conn, request, "campaigns", cid, "Campagne")
-        files = [f for (files,) in conn.execute("SELECT files FROM trash WHERE campaign_id = ?", (cid,))
-                 for f in json.loads(files)]
-        conn.execute("DELETE FROM trash WHERE campaign_id = ?", (cid,))
-    drop_files(settings(request).media_dir, cid, files)
+    with moving():
+        with tx(request) as conn:
+            scoped(conn, request, "campaigns", cid, "Campagne")
+            files = [f for (files,) in conn.execute("SELECT files FROM trash WHERE campaign_id = ?", (cid,))
+                     for f in json.loads(files)]
+            conn.execute("DELETE FROM trash WHERE campaign_id = ?", (cid,))
+        drop_files(settings(request).media_dir, cid, files)
     return Response(status_code=204)
 
 

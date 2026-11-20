@@ -244,7 +244,7 @@ def delete_place(request: Request) -> Response:
     """Met le lieu à la corbeille (trash.py) ; ses sous-lieux remontent d'un niveau (rendus à la restauration s'ils
     n'ont pas été déplacés entre-temps). 200 {"trash_id"}."""
     pid = path_id(request)
-    with tx(request) as conn:
+    with trash.deleting(request) as conn:
         current = scoped(conn, request, "places", pid, "Lieu")
 
         def remove() -> None:

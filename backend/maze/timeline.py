@@ -145,7 +145,7 @@ def update_event(request: Request) -> Response:
 def delete_event(request: Request) -> Response:
     """Événement mis à la corbeille (trash.py), avec ses mentions : 200 {"trash_id"}."""
     eid = path_id(request)
-    with tx(request) as conn:
+    with trash.deleting(request) as conn:
         current = scoped(conn, request, "timeline_events", eid, "Événement")
         trashed = trash.put(conn, request, "event", current,
                             lambda: conn.execute("DELETE FROM timeline_events WHERE id = ?", (eid,)))

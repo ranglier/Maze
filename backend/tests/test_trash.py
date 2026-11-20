@@ -10,13 +10,18 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import os
 import re
 import sqlite3
 import tarfile
+import threading
+import time
 import unittest
 import urllib.parse
+from contextlib import contextmanager
 from datetime import timedelta
 from pathlib import Path
+from unittest import mock
 
 from tests.test_api import Server, multipart, png_bytes
 from tests.test_maps import form
@@ -472,6 +477,73 @@ class TrashTest(unittest.TestCase):
             self.assertIn(f"media/{cid}/{TRASH_DIR}/{name}", tar.getnames())
         with tarfile.open(archive) as tar:
             backup._check_members(tar)   # restauration : la corbeille est admise dans l'archive
+
+    # --- Purge pendant une suppression ou une restauration (revue) ------------------------------------
+
+    def _old_files(self, folder: Path, days: int = 3) -> None:
+        old = time.time() - days * 86400
+        for p in folder.glob("*"):
+            if p.is_file():
+                os.utime(p, (old, old))
+
+    def test_purge_during_deletion_keeps_stashed_files(self):
+        """La purge lit les fichiers à garder puis parcourt .trash : une suppression validée entre les deux (image
+        déposée il y a 3 jours, déplacée avec sa date) ne doit pas perdre ses fichiers."""
+        s = self.s
+        cid = self.campaign("Course purge suppression")
+        _, npc = s.call("POST", f"/api/campaigns/{cid}/npcs", {"name": "Vieux portrait"})
+        url = self.gallery("npcs", npc["id"])["images"][0]["url"]
+        self._old_files(self.media / str(cid))
+        real = db.transaction
+        late: dict = {}
+
+        @contextmanager
+        def transaction(*args, **kwargs):
+            with real(*args, **kwargs) as conn:
+                yield conn
+            # La purge a lu ce qu'elle garde : une suppression arrive à ce moment.
+            late["thread"] = threading.Thread(
+                target=lambda: late.update(out=s.call("DELETE", f"/api/npcs/{npc['id']}")))
+            late["thread"].start()
+            late["thread"].join(0.5)
+
+        class Shim:
+            def __getattr__(self, name):
+                return getattr(db, name)
+        shim = Shim()
+        shim.transaction = transaction
+        with mock.patch.object(trash, "db", shim):
+            trash.purge_expired(self.db_path, self.media)
+        late["thread"].join()
+        code, out = late["out"]
+        self.assertEqual(code, 200, out)
+        self.assertIn(url.rsplit("/", 1)[1], self.trashed_files(cid))
+        for p in (self.media / str(cid) / TRASH_DIR).iterdir():   # âge compté depuis l'entrée dans la corbeille
+            self.assertLess(time.time() - p.stat().st_mtime, 3600)
+        self.restore(out["trash_id"])
+        self.assertEqual(s.call("GET", url)[0], 200)
+
+    def test_purge_during_restore_keeps_files(self):
+        """Restauration validée (ligne de corbeille retirée) avant la remise en place des fichiers : une purge à ce
+        moment ne doit pas effacer les fichiers, devenus orphelins le temps d'un instant."""
+        s = self.s
+        cid = self.campaign("Course purge restauration")
+        _, npc = s.call("POST", f"/api/campaigns/{cid}/npcs", {"name": "Revenant"})
+        url = self.gallery("npcs", npc["id"])["images"][0]["url"]
+        tid = self.delete(f"/api/npcs/{npc['id']}")
+        self._old_files(self.media / str(cid) / TRASH_DIR)   # dans la corbeille depuis 3 jours
+        real = trash.unstash_files
+        purge: dict = {}
+
+        def unstash(*args, **kwargs):
+            purge["thread"] = threading.Thread(target=trash.purge_expired, args=(self.db_path, self.media))
+            purge["thread"].start()
+            purge["thread"].join(0.5)
+            real(*args, **kwargs)
+        with mock.patch.object(trash, "unstash_files", unstash):
+            self.restore(tid)
+        purge["thread"].join()
+        self.assertEqual(s.call("GET", url)[0], 200)
 
     def test_polymorphic_cleanup_covered(self):
         """Toute table nettoyée par un déclencheur de suppression d'une fiche (sans clé étrangère) est connue de

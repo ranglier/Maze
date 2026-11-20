@@ -316,7 +316,7 @@ def delete_images(request: Request) -> Response:
     cid = path_id(request)
     data = parse_body(request, ImagesDelete)
     items = list(dict.fromkeys((i.source, i.id) for i in data.items))   # doublons ignorés, ordre gardé
-    with tx(request) as conn:
+    with trash.deleting(request) as conn:
         get_or_404(conn, "campaigns", cid, "Campagne")
         rows: dict[str, dict[int, dict[str, Any]]] = {}
         for source in SOURCES:
@@ -345,8 +345,7 @@ def delete_images(request: Request) -> Response:
             continue
         for r in rows[source].values():
             imaging.delete_files(media_dir, r["file"], r["thumb"], r.get("preview") or "")
-    for t in trashed:
-        trash.stash_files(media_dir, t.campaign_id, t.files)
+    # Fichiers des cartes déjà déplacés sous .trash à la sortie de trash.deleting().
     skipped = [{"source": s, "id": i, "reason": "editing" if s == "document" and i in editing else "missing"}
                for s, i in items if i not in rows[s]]
     by_source = {source: len(rows[source]) for source in SOURCES}

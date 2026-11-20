@@ -612,7 +612,7 @@ def _delete_entity(kind: str):
         mentions et son historique : 200 {"trash_id"}."""
         from . import trash  # import circulaire évité
         eid = path_id(request)
-        with tx(request) as conn:
+        with trash.deleting(request) as conn:
             current = scoped(conn, request, TABLES[kind], eid, "Fiche")
             trashed = trash.put(conn, request, kind, current,
                                 lambda: conn.execute(f"DELETE FROM {TABLES[kind]} WHERE id = ?", (eid,)))
