@@ -87,7 +87,8 @@ Chronologie (module facultatif, activé par le MJ campagne par campagne : get_ca
 list_events, create_event, update_event ; date en texte libre, ordre manuel (before_id pour insérer ou déplacer).
 Suppression (delete_entry, delete_document, delete_event, delete_map, delete_comment) : seulement sur demande du MJ,
 dans une campagne ouverte en « lecture, écriture et suppression » (access de list_campaigns), avec le nom ou le titre
-exact de l'élément ; définitive (pas de corbeille, seules les sauvegardes de Maze permettent de revenir en arrière).
+exact de l'élément ; PNJ, factions, lieux, fiches, événements et cartes vont dans la corbeille de la campagne
+(30 jours, restaurables par le MJ) ; un commentaire est supprimé définitivement.
 Répondre aux MJ en français."""
 
 
@@ -1066,8 +1067,8 @@ async def update_event(ctx: Context, args: dict[str, Any]) -> Any:
 # l'interface (mêmes effets : cascades, fichiers, éditeurs ouverts fermés).
 
 def _trash_id(response: Any) -> int | None:
-    """Corbeille (lot corbeille) : les routes DELETE des PNJ, factions, lieux, fiches rédigées, événements et cartes
-    répondent {"trash_id": …} ; avant elle, 204 sans corps (définitif)."""
+    """Corbeille (migration 034) : les routes DELETE des PNJ, factions, lieux, fiches rédigées, événements et cartes
+    répondent {"trash_id": …} ; une réponse sans corps (204) reste lue comme une suppression définitive."""
     return response.get("trash_id") if isinstance(response, dict) else None
 
 
@@ -1109,7 +1110,7 @@ async def delete_entry(ctx: Context, args: dict[str, Any]) -> Any:
     trash = _trash_id(await ctx.api("DELETE", f"/api/{ENTRY_PATHS[kind]}/{eid}", delete=True))
     message = f"{_KIND_NAMES[kind]} « {name} » {_gone(trash, kind == 'faction')}."
     if children:
-        message += f" Ses sous-lieux ({children}) remontent d'un niveau."
+        message += f" Ses sous-lieux ({children}) remontent d'un niveau (rendus au lieu s'il est restauré)."
     return _deleted({"deleted": {"kind": kind, "id": eid, "name": name}, "message": message}, trash)
 
 

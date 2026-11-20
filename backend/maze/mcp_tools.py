@@ -724,8 +724,9 @@ TOOLS = [
           "une campagne ouverte en « lecture, écriture et suppression » (Administration > Connecteur Claude). "
           "comment : aussi on (document ou entry, voir list kind comment) ; un fil part avec ses réponses ; même "
           "niveau d'accès ; définitif. relation, image (galerie d'une fiche), library_image : niveau écriture suffit ; "
-          "définitif. Partent avec une fiche : ses liens, appartenances, rattachements à des lieux, galerie, "
-          "historique, commentaires ; les sous-lieux d'un lieu remontent d'un niveau.",
+          "définitif. Partent avec une fiche, et reviennent à sa restauration : ses liens, appartenances, "
+          "rattachements à des lieux, galerie, historique, commentaires ; les sous-lieux d'un lieu remontent d'un "
+          "niveau (rendus au lieu restauré s'ils n'ont pas bougé).",
           {"kind": _kind_enum(DELETE_KINDS), "items": {**ITEMS, "description": "[{id, name}] (voir la description)"}},
           ["kind", "items"], delete, delete=True, idempotent=True),
     _tool("add_image", "Ajouter des images",
