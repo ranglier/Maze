@@ -109,7 +109,7 @@ TOOLS = [
           "Pour une image que le MJ a sous la main (jointe à la conversation, sur son ordinateur) : Claude ne peut pas "
           "la transmettre lui-même à Maze. Cet outil crée un lien vers une page de Maze, valable 10 minutes et pour "
           "une seule image, où le MJ la dépose ; elle arrive directement dans la cible : bibliothèque de la campagne "
-          "(target=library), galerie d'un PNJ, d'une faction ou d'un lieu (npc, faction, place, avec target_id ; "
+          "(target=library ; dépôt par un compte administrateur seulement), galerie d'un PNJ, d'une faction ou d'un lieu (npc, faction, place, avec target_id ; "
           "la première image d'une fiche sans portrait le devient) ou illustration d'une fiche rédigée (document, "
           "avec target_id ; à insérer ensuite avec update_document). caption : légende proposée, modifiable par le MJ "
           "(pas pour document). Donner le lien au MJ, attendre qu'il dise l'avoir déposée, puis rappeler cet outil "

@@ -11,7 +11,8 @@ Jeton : 32 caractères aléatoires, conservé haché (SHA-256, connector.digest)
 Même traitement qu'un envoi depuis l'interface : taille MAZE_MAX_UPLOAD_MB (limits.py), imaging.process_upload
 (formats, pixels, WebP), écriture dans les mêmes tables avec les mêmes effets (api._store_images : la première image
 d'une fiche sans portrait le devient). Un ticket d'une campagne inaccessible au compte connecté est « introuvable »
-(404), comme toute ressource d'une autre campagne (api.scoped).
+(404), comme toute ressource d'une autre campagne (api.scoped). Bibliothèque : réservée aux administrateurs, comme
+l'envoi d'Administration > Images (media_admin.upload_library) : 403 pour un autre compte, à la lecture comme au dépôt.
 """
 
 from __future__ import annotations
@@ -43,6 +44,7 @@ CAPTION_MAX = 500
 NOT_FOUND = "Lien de dépôt introuvable"
 EXPIRED = "Ce lien de dépôt a expiré : demandez-en un nouveau à Claude."
 USED = "Ce lien de dépôt a déjà servi : demandez-en un nouveau à Claude."
+LIBRARY_ADMIN = "Le dépôt dans la bibliothèque de la campagne est réservé aux administrateurs : demandez à Claude un lien vers une fiche (PNJ, faction, lieu ou fiche rédigée), ou à un administrateur de déposer l'image."  # noqa: E501
 
 
 def iso(epoch: int) -> str:
@@ -104,8 +106,11 @@ def _ticket(conn: sqlite3.Connection, request: Request, token: str) -> dict[str,
     """Ticket de ce jeton, si le compte connecté a accès à sa campagne ; sinon 404 (rien n'est révélé)."""
     row = db.row_to_dict(conn.execute("SELECT * FROM upload_tickets WHERE token_hash = ?",
                                       (digest(token),)).fetchone())
-    if row is None or not auth.can_access(conn, auth.current_user(request), row["campaign_id"]):
+    user = auth.current_user(request)
+    if row is None or not auth.can_access(conn, user, row["campaign_id"]):
         raise HTTPException(404, NOT_FOUND)
+    if row["target"] == "library" and user["role"] != "admin":
+        raise HTTPException(403, LIBRARY_ADMIN)
     return row
 
 

@@ -245,6 +245,16 @@ class UploadTicketsTest(unittest.TestCase):
             self.assertEqual(conn.execute("SELECT used_by FROM upload_tickets WHERE id = ?",
                                           (made["ticket"],)).fetchone()[0], mj["id"])
 
+        # Bibliothèque : envoi réservé aux administrateurs (comme Administration > Images), même par un lien (revue).
+        made, token = self.ticket(campaign_id=self.camp["id"], target="library")
+        for code, out in (other.call("GET", f"/api/uploads/{token}"), self.deposit(other, token)):
+            self.assertEqual(code, 403, out)
+            self.assertIn("réservé aux administrateurs", out["detail"])
+        with self.db() as conn:
+            self.assertEqual(conn.execute("SELECT state, image_id FROM upload_tickets WHERE id = ?",
+                                          (made["ticket"],)).fetchone(), ("pending", None))
+        self.assertEqual(self.deposit(s, token)[0], 201)   # l'administrateur, lui, peut déposer
+
     def test_bad_file(self):
         made, token = self.ticket(campaign_id=self.camp["id"], target="place", target_id=self.place["id"])
         code, out = self.deposit(self.s, token, content=b"ceci n'est pas une image")

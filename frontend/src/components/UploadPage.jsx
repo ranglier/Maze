@@ -169,7 +169,8 @@ export default function UploadPage({ token, user, corner }) {
         <Icon name="lock" size={28} />
         <h1>{t('Lien de dépôt inaccessible')}</h1>
         <p>{loadError.message}</p>
-        <p className="muted">{t('Le lien est peut-être incomplet, ou cette campagne ne vous est pas ouverte. Demandez un nouveau lien à Claude, ou connectez-vous avec le compte qui a accès à la campagne.')}</p>
+        {/* 403 : bibliothèque réservée aux administrateurs, le message du serveur dit quoi faire. */}
+        {loadError.status !== 403 && <p className="muted">{t('Le lien est peut-être incomplet, ou cette campagne ne vous est pas ouverte. Demandez un nouveau lien à Claude, ou connectez-vous avec le compte qui a accès à la campagne.')}</p>}
       </div>
     );
   } else if (!info) {
