@@ -31,7 +31,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 
-from . import auth, connector, db, entries
+from . import auth, connector, db, docsections, entries
 from .collab import RESTORING
 from .api import RequestValidationError, in_tx, settings
 from .documents import UNSAVED_EDITS, has_unsaved_edits
@@ -685,6 +685,10 @@ async def get_document(ctx: Context, args: dict[str, Any]) -> Any:
                                    "updated_at", "content")}
     out["children"] = children
     out["linked_from"] = doc.get("linked_from", [])
+    # Titres visés par update_document (operations) ; calcul hors de la boucle d'événements (HTML quelconque).
+    out["outline"], note = await run_in_threadpool(docsections.describe, doc.get("content") or "")
+    if note:
+        out["outline_note"] = note
     if args.get("include_comments") in (True, "true", 1):
         out["comments"] = await ctx.api("GET", f"/api/documents/{did}/comments")
     return out
@@ -849,10 +853,14 @@ async def update_document(ctx: Context, args: dict[str, Any]) -> Any:
     ctx.target = f"doc:{did}"
     ctx.check_write(ctx.campaign_of("documents", did))
     body = {k: args[k] for k in ("title", "status", "content") if args.get(k) is not None}
-    if not body:
-        raise ToolError("Rien à modifier : title, status ou content")
+    operations = args.get("operations")
+    if operations is not None and "content" in body:
+        raise ToolError("content et operations s'excluent : content remplace tout le contenu, operations le modifie "
+                        "par endroits")
+    if not body and operations is None:
+        raise ToolError("Rien à modifier : title, status, content ou operations")
     body["base_revision"] = _int(args, "base_revision")
-    if "content" in body:
+    if "content" in body or operations is not None:
         # Option retenue : remplacement d'un bloc (les MJ connectés rechargent la fiche). Refusé tant que
         # des frappes reçues par le serveur ne sont pas encore dans le HTML enregistré (elles seraient perdues ;
         # documents.update_document le revérifie dans sa transaction).
@@ -864,10 +872,26 @@ async def update_document(ctx: Context, args: dict[str, Any]) -> Any:
             if room is not None and room.peers:
                 names = ", ".join(sorted({p.name for p in room.peers.values()}))
                 raise ToolError(f"La fiche est ouverte ({names}) et ses dernières modifications ne sont pas encore "
-                                "enregistrées. Réessayez dans quelques secondes, puis relisez-la avec get_document.")
+                                "enregistrées. Réessayez dans quelques secondes, puis relisez-la avec get (kind document).")
             raise ToolError(UNSAVED_EDITS)
+    changes = None
+    if operations is not None:
+        # Opérations appliquées au HTML enregistré (docsections.py), puis remplacement normal : mêmes versions, même
+        # contrôle de base_revision dans la transaction de la route (une écriture entre-temps donne un refus).
+        current = await ctx.api("GET", f"/api/documents/{did}")
+        if current["revision"] != body["base_revision"]:
+            raise ToolError(f"Cette fiche a été modifiée depuis sa lecture (révision actuelle {current['revision']}) : "
+                            "la relire avec get (kind document) avant de la modifier.")
+        try:
+            body["content"], changes = await run_in_threadpool(docsections.apply_operations,
+                                                               current.get("content") or "", operations)
+        except docsections.SectionError as exc:
+            raise ToolError(f"Rien n'est modifié. {exc}") from None
     doc = await ctx.api("PATCH", f"/api/documents/{did}", body, write=True)
-    return _doc_summary(doc)
+    out = _doc_summary(doc)
+    if changes is not None:
+        out["changes"] = changes
+    return out
 
 
 async def add_comment(ctx: Context, args: dict[str, Any]) -> Any:
@@ -1261,10 +1285,13 @@ TOOLS = [
           {"query": {"type": "string"}, "campaign_id": {**ID, "description": "Limiter à une campagne"}},
           ["query"], search),
     _tool("update_document", "Modifier une fiche rédigée",
-          "Remplace le titre, le statut et/ou tout le contenu HTML d'une fiche. base_revision : la révision lue avec "
-          "get (kind document) ; refus si la fiche a changé depuis. L'état précédent reste dans l'historique de la "
-          "fiche.",
-          {"document_id": ID, "base_revision": ID, "title": {"type": "string"}, "status": STATUS, "content": CONTENT},
+          "Modifie le titre, le statut et/ou le contenu HTML d'une fiche : content remplace tout le contenu ; "
+          "operations le modifie par sections ou par remplacement de texte, sans renvoyer toute la fiche (préféré "
+          "pour une fiche longue). base_revision : la révision lue avec get (kind document ; refus si la fiche a changé "
+          "depuis). L'état précédent reste dans l'historique de la fiche. Résultat : nouvelle révision et, avec "
+          "operations, changes (résumé de chaque opération).",
+          {"document_id": ID, "base_revision": ID, "title": {"type": "string"}, "status": STATUS, "content": CONTENT,
+           "operations": docsections.OPERATIONS_SCHEMA},
           ["document_id", "base_revision"], update_document, write=True, destructive=True),
 ]
 from . import mcp_images, mcp_maps, mcp_tools  # noqa: E402,F401 - outils regroupés, qui s'appuient sur ce qui précède

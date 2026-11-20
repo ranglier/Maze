@@ -669,7 +669,8 @@ TOOLS = [
           "Un élément complet. npc, faction, place : tous les champs, révision (pour update), galerie d'images "
           "(cover : image de couverture), liens, appartenances (membres PNJ et sous-factions d'une faction ; "
           "member_of : factions dont elle est membre), lieux, fiches rédigées qui la citent. document : contenu HTML, "
-          "révision (pour update_document), sous-pages, fiches qui y renvoient. event : description HTML complète, "
+          "plan des titres (outline, pour les operations d'update_document), révision (pour update_document), "
+          "sous-pages, fiches qui y renvoient. event : description HTML complète, "
           "position, révision, fiches citées. map : épingles (positions en %) et lieux à épingler. include_comments : "
           "commentaires de la fiche (npc, faction, place, document).",
           {"kind": _kind_enum(GET_KINDS), "id": ID, "include_comments": {"type": "boolean"}}, ["kind", "id"], get_item),
