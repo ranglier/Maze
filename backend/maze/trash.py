@@ -255,6 +255,8 @@ class _Capture:
         return _q(f"_trash_cap_{t.name}")
 
     def start(self) -> None:
+        # Corps des déclencheurs : nom de la table TEMP sans « temp. » (refusé par SQLite avant 3.4x : « qualified
+        # table names are not allowed… within triggers ») ; le préfixe _trash_cap_ évite toute homonymie avec main.
         for t in self.tables.values():
             cols = ", ".join(_q(c) for c in t.cols)
             old = ", ".join("OLD." + _q(c) for c in t.cols)
@@ -262,7 +264,7 @@ class _Capture:
             for event in ("DELETE", "UPDATE"):
                 self.conn.execute(
                     f"CREATE TEMP TRIGGER {_q(f'_trash_{event[0]}_{t.name}')} AFTER {event} ON main.{_q(t.name)} "
-                    f"BEGIN INSERT INTO temp.{self._cap(t)} VALUES (OLD.rowid, {old}); END")
+                    f"BEGIN INSERT INTO {self._cap(t)} VALUES (OLD.rowid, {old}); END")
 
     def stop(self) -> None:
         for t in self.tables.values():
