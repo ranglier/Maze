@@ -141,12 +141,12 @@
   "Joué": "Played",
   "Justifier": "Justify",
   "La fiche a été remplacée : rechargement.": "The page was replaced: reloading.",
-  "La fiche et sa sous-page seront définitivement supprimées, images comprises.": {
-    "one": "The page and its sub-page will be permanently deleted, images included.",
-    "other": "The page and its {n} sub-pages will be permanently deleted, images included."
+  "La fiche et sa sous-page seront placées dans la corbeille pendant 30 jours, images comprises.": {
+    "one": "The page and its sub-page will be moved to the bin for 30 days, images included.",
+    "other": "The page and its {n} sub-pages will be moved to the bin for 30 days, images included."
   },
   "La fiche n’est pas encore prête, réessayez dans un instant.": "The page is not ready yet, try again in a moment.",
-  "La fiche sera définitivement supprimée, images comprises.": "The page will be permanently deleted, images included.",
+  "La fiche sera placée dans la corbeille pendant 30 jours, images comprises.": "The page will be moved to the bin for 30 days, images included.",
   "La structure et le texte de la fiche seront proposés à la création de nouvelles fiches. Les mentions deviennent du texte simple ; images et commentaires ne sont pas repris.": "The structure and text of this page will be offered when creating new pages. Mentions become plain text; images and comments are not included.",
   "La version du {date} sera supprimée de l’historique. Le contenu actuel de la fiche ne change pas.": "The version from {date} will be removed from the history. The current content of the page is not affected.",
   "La vérité derrière l’intrigue : qui tire les ficelles, et pourquoi.": "The truth behind the plot: who is pulling the strings, and why.",
@@ -174,7 +174,7 @@
   "Liste": "List",
   "Liste numérotée": "Numbered list",
   "Liste à puces": "Bulleted list",
-  "L’événement sera retiré de la chronologie. Cette action est définitive.": "The event will be removed from the timeline. This cannot be undone.",
+  "L’événement sera placé dans la corbeille pendant 30 jours.": "The event will be moved to the bin for 30 days.",
   "Mise en forme": "Formatting",
   "Modification trop volumineuse pour être enregistrée (collage de plus de 2 Mo) : la fiche est rechargée, votre texte est gardé dans son historique. Collez-le en plusieurs fois.": "Change too large to save (paste over 2 MB): the page is reloaded and your text is kept in its history. Paste it in several parts.",
   "Modifier": "Edit",

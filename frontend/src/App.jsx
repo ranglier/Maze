@@ -9,6 +9,7 @@ import PlacesView from './components/PlacesView.jsx';
 import ScenariosView from './components/ScenariosView.jsx';
 import SearchPalette from './components/SearchPalette.jsx';
 import TimelineView from './components/TimelineView.jsx';
+import TrashView from './components/TrashView.jsx';
 import UserMenu from './components/UserMenu.jsx';
 import Workspace from './components/Workspace.jsx';
 import { Icon, useConfirm } from './components/ui.jsx';
@@ -35,6 +36,7 @@ const TREE_LABEL = {
  *   #/c/<id>/lieux[/<lieu>][?edit=1]    lieux de la campagne (fiche ouverte en édition)
  *   #/c/<id>/cartes[/<carte>][?place=<lieu>]  cartes interactives des lieux (lieu montré sur la carte)
  *   #/c/<id>/chronologie[?event=<n>]    chronologie (module facultatif, campaign.timeline_enabled), événement ouvert
+ *   #/c/<id>/corbeille                  corbeille de la campagne (éléments supprimés gardés 30 jours)
  *   #/admin/<section>
  */
 function parseHash() {
@@ -59,11 +61,12 @@ function parseHash() {
 function parsePath(hash) {
   const admin = hash.match(/^#\/admin(?:\/([\w-]+))?/);
   if (admin) return { view: 'admin', section: admin[1] || 'comptes' };
-  const m = hash.match(/^#\/c\/(\d+)(?:\/(scenarios|cartes|carte|personnages|fiche|lieux|chronologie)(?:\/([\w-]+))?)?/);
+  const m = hash.match(/^#\/c\/(\d+)(?:\/(scenarios|cartes|carte|personnages|fiche|lieux|chronologie|corbeille)(?:\/([\w-]+))?)?/);
   if (!m) return { view: 'campaign', id: null, tab: 'scenarios', docId: null };
   const id = Number(m[1]);
   if (m[2] === 'carte') return { view: 'campaign', id, tab: 'carte' };
   if (m[2] === 'chronologie') return { view: 'campaign', id, tab: 'chronologie' };
+  if (m[2] === 'corbeille') return { view: 'campaign', id, tab: 'corbeille' };
   if (m[2] === 'lieux') return { view: 'campaign', id, tab: 'lieux', placeId: m[3] ? Number(m[3]) : null };
   if (m[2] === 'cartes') return { view: 'campaign', id, tab: 'lieux', sub: 'cartes', mapId: Number(m[3]) || null };
   if (m[2] === 'personnages' || m[2] === 'fiche') {
@@ -344,7 +347,7 @@ export default function App() {
           </a>
         ))}
       </nav>
-      {route.tab !== 'carte' && route.tab !== 'chronologie' && (
+      {route.tab !== 'carte' && route.tab !== 'chronologie' && route.tab !== 'corbeille' && (
         <button type="button" className={`icon-btn tree-toggle${drawerOpen ? ' is-active' : ''}`} aria-expanded={drawerOpen}
           aria-haspopup="true"
           title={t(TREE_LABEL[route.tab])} aria-label={t(TREE_LABEL[route.tab])}
@@ -386,6 +389,16 @@ export default function App() {
         <TimelineView key={current.id} campaign={current} header={header} trailing={userMenu}
           eventId={route.event} onNavigate={navigate}
           onTargetDone={() => consumeQuery(window.location.hash.split('?')[0])} />
+        {palette}
+      </>
+    );
+  }
+
+  if (route.tab === 'corbeille') {
+    return (
+      <>
+        {bottomNav}
+        <TrashView key={current.id} campaign={current} header={header} trailing={userMenu} onNavigate={navigate} />
         {palette}
       </>
     );

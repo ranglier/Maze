@@ -128,22 +128,56 @@ export function KindImage({ src, size = 16, title }) {
 const ToastContext = createContext(() => {});
 export const useToast = () => useContext(ToastContext);
 
+// Durée d'affichage : plus longue quand la notification propose une action (« Annuler », « Ouvrir »), le temps de la
+// lire et d'y aller au clavier ; suspendue tant que la souris ou le focus est dessus.
+const TOAST_MS = { info: 2800, error: 6000, action: 10000 };
+
+/**
+ * toast(message, tone?, { action? }) : tone 'info' | 'success' | 'warning' | 'error' ; action { label, onClick } ajoute
+ * un bouton (la notification se ferme au clic, puis onClick est appelé).
+ */
 export function ToastProvider({ children }) {
   const [toasts, setToasts] = useState([]);
-  const push = useCallback((message, tone = 'info') => {
+  const dismiss = useCallback((id) => setToasts((list) => list.filter((x) => x.id !== id)), []);
+  const push = useCallback((message, tone = 'info', options = {}) => {
     const id = Math.random().toString(36).slice(2);
-    setToasts((list) => [...list, { id, message, tone }]);
-    setTimeout(() => setToasts((list) => list.filter((x) => x.id !== id)), tone === 'error' ? 6000 : 2800);
+    const action = options?.action || null;
+    const duration = tone === 'error' ? TOAST_MS.error : action ? TOAST_MS.action : TOAST_MS.info;
+    setToasts((list) => [...list, { id, message, tone, action, duration }]);
+    return id;
   }, []);
   return (
     <ToastContext.Provider value={push}>
       {children}
       <div className="toasts" role="status" aria-live="polite">
-        {toasts.map((toast) => (
-          <div key={toast.id} className={`toast toast--${toast.tone}`}>{toast.message}</div>
-        ))}
+        {toasts.map((toast) => <Toast key={toast.id} toast={toast} onDone={dismiss} />)}
       </div>
     </ToastContext.Provider>
+  );
+}
+
+function Toast({ toast, onDone }) {
+  const [paused, setPaused] = useState(false);
+  const left = useRef(toast.duration);
+  useEffect(() => {
+    if (paused) return undefined;
+    const start = Date.now();
+    const timer = setTimeout(() => onDone(toast.id), Math.max(left.current, 1500));
+    return () => { clearTimeout(timer); left.current -= Date.now() - start; };
+  }, [paused, toast.id, onDone]);
+  const { action } = toast;
+  return (
+    <div className={`toast toast--${toast.tone}${action ? ' toast--action' : ''}`}
+      onMouseEnter={() => setPaused(true)} onMouseLeave={() => setPaused(false)}
+      onFocus={() => setPaused(true)}
+      onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget)) setPaused(false); }}>
+      <span className="toast__text">{toast.message}</span>
+      {action && (
+        <button type="button" className="toast__action" onClick={() => { onDone(toast.id); action.onClick(); }}>
+          {action.label}
+        </button>
+      )}
+    </div>
   );
 }
 

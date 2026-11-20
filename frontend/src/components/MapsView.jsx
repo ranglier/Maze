@@ -11,6 +11,7 @@ import MapCanvas from './maps/MapCanvas.jsx';
 import PlacePanel from './maps/PlacePanel.jsx';
 import PinList from './maps/PinList.jsx';
 import MapDialog from './maps/MapDialog.jsx';
+import { useTrashDelete } from './TrashView.jsx';
 
 /*
  * Lieux > Carte interactive. Une image de fond (pleine définition jusqu'à 8192 px, affichée d'abord dans sa
@@ -28,6 +29,7 @@ import MapDialog from './maps/MapDialog.jsx';
 export default function MapsView({ campaign, header, trailing, mapId, focusPlace, onNavigate, onFocusDone }) {
   const cid = campaign.id;
   const run = useAction();
+  const trashDelete = useTrashDelete();
   const confirm = useConfirm();
   const { maps, setMaps, tree, loadMaps, places, byId, currentId } = useMapsData({ cid, run, mapId, focusPlace });
   const [detail, setDetail] = useState(null);     // carte affichée, avec ses épingles
@@ -99,11 +101,16 @@ export default function MapsView({ campaign, header, trailing, mapId, focusPlace
   const removeMap = async () => {
     const yes = await confirm({
       title: t('Supprimer la carte « {name} »', { name: current.name }),
-      message: t('L’image de fond et les épingles seront supprimées. Les lieux eux-mêmes ne sont pas touchés.'),
+      message: t('La carte, son image de fond et ses épingles seront placées dans la corbeille pendant 30 jours. Les lieux eux-mêmes ne sont pas touchés.'),
       confirmLabel: t('Supprimer'),
     });
     if (!yes) return;
-    if (await run(() => api.deleteMap(current.id), t('Carte supprimée')) === undefined) return;
+    // Annulation : liste des cartes rechargée, carte rouverte.
+    const restored = async (r) => {
+      await loadMaps();
+      onNavigate(`#/c/${cid}/cartes/${r?.object_id ?? current.id}`);
+    };
+    if (await trashDelete(() => api.deleteMap(current.id), t('Carte supprimée'), restored) === undefined) return;
     setDialog(null);
     setEditing(false);
     await loadMaps();

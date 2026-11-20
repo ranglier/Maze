@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api.js';
 import { Icon, Modal, useAction, useConfirm, useDialogLayer, useToast } from './ui.jsx';
 import { SectionHead, fmtDate, fmtSize } from './AdminPage.jsx';
+import { useTrashDelete } from './TrashView.jsx';
 import { KIND_LABEL } from '../constants.js';
 import { storage } from '../util.js';
 import { N_, pt, t, tn, useLocale } from '../i18n/index.js';
@@ -396,6 +397,7 @@ function ImageDialog({ img, cid, onClose, onChanged }) {
   const [remove, setRemove] = useState(true);
   const [busy, setBusy] = useState(false);
   const run = useAction();
+  const trashDelete = useTrashDelete();
   const confirm = useConfirm();
   const from = origin(img, cid);
 
@@ -445,7 +447,7 @@ function ImageDialog({ img, cid, onClose, onChanged }) {
   const remove_ = async () => {
     const message = {
       library: () => t('Elle sera retirée de la bibliothèque et supprimée du serveur. Les copies déjà faites sur des fiches restent.'),
-      map: () => t('C’est le fond d’une carte interactive : la carte et ses épingles seront supprimées (les lieux restent).'),
+      map: () => t('C’est le fond d’une carte interactive : la carte et ses épingles seront placées dans la corbeille pendant 30 jours (les lieux restent).'),
       gallery: () => t('Elle sera retirée de la galerie de « {name} » et supprimée du serveur.', { name: img.owner.name }),
       document: () => (img.used
         ? t('Elle sera retirée du texte de « {title} » puis supprimée du serveur. L’état actuel de la fiche reste dans son historique (sans l’image) ; les MJ qui l’ont ouverte la verront se recharger.',
@@ -458,7 +460,10 @@ function ImageDialog({ img, cid, onClose, onChanged }) {
     if (!yes) return;
     const call = { library: () => api.admin.deleteLibrary(img.id), gallery: () => api.deleteImage(img.id),
       document: () => api.admin.deleteDocImage(img.id), map: () => api.deleteMap(img.id) }[img.source];
-    const ok = await run(call, t('Image supprimée'));
+    // Fond de carte : la carte va à la corbeille, « Annuler » la restaure (liste des images rechargée).
+    const ok = img.source === 'map'
+      ? await trashDelete(call, t('Carte supprimée'), () => onChanged())
+      : await run(call, t('Image supprimée'));
     if (ok !== undefined) { onClose(); onChanged(); }
   };
 

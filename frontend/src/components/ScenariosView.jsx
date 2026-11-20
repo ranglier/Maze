@@ -8,6 +8,7 @@ import { LiveDocument } from '../editor/live.js';
 import { storage } from '../util.js';
 import { fmtDate } from './AdminPage.jsx';
 import { useAction, useConfirm, useToast } from './ui.jsx';
+import { useTrashDelete } from './TrashView.jsx';
 import { pt, t, tn } from '../i18n/index.js';
 import DocTree from './scenarios/DocTree.jsx';
 import DocBar from './scenarios/DocBar.jsx';
@@ -64,6 +65,7 @@ export default function ScenariosView({ campaign, user, header, trailing, docId,
     return () => ro.disconnect();
   }, [titleText, doc?.id]);
   const run = useAction();
+  const trashDelete = useTrashDelete();
   const toast = useToast();
   const confirm = useConfirm();
 
@@ -261,16 +263,21 @@ export default function ScenariosView({ campaign, user, header, trailing, docId,
     const yes = await confirm({
       title: t('Supprimer « {title} »', { title: item.title || t('Sans titre') }),
       message: subCount
-        ? tn('La fiche et sa sous-page seront définitivement supprimées, images comprises.',
-          'La fiche et ses {n} sous-pages seront définitivement supprimées, images comprises.', subCount)
-        : t('La fiche sera définitivement supprimée, images comprises.'),
+        ? tn('La fiche et sa sous-page seront placées dans la corbeille pendant 30 jours, images comprises.',
+          'La fiche et ses {n} sous-pages seront placées dans la corbeille pendant 30 jours, images comprises.', subCount)
+        : t('La fiche sera placée dans la corbeille pendant 30 jours, images comprises.'),
       confirmLabel: t('Supprimer'),
     });
     if (!yes) return;
     if (pendingMeta.current?.id === item.id) pendingMeta.current = null;
     const wasOpen = item.id === currentId || isDescendant(item.id, currentId);
     deletingRef.current = wasOpen;
-    const done = await run(() => api.deleteDocument(item.id), pt('toast', 'Fiche supprimée'));
+    // Annulation : arbre rechargé (la fiche et ses sous-pages reviennent), fiche rouverte si elle était affichée.
+    const restored = async (r) => {
+      await loadTree();
+      if (wasOpen) onNavigate(`#/c/${cid}/scenarios/${r?.object_id ?? item.id}`);
+    };
+    const done = await trashDelete(() => api.deleteDocument(item.id), pt('toast', 'Fiche supprimée'), restored);
     if (done === undefined) {
       deletingRef.current = false;
       return;
