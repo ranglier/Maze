@@ -369,11 +369,14 @@ class TrashMigrationTest(unittest.TestCase):
     def test_upgrade_from_033(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            before = root / "033"
+            before, upto = root / "033", root / "034"   # 034 seule : les migrations suivantes ont leurs tests
             before.mkdir()
+            upto.mkdir()
             for path in sorted(db.MIGRATIONS_DIR.glob("*.sql")):
                 if int(path.name[:3]) <= 33:
                     shutil.copy(path, before)
+                if int(path.name[:3]) <= 34:
+                    shutil.copy(path, upto)
             path = root / "maze.db"
             with mock.patch.object(db, "MIGRATIONS_DIR", before):
                 db.migrate(path)
@@ -383,7 +386,8 @@ class TrashMigrationTest(unittest.TestCase):
             conn = sqlite3.connect(path)
             objects, rows = schema_objects(conn), conn.execute("SELECT * FROM npcs").fetchall()
             conn.close()
-            db.migrate(path)
+            with mock.patch.object(db, "MIGRATIONS_DIR", upto):
+                db.migrate(path)
             with db.transaction(path) as conn:
                 self.assertEqual([tuple(r) for r in conn.execute("SELECT * FROM npcs")], rows)
                 self.assertEqual({k: v for k, v in schema_objects(conn).items() if k != ("index", "ix_trash_campaign")},

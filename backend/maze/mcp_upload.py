@@ -45,9 +45,9 @@ def _status(conn: sqlite3.Connection, row: dict[str, Any]) -> dict[str, Any]:
                 out["next"] = ("Insérer ce HTML (bloc à part, hors d'un paragraphe) dans le contenu de la fiche rédigée "
                                "avec update_document.")
             elif row["target"] == "library":
-                out["next"] = "Image dans la bibliothèque : view_image (library_image_id) pour la voir."
+                out["next"] = "Image dans la bibliothèque : view (kind library_image, id = library_image_id) pour la voir."
             else:
-                out["next"] = "Image ajoutée à la galerie de la fiche : view_image (image_id) pour la voir."
+                out["next"] = "Image ajoutée à la galerie de la fiche : view (kind image, id = image_id) pour la voir."
     return out
 
 

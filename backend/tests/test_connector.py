@@ -23,10 +23,11 @@ from pathlib import Path
 from tests.test_api import ADMIN_PASSWORD, Server, multipart, png_bytes, recv, recv_until, seq_of, wait_until
 
 CALLBACK = "https://claude.ai/api/mcp/auth_callback"
-# Jeu d'outils regroupé (lot connecteur-outils) : ces noms seulement, plus aucun des 42 anciens.
+# Jeu d'outils regroupé (lot connecteur-outils) et lien de dépôt d'image (lot depot-image) : ces 15 noms seulement,
+# plus aucun des 42 anciens.
 READ_TOOLS = ("list_campaigns", "get_campaign", "search", "list", "get", "view")
 TOOL_NAMES = (*READ_TOOLS, "update_document", "create", "update", "link", "unlink", "delete", "add_image",
-              "edit_image")
+              "edit_image", "request_upload")
 OLD_TOOL_NAMES = (
     "get_entry", "list_relations", "get_document", "create_entry", "update_entry", "create_relation",
     "update_relation", "delete_relation", "set_membership", "remove_membership", "set_place_link",

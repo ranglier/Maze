@@ -4,7 +4,7 @@ Claude (claude.ai) ne peut pas transmettre à Maze une image jointe à la conver
 connecteur (mcp_upload.py) crée un ticket et renvoie l'adresse #/depot/<jeton> de l'interface (UploadPage.jsx) ; le MJ,
 connecté à Maze avec un compte qui a accès à la campagne, y dépose l'image, qui arrive directement dans la cible :
 bibliothèque de la campagne, galerie d'un PNJ, d'une faction ou d'un lieu, illustration d'une fiche rédigée (comme
-add_document_image : Claude l'insère ensuite dans le texte avec update_document). Claude interroge ensuite le ticket
+add_image avec target doc:N : Claude l'insère ensuite dans le texte avec update_document). Claude interroge ensuite le ticket
 (request_upload avec ticket) pour connaître l'image créée.
 
 Jeton : 32 caractères aléatoires, conservé haché (SHA-256, connector.digest) ; valable TICKET_SECONDS, une seule fois.
