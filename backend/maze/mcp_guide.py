@@ -206,8 +206,10 @@ Les modèles fournis par Maze suivent ces plans ; un titre `<h2>` par partie (le
   `content`, `include_heading` pour remplacer aussi le titre), `insert_after_section` et `insert_before_section`
   (`heading`, `content`), `delete_section` (`heading`), `append` et `prepend` (`content`, en fin ou en tête de fiche),
   `replace_text` (`find`, `replace`, `max` : 1 par défaut, `heading` facultatif pour se limiter à une section ; texte
-  simple, pas à cheval sur une mise en forme). Le reste de la fiche, commentaires et images compris, n'est pas
-  touché. Le résultat donne la nouvelle révision et `changes`.
+  simple, pas à cheval sur une mise en forme). `content` : HTML de l'éditeur seulement (ses balises, sans
+  commentaire `<!-- -->`), balises équilibrées. Le reste de la fiche, commentaires et images compris, n'est pas
+  touché. Le résultat donne la nouvelle révision et `changes`. `outline_note` dans `get` : plan non établi (fiche
+  trop imbriquée), utiliser `content`.
 - `content` : remplace tout le HTML ; seulement pour une fiche courte ou une réécriture complète voulue par le MJ.
 Une version « Avant modification par Claude » est gardée dans l'historique de la fiche ; les MJ qui l'ont ouverte la
 voient se recharger. Refus tant que des frappes d'un MJ ne sont pas encore enregistrées : réessayer un peu plus tard.
@@ -217,7 +219,8 @@ voient se recharger. Refus tant que des frappes d'un MJ ne sont pas encore enreg
 - Image sur Internet : `add_image` avec son adresse publique. Image déjà dans Maze : `add_image` depuis la
   bibliothèque (`list` kind `library`) ou une autre image.
 - Image sur l'ordinateur du MJ (Claude ne peut pas la transmettre) : `request_upload` (`campaign_id`, `target` :
-  `library`, `npc`, `faction`, `place` ou `document`, `target_id` sauf pour la bibliothèque, `caption` facultative)
+  `library` (dépôt par un compte administrateur seulement), `npc`, `faction`, `place` ou `document`, `target_id` sauf
+  pour la bibliothèque, `caption` facultative)
   renvoie un lien (`url`) et un `ticket`. Donner le lien au MJ (valable 10 minutes, usage unique, session Maze
   ouverte), attendre qu'il dise avoir déposé l'image, puis rappeler `request_upload` avec `ticket` seul : état
   (`pending`, `used`, `expired`) et id de l'image (`image_id`, `library_image_id` ou `document_image_id` ; pour une
