@@ -191,6 +191,26 @@ class OperationsTest(unittest.TestCase):
         ok = '<p>un<p>deux</p><ul><li>a<li>b</ul><hr><br><table><tr><td>c<td>d</table><img src="x">'
         self.assertTrue(ops(DOC, {"op": "append", "content": ok}).endswith(ok))
 
+    def test_fragment_only_editor_html(self):
+        """Revue : commentaires, déclarations et éléments à texte brut contournaient le contrôle d'équilibre (le
+        navigateur les lit autrement) ; seules les balises de l'éditeur (editor/sanitize.js) sont admises."""
+        for bad, why in (("<!--><blockquote>-->", "<!"), ('<!-- --!><div data-callout="secret"> -->', "<!"),
+                         ("<plaintext></plaintext>", "<plaintext>"), ("<p>a</p><!DOCTYPE html>", "<!"),
+                         ("<![CDATA[x]]>", "<!"), ("<?xml x?>", "<?"), ("<script>alert(1)</script>", "<script>"),
+                         ("<style>p{}</style>", "<style>"), ("<textarea></textarea>", "<textarea>"),
+                         ("<xmp></xmp>", "<xmp>"), ("<p><iframe></iframe></p>", "<iframe>"),
+                         ("<template><p>x</p></template>", "<template>"), ("<noscript></noscript>", "<noscript>"),
+                         ("<p>x</p></title>", "</title>"), ("<section><p>x</p></section>", "<section>")):
+            with self.assertRaises(SectionError, msg=bad) as err:
+                apply_operations(DOC, [{"op": "insert_after_section", "heading": "Scène 1", "content": bad}])
+            self.assertIn(why, str(err.exception))
+        ok = ('<h3 data-align="center">T</h3><div data-callout="read"><p><strong>a</strong> <em>b</em> <u>c</u> '
+              '<s>d</s> <code>e</code> <a href="https://example.org">f</a> <sub>1</sub><sup>2</sup>'
+              '<span data-comment="3">g</span></p></div><blockquote><p>h</p></blockquote><ol start="2"><li>i</li>'
+              '</ol><table><colgroup><col></colgroup><thead><tr><th>j</th></tr></thead><tbody><tr><td>k</td></tr>'
+              '</tbody></table><p>l<br>m</p><hr><img src="/media/1/a.webp" data-doc-image="7">')
+        self.assertTrue(ops(DOC, {"op": "append", "content": ok}).endswith(ok))
+
     def test_parameters(self):
         for bad, why in (([], "au moins une"), ("x", "au moins une"), ([1], "objet attendu"),
                          ([{"op": "move"}], "op parmi"),

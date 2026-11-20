@@ -10,8 +10,9 @@ liste des titres de la fiche dans le message.
 Les opérations découpent le HTML enregistré sans le réécrire : tout ce qui est hors des zones remplacées reste octet
 pour octet (ancres de commentaires <span data-comment>, illustrations <img data-doc-image>, mentions). Le HTML fourni
 est enregistré tel quel, comme content (le serveur ne le réécrit pas ; l'interface le filtre à l'affichage,
-editor/sanitize.js), après une seule vérification : ses balises sont équilibrées, pour qu'il n'englobe pas la suite
-de la fiche. Découpage au sens du tokeniseur
+editor/sanitize.js), après vérification : seulement les balises de l'éditeur (FRAGMENT_TAGS, celles que garde
+editor/sanitize.js), sans commentaire ni déclaration (<!…>, <?…>), que le navigateur lit autrement que ce
+découpage ; balises équilibrées, pour qu'il n'englobe pas la suite de la fiche. Découpage au sens du tokeniseur
 HTML, comme htmlimg.py : coût linéaire, sans retour arrière (piles d'indices par nom de balise : une fermeture
 cherche son ouvrante sans parcourir la pile). Plus de MAX_DEPTH balises imbriquées : plan vide avec une note,
 opérations refusées (un MJ peut enregistrer n'importe quel HTML).
@@ -41,6 +42,9 @@ VOID = frozenset("area base br col embed hr img input link meta source track wbr
 _CLOSES_P = frozenset("address article aside blockquote details div dl fieldset figcaption figure footer form h1 h2 "
                       "h3 h4 h5 h6 header hr main nav ol p pre section table ul".split())
 _P_SCOPE = frozenset("button caption table td th".split())
+# Balises admises dans le HTML fourni aux opérations : celles que garde l'affichage (editor/sanitize.js, TAGS).
+FRAGMENT_TAGS = frozenset("p br h1 h2 h3 strong b em i u s strike del ul ol li blockquote a hr img div span sub sup "
+                          "code table thead tbody tr th td colgroup col".split())
 MAX_DEPTH = 200   # balises imbriquées au plus (plan des titres, opérations)
 
 OPS = ("replace_section", "insert_after_section", "insert_before_section", "append", "prepend", "delete_section",
@@ -72,7 +76,7 @@ OPERATIONS_SCHEMA: dict[str, Any] = {
         "insert_after_section / insert_before_section {heading, content} ; append / prepend {content} : fin / début "
         "de la fiche ; delete_section {heading} ; replace_text {find, replace, max?, heading?} : texte simple dans le "
         "texte affiché (pas les attributs, ni à cheval sur une mise en forme), refus si absent ou plus de max fois "
-        "(1 par défaut). content : HTML de l'éditeur, balises équilibrées."),
+        "(1 par défaut). content : HTML de l'éditeur (ses balises seulement, sans commentaire), balises équilibrées."),
     "items": {
         "type": "object",
         "properties": {
@@ -152,6 +156,7 @@ class _Scan:
     strays: list[str]     # balises fermantes sans ouvrante
     broken: bool
     too_deep: bool = False      # plus de MAX_DEPTH balises imbriquées : découpage arrêté là
+    foreign: str = ""           # première balise, commentaire ou déclaration hors FRAGMENT_TAGS (« <script> »)
 
 
 _LI_LIMITS = ("ul", "ol")
@@ -168,6 +173,7 @@ def _scan(src: str) -> _Scan:
     heads: list[Heading] = []
     strays: list[str] = []
     broken = too_deep = False
+    foreign = ""
     current: Heading | None = None
     parts: list[str] = []
 
@@ -196,7 +202,11 @@ def _scan(src: str) -> _Scan:
                 parts.append(html.unescape(src[start:end]))
         elif kind == "broken":
             broken = True
+        elif kind == "comment":
+            foreign = foreign or src[start:start + 2]
         elif kind == "open":
+            if name not in FRAGMENT_TAGS:
+                foreign = foreign or f"<{name}>"
             if stack:
                 if name in _CLOSES_P:
                     close_nearest(("p",), _P_SCOPE, start)
@@ -220,13 +230,15 @@ def _scan(src: str) -> _Scan:
             where.setdefault(name, []).append(len(stack))
             stack.append(name)
         elif kind == "close":
+            if name not in FRAGMENT_TAGS:
+                foreign = foreign or f"</{name}>"
             if where.get(name):
                 pop_to(where[name][-1], end)
             elif name not in VOID:
                 strays.append(name)
     open_tags = list(stack)
     pop_to(0, len(src))
-    return _Scan([] if too_deep else heads, open_tags, strays, broken, too_deep)
+    return _Scan([] if too_deep else heads, open_tags, strays, broken, too_deep, foreign)
 
 
 def _norm(text: str) -> str:
@@ -307,6 +319,11 @@ def _check_fragment(content: str) -> None:
         raise SectionError(f"content : plus de {MAX_DEPTH} balises imbriquées")
     if scan.broken:
         raise SectionError("content : HTML incomplet (balise, guillemet ou commentaire jamais fermé)")
+    if scan.foreign:
+        what = ("commentaire ou déclaration " + scan.foreign + "…" if scan.foreign[:2] in ("<!", "<?")
+                else "balise " + scan.foreign)
+        raise SectionError(f"content : {what} refusé(e) ; balises admises (HTML de l'éditeur) : "
+                           f"{', '.join(sorted(FRAGMENT_TAGS))}")
     if scan.strays:
         raise SectionError(f"content : balise </{scan.strays[0]}> sans balise ouvrante")
     if scan.open:
