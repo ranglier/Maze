@@ -87,7 +87,7 @@ Order: database > server > interface > tests. Every REST call of the interface i
 
 **Timeline (optional module)**
 - DB: `032_timeline.sql` (`campaigns.timeline_enabled`, `timeline_events`, `timeline_mentions`, search type `event`).
-- Server: `timeline.py` (events, order, `sync_event_mentions`), `api.py` (`timeline_enabled` on campaigns), `search.py`; export / import in `transfer.py`; connector tools `list_events`, `create_event`, `update_event`, `delete_event` in `mcp.py`.
+- Server: `timeline.py` (events, order, `sync_event_mentions`), `api.py` (`timeline_enabled` on campaigns), `search.py`; export / import in `transfer.py`; connector: `list`, `get`, `create`, `update`, `delete` with kind `event` (`mcp_tools.py`, one-item handlers in `mcp.py`).
 - Interface: `components/TimelineView.jsx` (list and ordinal timeline), `timeline.js`; "Chronologie" section on NPC, faction and place sheets.
 - Tests: `test_timeline`, `test_api` (`TimelineTransferTest`), `test_connector` (`test_timeline`); node `timeline.test.mjs`; e2e `chronologie`.
 
@@ -119,7 +119,7 @@ Order: database > server > interface > tests. Every REST call of the interface i
 
 **Claude connector (MCP)**
 - DB: `015_claude_connector.sql`, `024_mcp_log_campaign_name.sql`, `033_mcp_delete_grant.sql` (grant mode `delete`: read, write and delete).
-- Server: `mcp.py` (`/mcp`, tools, `Context`: `check_write`, `check_delete`; delete tools `delete_entry`, `delete_document`, `delete_event`, `delete_map`, `delete_comment`), `mcp_images.py`, `mcp_maps.py`, `oauth.py` (OAuth 2.1), `connector.py` (settings, grants, log).
+- Server: `mcp.py` (`/mcp`, protocol, `list_campaigns`, `get_campaign` (summary under 40 000 characters, paginated sections), `search`, `update_document`, `Context`: `check_write`, `check_delete`, `fresh`; `Batch` journal one line per item; one-item handlers `create_entry`, `set_membership`, `delete_entry`...), `mcp_tools.py` (the exposed tools: `list`, `get`, `view`, batch writes `create`, `update`, `link`, `unlink`, `delete`, `add_image`, `edit_image` with `items`, 1 to 100), `mcp_images.py`, `mcp_maps.py` (image and map handlers), `oauth.py` (OAuth 2.1), `connector.py` (settings, grants, log).
 - Interface: `components/ClaudeSection.jsx`.
 - Tests: `test_connector`.
 
@@ -199,7 +199,7 @@ Run from the repository root unless stated.
 - Claude connector tool descriptions and messages stay in French (read by Claude), as do server logs.
 - Foundry hashes: page HTML in French must stay byte-identical, or every imported page looks modified in Foundry; fixed hashes in `foundry-module.test.mjs`.
 - `maze-sync.mjs` has no `import` / `export`: the node test loads it as is in `node:vm`.
-- `base_revision`: PATCH of an entry compares it and returns 409 with the current state on conflict; required by connector `update_document`, optional for `update_entry`. Send only changed fields.
+- `base_revision`: PATCH of an entry compares it and returns 409 with the current state on conflict; required by connector `update_document`, optional for connector `update` of an entry. Send only changed fields.
 - Every route that takes an object id checks its campaign (`api.scoped` / `auth.can_access`); request bodies are size-limited (`limits.py`).
 - Database work runs off the event loop: `@api.threaded` routes, or `await api.in_tx(request, work)`; GET is a read-only transaction.
 - Server tests wait with `test_api.wait_until`, not a fixed `sleep`.
