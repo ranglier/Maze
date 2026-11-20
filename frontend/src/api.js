@@ -204,6 +204,7 @@ export const api = {
   createEntity: (kind, cid, data) => request('POST', `/api/campaigns/${cid}/${plural[kind]}`, data),
   getEntity: (kind, id) => request('GET', `/api/${plural[kind]}/${id}`),
   updateEntity: (kind, id, data) => request('PATCH', `/api/${plural[kind]}/${id}`, data),
+  // Suppression d'un PNJ, d'une faction ou d'un lieu : mis à la corbeille, réponse { trash_id } (restoreTrash).
   deleteEntity: (kind, id) => request('DELETE', `/api/${plural[kind]}/${id}`),
   campaignImages: (cid) => request('GET', `/api/campaigns/${cid}/images`),
   copyImageToEntity: (kind, id, data) => request('POST', `/api/${plural[kind]}/${id}/images/copy`, data),
@@ -232,7 +233,7 @@ export const api = {
   createEvent: (cid, data) => request('POST', `/api/campaigns/${cid}/events`, data),
   // data : champs modifiés seulement, et base_revision (409 avec l'état actuel en cas de conflit).
   updateEvent: (id, data) => request('PATCH', `/api/events/${id}`, data),
-  deleteEvent: (id) => request('DELETE', `/api/events/${id}`),
+  deleteEvent: (id) => request('DELETE', `/api/events/${id}`),  // corbeille : { trash_id }
   orderEvents: (cid, ids) => request('PUT', `/api/campaigns/${cid}/events/order`, { ids }),
 
   documents: (cid) => request('GET', `/api/campaigns/${cid}/documents`),
@@ -241,7 +242,7 @@ export const api = {
   reorderDocuments: (cid, parentId, ids) => request('PUT', `/api/campaigns/${cid}/documents/order`, { parent_id: parentId, ids }),
   getDocument: (id) => request('GET', `/api/documents/${id}`),
   updateDocument: (id, data) => request('PATCH', `/api/documents/${id}`, data),
-  deleteDocument: (id) => request('DELETE', `/api/documents/${id}`),
+  deleteDocument: (id) => request('DELETE', `/api/documents/${id}`),  // avec ses sous-pages ; corbeille : { trash_id }
   duplicateDocument: (id) => request('POST', `/api/documents/${id}/duplicate`),
 
   versions: (docId) => request('GET', `/api/documents/${docId}/versions`),
@@ -295,13 +296,21 @@ export const api = {
   copyMap: (cid, data) => request('POST', `/api/campaigns/${cid}/maps/copy`, data),
   reorderMaps: (cid, ids) => request('PUT', `/api/campaigns/${cid}/maps/order`, { ids }),
   updateMap: (id, data) => request('PATCH', `/api/maps/${id}`, data),
-  deleteMap: (id) => request('DELETE', `/api/maps/${id}`),
+  deleteMap: (id) => request('DELETE', `/api/maps/${id}`),  // corbeille : { trash_id }
   replaceMapImage: (id, file, onProgress) => {
     const form = new FormData();
     form.append('file', file);
     return uploadRaw(`/api/maps/${id}/image`, form, null, onProgress);
   },
   copyMapImage: (id, data) => request('POST', `/api/maps/${id}/image/copy`, data),
+  // Corbeille d'une campagne (30 jours) : PNJ, factions, lieux, fiches rédigées, événements et cartes supprimés.
+  // listTrash → { items: [{ id, kind, object_id, name, deleted_at, expires_at, deleted_by_name, via, summary }] } ;
+  // restoreTrash → { kind, object_id } (409 et explication si la restauration est impossible).
+  listTrash: (cid) => request('GET', `/api/campaigns/${cid}/trash`),
+  restoreTrash: (id) => request('POST', `/api/trash/${id}/restore`),
+  purgeTrash: (id) => request('DELETE', `/api/trash/${id}`),
+  emptyTrash: (cid) => request('DELETE', `/api/campaigns/${cid}/trash`),
+
   setPin: (mapId, placeId, x, y) => request('PUT', `/api/maps/${mapId}/pins/${placeId}`, { x, y }),
   deletePin: (mapId, placeId) => request('DELETE', `/api/maps/${mapId}/pins/${placeId}`),
 };

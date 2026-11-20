@@ -550,6 +550,7 @@ export default function Workspace({
             onStartLink={(id) => setLink({ source: id })}
             onChanged={reload}
             onDeleted={() => { setSelection(null); reload(); loadMentions(); }}
+            onRestored={() => { reload(); loadMentions(); }}
           />
         )}
         {selectedRelation && (

@@ -91,11 +91,11 @@ Order: database > server > interface > tests. Every REST call of the interface i
 - Interface: `components/TimelineView.jsx` (list and ordinal timeline), `timeline.js`; "Chronologie" section on NPC, faction and place sheets.
 - Tests: `test_timeline`, `test_api` (`TimelineTransferTest`), `test_connector` (`test_timeline`); node `timeline.test.mjs`; e2e `chronologie`.
 
-**Trash (deleted NPCs, factions, places, written pages, events, maps)**
+**Trash (30 days: deleted NPCs, factions, places, written pages, events, maps)**
 - DB: `034_trash.sql` (`trash`: payload of every row removed or changed by the deletion, a zlib BLOB read with `trash.load_payload`, files, counts, `via`).
 - Server: `trash.py` (`put` wraps a route's deletion code and captures it with TEMP triggers, delete routes open their transaction with `trash.deleting(request)`, which moves files to `media/<campaign>/.trash/` on exit under the process lock `moving()`, also held by restore and purge, `restore`, `purge_expired`, routes `/api/campaigns/{id}/trash`, `/api/trash/{id}`, `/api/trash/{id}/restore`), delete routes in `api.py`, `places.py`, `documents.py`, `timeline.py`, `maps.py`, `media_admin.delete_images` (maps); daily purge task in `app.py`; `mediafiles.TRASH_DIR` (not served by `/media`, accepted by `backup.py`).
-- Interface: trash view and confirmations (`api.js`, lot corbeille-ui).
-- Tests: `test_trash` (round trip of every kind compared table by table, conflicts, purge, access, connector, backup).
+- Interface: `components/TrashView.jsx` (view `#/c/<id>/corbeille`, opened from `CampaignMenu.jsx`; `useTrashDelete`: deletion toast with "Annuler" that restores), `trash.js` (pure logic), `api.js` (`listTrash`, `restoreTrash`, `purgeTrash`, `emptyTrash`), toasts with an action in `components/ui.jsx`; callers: `EntityPanel.jsx`, `PlacesView.jsx`, `ScenariosView.jsx`, `TimelineView.jsx`, `MapsView.jsx`, `ImagesSection.jsx` (map background).
+- Tests: `test_trash` (round trip of every kind compared table by table, conflicts, purge, access, connector, backup); node `trash.test.mjs`; e2e `corbeille`.
 
 **Campaign export and import**
 - Server: `transfer.py` (`SECTIONS`, import limits, id rewriting), `limits.py` (`MAZE_MAX_IMPORT_MB`).

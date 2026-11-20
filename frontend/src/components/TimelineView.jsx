@@ -8,6 +8,7 @@ import RichField from './RichField.jsx';
 import useScenarioData from './scenarios/useScenarioData.js';
 import { useTreeDrag } from './treeDrag.js';
 import { Field, Icon, Markdown, TagInput, useAction, useConfirm, useToast } from './ui.jsx';
+import { useTrashDelete } from './TrashView.jsx';
 import { LegendDots, LegendPanel } from './Legend.jsx';
 import { N_, compareText, t, tn } from '../i18n/index.js';
 
@@ -37,6 +38,7 @@ const markerColor = (ev) => (ev.tags?.length ? TL.tagColor(ev.tags[0]) : 'var(--
 export default function TimelineView({ campaign, header, trailing, eventId, onNavigate, onTargetDone }) {
   const cid = campaign.id;
   const run = useAction();
+  const trashDelete = useTrashDelete();
   const confirm = useConfirm();
   const [events, setEvents] = useState(null);
   const [mode, setModeState] = useState(() => TL.initialMode(storage.get(MODE_KEY), phonePortrait()));
@@ -156,11 +158,16 @@ export default function TimelineView({ campaign, header, trailing, eventId, onNa
   const remove = async (ev) => {
     const ok = await confirm({
       title: t('Supprimer « {title} »', { title: ev.title }),
-      message: t('L’événement sera retiré de la chronologie. Cette action est définitive.'),
+      message: t('L’événement sera placé dans la corbeille pendant 30 jours.'),
       confirmLabel: t('Supprimer'),
     });
     if (!ok) return;
-    if (await run(() => api.deleteEvent(ev.id), t('Événement supprimé')) === undefined) return;
+    // Annulation : chronologie rechargée, l'événement reprend sa place et est mis en évidence.
+    const restored = async (r) => {
+      await load();
+      setHighlight(r?.object_id ?? ev.id);
+    };
+    if (await trashDelete(() => api.deleteEvent(ev.id), t('Événement supprimé'), restored) === undefined) return;
     setEvents((list) => list.filter((e) => e.id !== ev.id));
     if (selected === ev.id) setSelected(null);
     if (form?.id === ev.id) setForm(null);

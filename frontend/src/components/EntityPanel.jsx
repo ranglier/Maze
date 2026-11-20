@@ -7,6 +7,7 @@ import { initialsAvatar, nodeId } from '../util.js';
 import { EntrySideButton, SectionComment } from './EntryNotes.jsx';
 import Gallery from './Gallery.jsx';
 import { TimelineSection } from './TimelineView.jsx';
+import { useTrashDelete } from './TrashView.jsx';
 import RichField from './RichField.jsx';
 import { mentionEntities } from './mentionEntities.js';
 import { ConflictPanel, useEntryDraft } from './EntryDraft.jsx';
@@ -17,15 +18,17 @@ import { N_, compareText, pt, t, tn } from '../i18n/index.js';
  * Fiche PNJ / faction. Sur la carte : panneau latéral. Dans l'index des personnages (`page`) :
  * pleine page, sans bouton de fermeture ni de centrage.
  * `mapAction` (facultatif) : action propre à la carte du scénario ({ label, icon, onClick }).
+ * Suppression : fiche mise à la corbeille, « Annuler » dans la notification ; `onRestored({ kind, object_id })` après
+ * l'annulation (défaut : onChanged).
  */
 export default function EntityPanel({
   kind, id, graph, version, startInEdit, nodeName, resolveRef, page = false, mapAction = null, timelineEnabled = false,
-  onClose, onOpenNode, onOpenEdge, onFocus, onStartLink, onChanged, onDeleted, onEditingChange,
+  onClose, onOpenNode, onOpenEdge, onFocus, onStartLink, onChanged, onDeleted, onRestored, onEditingChange,
 }) {
   const [entity, setEntity] = useState(null);
   const [editing, setEditing] = useState(Boolean(startInEdit));
   const [loadError, setLoadError] = useState(null);
-  const run = useAction();
+  const trashDelete = useTrashDelete();
   const confirm = useConfirm();
   const nid = nodeId(kind, id);
 
@@ -44,11 +47,12 @@ export default function EntityPanel({
   const remove = async () => {
     const ok = await confirm({
       title: t('Supprimer {name}', { name: entity.name }),
-      message: t('La fiche, ses images et toutes ses relations seront supprimées. Cette action est définitive.'),
+      message: t('La fiche sera placée dans la corbeille pendant 30 jours, avec ses images et ses relations.'),
     });
     if (!ok) return;
-    const done = await run(() => api.deleteEntity(kind, id),
-      kind === 'faction' ? t('{name} supprimée', { name: entity.name }) : t('{name} supprimé', { name: entity.name }));
+    const done = await trashDelete(() => api.deleteEntity(kind, id),
+      kind === 'faction' ? t('{name} supprimée', { name: entity.name }) : t('{name} supprimé', { name: entity.name }),
+      (restored) => (onRestored || onChanged)?.(restored));
     if (done !== undefined) onDeleted();
   };
 

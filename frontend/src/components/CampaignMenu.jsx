@@ -178,6 +178,12 @@ export default function CampaignMenu({ campaigns, current, onSwitch, onChanged, 
                 {' '}{current.timeline_enabled ? t('Désactiver la chronologie') : t('Activer la chronologie')}
               </button>
             )}
+            {current && (
+              <a role="menuitem" href={`#/c/${current.id}/corbeille`} onClick={() => setOpen(false)} data-trash-link=""
+                title={t('Éléments supprimés de la campagne, restaurables pendant 30 jours')}>
+                <Icon name="trash" size={15} /> {t('Corbeille')}
+              </a>
+            )}
             <button type="button" role="menuitem" disabled={importer.progress !== null}
               onClick={() => { setOpen(false); importer.pick(); }}>
               <Icon name="upload" size={15} /> {importLabel(importer.progress)}

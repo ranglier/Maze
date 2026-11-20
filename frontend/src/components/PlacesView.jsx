@@ -13,6 +13,7 @@ import PlaceTree from './PlaceTree.jsx';
 import RichField from './RichField.jsx';
 import { mentionEntities } from './mentionEntities.js';
 import { TimelineSection } from './TimelineView.jsx';
+import { useTrashDelete } from './TrashView.jsx';
 import { ConflictPanel, useEntryDraft } from './EntryDraft.jsx';
 import { Field, Icon, KindImage, Markdown, Modal, TagInput, useAction, useConfirm, useToast } from './ui.jsx';
 
@@ -54,6 +55,7 @@ export default function PlacesView({
   const [creating, setCreating] = useState(null); // { parentId }
   const [managingKinds, setManagingKinds] = useState(false);
   const run = useAction();
+  const trashDelete = useTrashDelete();
   const confirm = useConfirm();
 
   const loadTree = useCallback(async () => {
@@ -152,15 +154,21 @@ export default function PlacesView({
     const yes = await confirm({
       title: t('Supprimer « {name} »', { name: item.name }),
       message: kids
-        ? tn('Le lieu et ses images seront supprimés. Son sous-lieu remontera d’un niveau. Les PNJ et factions qui y étaient reliés ne sont pas touchés.',
-          'Le lieu et ses images seront supprimés. Ses {n} sous-lieux remonteront d’un niveau. Les PNJ et factions qui y étaient reliés ne sont pas touchés.', kids)
-        : t('Le lieu et ses images seront supprimés. Les PNJ et factions qui y étaient reliés ne sont pas touchés.'),
+        ? tn('Le lieu et ses images seront placés dans la corbeille pendant 30 jours. Son sous-lieu remontera d’un niveau ; il reviendra sous ce lieu à la restauration s’il n’a pas été déplacé entre-temps. Les PNJ et factions qui y étaient reliés ne sont pas touchés.',
+          'Le lieu et ses images seront placés dans la corbeille pendant 30 jours. Ses {n} sous-lieux remonteront d’un niveau ; ils reviendront sous ce lieu à la restauration s’ils n’ont pas été déplacés entre-temps. Les PNJ et factions qui y étaient reliés ne sont pas touchés.', kids)
+        : t('Le lieu et ses images seront placés dans la corbeille pendant 30 jours. Les PNJ et factions qui y étaient reliés ne sont pas touchés.'),
       confirmLabel: t('Supprimer'),
     });
     if (!yes) return;
-    if (await run(() => api.deleteEntity('place', item.id), t('Lieu supprimé')) === undefined) return;
+    const wasOpen = item.id === placeId;
+    // Annulation : arbre rechargé (le lieu revient), puis le lieu rouvert s'il était affiché.
+    const restored = async (r) => {
+      await Promise.all([loadTree(), loadGraph()]);
+      if (wasOpen) go(r?.object_id ?? item.id);
+    };
+    if (await trashDelete(() => api.deleteEntity('place', item.id), t('Lieu supprimé'), restored) === undefined) return;
     // Les sous-lieux remontent d'un niveau : seul le lieu supprimé lui-même disparaît.
-    if (item.id === placeId) {
+    if (wasOpen) {
       await loadTree();
       go(item.parent_id);
     } else {

@@ -107,6 +107,10 @@ export default function CharactersView({
               onStartLink={(nid) => setDialog({ type: 'relation', source: nid })}
               onChanged={reload}
               onDeleted={async () => { go(null); await reload(); }}
+              onRestored={async (restored) => {
+                await reload();
+                go(nodeId(restored?.kind || selected.kind, restored?.object_id ?? selected.id));
+              }}
               onEditingChange={setEntityEditing}
             />
           </EntryShell>
