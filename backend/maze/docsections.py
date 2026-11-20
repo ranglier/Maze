@@ -11,7 +11,10 @@ Les opérations découpent le HTML enregistré sans le réécrire : tout ce qui 
 pour octet (ancres de commentaires <span data-comment>, illustrations <img data-doc-image>, mentions). Le HTML fourni
 est enregistré tel quel, comme content (le serveur ne le réécrit pas ; l'interface le filtre à l'affichage,
 editor/sanitize.js), après une seule vérification : ses balises sont équilibrées, pour qu'il n'englobe pas la suite
-de la fiche. Découpage au sens du tokeniseur HTML, comme htmlimg.py : coût linéaire, sans retour arrière.
+de la fiche. Découpage au sens du tokeniseur
+HTML, comme htmlimg.py : coût linéaire, sans retour arrière (piles d'indices par nom de balise : une fermeture
+cherche son ouvrante sans parcourir la pile). Plus de MAX_DEPTH balises imbriquées : plan vide avec une note,
+opérations refusées (un MJ peut enregistrer n'importe quel HTML).
 """
 
 from __future__ import annotations
@@ -38,6 +41,7 @@ VOID = frozenset("area base br col embed hr img input link meta source track wbr
 _CLOSES_P = frozenset("address article aside blockquote details div dl fieldset figcaption figure footer form h1 h2 "
                       "h3 h4 h5 h6 header hr main nav ol p pre section table ul".split())
 _P_SCOPE = frozenset("button caption table td th".split())
+MAX_DEPTH = 200   # balises imbriquées au plus (plan des titres, opérations)
 
 OPS = ("replace_section", "insert_after_section", "insert_before_section", "append", "prepend", "delete_section",
        "replace_text")
@@ -147,33 +151,44 @@ class _Scan:
     open: list[str]       # balises restées ouvertes à la fin
     strays: list[str]     # balises fermantes sans ouvrante
     broken: bool
+    too_deep: bool = False      # plus de MAX_DEPTH balises imbriquées : découpage arrêté là
+
+
+_LI_LIMITS = ("ul", "ol")
+_CELL_LIMITS = ("tr", "table")
+_TR_LIMITS = ("table", "thead", "tbody", "tfoot")
 
 
 def _scan(src: str) -> _Scan:
-    """Titres de premier niveau et équilibre des balises (fermetures implicites usuelles : <p>, <li>, <tr>, <td>)."""
+    """Titres de premier niveau et équilibre des balises (fermetures implicites usuelles : <p>, <li>, <tr>, <td>).
+    Coût linéaire : à côté de la pile, l'indice de chaque balise ouverte est rangé par nom (where), d'où la balise
+    ouverte la plus proche d'un nom donné sans parcourir la pile."""
     stack: list[str] = []
+    where: dict[str, list[int]] = {}
     heads: list[Heading] = []
     strays: list[str] = []
-    broken = False
+    broken = too_deep = False
     current: Heading | None = None
     parts: list[str] = []
 
+    def nearest(names: tuple[str, ...] | frozenset[str]) -> int:
+        """Indice dans la pile de la plus proche balise ouverte de l'un de ces noms (-1 : aucune)."""
+        return max((where[n][-1] for n in names if where.get(n)), default=-1)
+
     def pop_to(index: int, at: int) -> None:
         nonlocal current
-        del stack[index:]
+        while len(stack) > index:
+            where[stack.pop()].pop()
         if not stack and current is not None:
             current.end = at
             current.text = " ".join(unicodedata.normalize("NFC", "".join(parts)).split())
             heads.append(current)
             current = None
 
-    def close_nearest(names: tuple[str, ...], limits: frozenset[str], at: int) -> None:
-        for i in range(len(stack) - 1, -1, -1):
-            if stack[i] in names:
-                pop_to(i, at)
-                return
-            if stack[i] in limits:
-                return
+    def close_nearest(names: tuple[str, ...], limits: tuple[str, ...] | frozenset[str], at: int) -> None:
+        i = nearest(names)
+        if i >= 0 and i > nearest(limits):
+            pop_to(i, at)
 
     for kind, start, end, name in _tokens(src):
         if kind == "text":
@@ -188,35 +203,48 @@ def _scan(src: str) -> _Scan:
                 if name in HEADINGS and stack and stack[-1] in HEADINGS:
                     pop_to(len(stack) - 1, start)
                 elif name == "li":
-                    close_nearest(("li",), frozenset(("ul", "ol")), start)
+                    close_nearest(("li",), _LI_LIMITS, start)
                 elif name in ("td", "th"):
-                    close_nearest(("td", "th"), frozenset(("tr", "table")), start)
+                    close_nearest(("td", "th"), _CELL_LIMITS, start)
                 elif name == "tr":
-                    close_nearest(("tr",), frozenset(("table", "thead", "tbody", "tfoot")), start)
+                    close_nearest(("tr",), _TR_LIMITS, start)
             if name in VOID:
                 if current is not None and name == "br":
                     parts.append(" ")
                 continue
             if not stack and name in HEADINGS:
                 current, parts = Heading(HEADINGS[name], "", start, len(src)), []
+            if len(stack) >= MAX_DEPTH:
+                too_deep = True
+                break
+            where.setdefault(name, []).append(len(stack))
             stack.append(name)
         elif kind == "close":
-            if name in stack:
-                pop_to(len(stack) - 1 - stack[::-1].index(name), end)
+            if where.get(name):
+                pop_to(where[name][-1], end)
             elif name not in VOID:
                 strays.append(name)
     open_tags = list(stack)
     pop_to(0, len(src))
-    return _Scan(heads, open_tags, strays, broken)
+    return _Scan([] if too_deep else heads, open_tags, strays, broken, too_deep)
 
 
 def _norm(text: str) -> str:
     return " ".join(unicodedata.normalize("NFC", text).casefold().split())
 
 
+def describe(src: str) -> tuple[list[dict[str, Any]], str | None]:
+    """(titres de premier niveau de la fiche, dans l'ordre : ceux que les opérations par section désignent ; note
+    si le plan n'a pas pu être établi)."""
+    scan = _scan(src or "")
+    if scan.too_deep:
+        return [], (f"Plan non établi : la fiche a plus de {MAX_DEPTH} balises imbriquées ; operations "
+                    "d'update_document impossibles, utiliser content (contenu complet).")
+    return [{"level": h.level, "text": h.text} for h in scan.headings], None
+
+
 def outline(src: str) -> list[dict[str, Any]]:
-    """Titres de premier niveau de la fiche, dans l'ordre : ceux que les opérations par section désignent."""
-    return [{"level": h.level, "text": h.text} for h in _scan(src or "").headings]
+    return describe(src)[0]
 
 
 # --- Sections --------------------------------------------------------------------------------------------------------
@@ -275,6 +303,8 @@ def _section(src: str, heads: list[Heading], query: str, occurrence: int | None)
 
 def _check_fragment(content: str) -> None:
     scan = _scan(content)
+    if scan.too_deep:
+        raise SectionError(f"content : plus de {MAX_DEPTH} balises imbriquées")
     if scan.broken:
         raise SectionError("content : HTML incomplet (balise, guillemet ou commentaire jamais fermé)")
     if scan.strays:
@@ -387,6 +417,9 @@ def apply_operations(src: str, operations: Any) -> tuple[str, list[str]]:
     if len(operations) > MAX_OPERATIONS:
         raise SectionError(f"operations : {MAX_OPERATIONS} au plus par appel")
     steps = [_params(i, op) for i, op in enumerate(operations)]   # tout vérifier avant d'appliquer
+    if _scan(src or "").too_deep:
+        raise SectionError(f"La fiche a plus de {MAX_DEPTH} balises imbriquées : modification par sections "
+                           "impossible, utiliser content (contenu complet).")
     out, changes = src or "", []
     for i, (name, params) in enumerate(steps):
         try:

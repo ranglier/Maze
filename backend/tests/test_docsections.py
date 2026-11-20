@@ -7,6 +7,7 @@ Lancer : cd backend && python -m unittest -q tests.test_docsections
 from __future__ import annotations
 
 import asyncio
+import time
 import unittest
 
 from maze import db, docsections, mcp, mcp_tools
@@ -36,6 +37,30 @@ class OutlineTest(unittest.TestCase):
                '<blockquote><h1>Citée</h1></blockquote><ul><li><h3>En liste</h3></li></ul>'
                '<table><tr><td><h2>En tableau</h2></td></tr></table><p>fin</p>')
         self.assertEqual(outline(src), [{"level": 2, "text": "Les Ombres & co suite"}, {"level": 3, "text": "Petit"}])
+
+    def test_deep_nesting(self):
+        """Revue : imbrication profonde. Coût linéaire (plus de parcours de la pile à chaque balise), et plafond
+        MAX_DEPTH : plan vide avec une note, opérations refusées."""
+        wide = "<div>" * 190 + "<div><p>x</p><ul><li>a<li>b</ul></div>" * 20000 + "</div>" * 190 + "<h2>Fin</h2>"
+        t0 = time.perf_counter()
+        self.assertEqual(outline(wide), [{"level": 2, "text": "Fin"}])
+        self.assertLess(time.perf_counter() - t0, 0.5)
+        deep = "<div>" * 20000 + "</div>" * 20000
+        t0 = time.perf_counter()
+        heads, note = docsections.describe(deep)
+        self.assertLess(time.perf_counter() - t0, 0.2)
+        self.assertEqual(heads, [])
+        self.assertIn(f"plus de {docsections.MAX_DEPTH} balises imbriquées", note)
+        self.assertEqual(docsections.describe(DOC), (outline(DOC), None))
+        limit = "<div>" * docsections.MAX_DEPTH + "</div>" * docsections.MAX_DEPTH
+        self.assertEqual(ops(limit, {"op": "append", "content": limit}), limit * 2)
+        for src, content, why in ((deep, "<p>x</p>", "content (contenu complet)"),
+                                  (DOC, "<div>" * 300 + "</div>" * 300, "content : plus de")):
+            t0 = time.perf_counter()
+            with self.assertRaises(SectionError) as err:
+                apply_operations(src, [{"op": "append", "content": content}])
+            self.assertLess(time.perf_counter() - t0, 0.2)
+            self.assertIn(why, str(err.exception))
 
     def test_sloppy_html(self):
         # <p> non fermés, <li> implicites : les titres de premier niveau restent trouvés.

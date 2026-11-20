@@ -1513,6 +1513,41 @@ class ConnectorTest(unittest.TestCase):
         self.assertIn("lecture seule", err)
         self.assertIn("introuvable", self.tool(token, "list", campaign_id=self.closed_camp["id"], kind="map")[1])
 
+    def test_sections_off_event_loop(self):
+        """Revue : plan des titres (get, kind document) et operations d'update_document calculés hors de la boucle
+        d'événements : un calcul long ne fige ni /api/health ni les autres requêtes."""
+        from unittest import mock
+
+        from maze import docsections
+        cid = self.new_campaign("Sections lentes")
+        code, doc = self.s.call("POST", f"/api/campaigns/{cid}/documents", {"title": "Lent",
+                                                                             "content": "<h2>A</h2><p>x</p>"})
+        self.assertEqual(code, 201, doc)
+        token = self.connect()["access_token"]
+        describe, apply_operations = docsections.describe, docsections.apply_operations
+
+        def slow(fn):
+            def run(*args):
+                time.sleep(1.5)
+                return fn(*args)
+            return run
+        calls = (("get", {"kind": "document", "id": doc["id"]}),
+                 ("update_document", {"document_id": doc["id"], "base_revision": doc["revision"],
+                                      "operations": [{"op": "append", "content": "<p>y</p>"}]}))
+        with mock.patch.object(docsections, "describe", slow(describe)), \
+                mock.patch.object(docsections, "apply_operations", slow(apply_operations)):
+            for name, arguments in calls:
+                result: dict = {}
+                th = threading.Thread(target=lambda n=name, a=arguments, out=result:
+                                      out.update(r=self.tool(token, n, **a)))
+                th.start()
+                time.sleep(0.4)
+                t0 = time.perf_counter()
+                urllib.request.urlopen(self.s.base + "/api/health").read()
+                self.assertLess(time.perf_counter() - t0, 0.5, name)
+                th.join()
+                self.assertTrue(result["r"][0], result["r"])
+
 
 if __name__ == "__main__":
     unittest.main()

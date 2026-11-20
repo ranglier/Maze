@@ -685,7 +685,10 @@ async def get_document(ctx: Context, args: dict[str, Any]) -> Any:
                                    "updated_at", "content")}
     out["children"] = children
     out["linked_from"] = doc.get("linked_from", [])
-    out["outline"] = docsections.outline(doc.get("content") or "")   # titres visés par update_document (operations)
+    # Titres visés par update_document (operations) ; calcul hors de la boucle d'événements (HTML quelconque).
+    out["outline"], note = await run_in_threadpool(docsections.describe, doc.get("content") or "")
+    if note:
+        out["outline_note"] = note
     if args.get("include_comments") in (True, "true", 1):
         out["comments"] = await ctx.api("GET", f"/api/documents/{did}/comments")
     return out
@@ -880,7 +883,8 @@ async def update_document(ctx: Context, args: dict[str, Any]) -> Any:
             raise ToolError(f"Cette fiche a été modifiée depuis sa lecture (révision actuelle {current['revision']}) : "
                             "la relire avec get (kind document) avant de la modifier.")
         try:
-            body["content"], changes = docsections.apply_operations(current.get("content") or "", operations)
+            body["content"], changes = await run_in_threadpool(docsections.apply_operations,
+                                                               current.get("content") or "", operations)
         except docsections.SectionError as exc:
             raise ToolError(f"Rien n'est modifié. {exc}") from None
     doc = await ctx.api("PATCH", f"/api/documents/{did}", body, write=True)
