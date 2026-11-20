@@ -114,25 +114,39 @@ Lecture :
 - `get_campaign` : vue d'ensemble (section `summary` par défaut : effectifs, types de lieux, natures de lien, arbres
   tronqués des factions, des lieux et des fiches rédigées, chronologie) ; les autres sections sont paginées.
 - `search` : recherche plein texte (sans accents) dans une campagne ou toutes.
-- `list` : liste filtrée et paginée d'un type (`npc`, `faction`, `place`, `event`, `map`, `relation`, `library`,
-  `comment` ; filtres `query`, `faction_id`, `place_id`, `parent_id`, `status`, `tag`, `entity` pour les liens d'une
-  fiche ; `offset`, `limit` jusqu'à 200).
+- `list` : liste filtrée et paginée d'un type (`offset`, `limit` jusqu'à 200, `next_offset` s'il en reste ; `query` :
+  texte cherché dans le nom). Filtres selon le type : `npc` (`faction_id` : membres, `place_id`, `status`, `tag`) ;
+  `faction` (`faction_id` ou `parent_id` : sous-factions, 0 = premier niveau, `place_id`, `tag`, `type`) ; `place`
+  (`parent_id` : sous-lieux, 0 = racines, `entity` : lieux reliés à `npc:12`, `tag`, `type` : clé du type) ; `event`
+  (`tag`, `entity` : événements qui citent une fiche) ; `map` (`place_id`) ; `relation` (`entity` : liens de `npc:12`
+  ou `faction:3`, `type` : clé d'une nature) ; `library` (bibliothèque d'images) ; `comment` (`entity`, `status` :
+  `open` ou `resolved`).
 - `get` : un élément complet (`npc`, `faction`, `place`, `document`, `event`, `map`), avec sa révision.
-- `view` : voir une image ou l'aperçu d'une carte (quadrillé tous les 10 %, pour placer des épingles).
+- `view` : voir une image, selon `kind` : `image` (galerie d'une fiche, ids dans `get`), `document_image`
+  (illustration d'une fiche rédigée, attribut `data-doc-image`), `library_image` (bibliothèque), ou `map` (aperçu de
+  la carte quadrillé tous les 10 % avec ses épingles, pour en placer ; `grid=false` sans quadrillage).
 
 Écriture (campagne ouverte en écriture) :
-- `create`, `update`, `link`, `unlink`, `delete` travaillent par lots : `items`, de 1 à 100 éléments. Chaque élément
+- `create`, `update`, `link`, `unlink`, `delete`, `add_image`, `edit_image` travaillent par lots : `items`, de 1 à
+  100 éléments. Chaque élément
   est traité à part (sa propre transaction) ; le résultat donne pour chacun `{index, ok, id, error}`. Un élément en
   erreur n'annule pas les autres : relire les erreurs, corriger, renvoyer seulement ceux-là.
 - `create` (`npc`, `faction`, `place`, `document`, `event`, `map`, `relation`, `comment`) ; `update` (`npc`,
-  `faction`, `place`, `event`, `relation`, `map`, `image`) : champs donnés seulement, les autres restent ; aussi le type
-  d'un lieu, le déplacement d'un événement (`before_id`), le style d'épingle d'une carte, la légende d'une image.
+  `faction`, `place`, `event`, `relation`, `map`, `image`) : chaque élément porte son `id` et seulement les champs à
+  changer ; aussi le type d'un lieu (champ `kind` : clé du type), le déplacement d'un événement (`before_id` ou
+  `to_end`), le style d'épingle d'une carte (`pin_style`), la légende ou la place d'une image (`caption`, `position`,
+  `set_cover`). Un commentaire se crée avec `create` kind `comment` : `target` (`doc:5`, `npc:12`, `faction:3`,
+  `place:7`), `body`, `quote` (passage cité), `field` (section d'une fiche), `parent_id` (réponse à un fil).
 - `update_document` : fiche rédigée (titre, statut, contenu). Voir « Modifier une fiche rédigée ».
-- `link` / `unlink` (`membership`, `place`, `pin`) : appartenances, rattachements à un lieu, épingles.
+- `link` / `unlink` (`membership`, `place`, `pin`) : appartenances (`faction_id` et `npc_id` ou `member_faction_id`,
+  `role`, `is_leader`), rattachements à un lieu (`place_id`, `entity` : `npc:12` ou `faction:3`, `role`), épingles
+  (`map_id`, `place_id`, `x` et `y` en %).
 - `delete` : voir « Supprimer ».
-- `add_image` : depuis une adresse web publique, la bibliothèque ou une autre image de Maze, vers la galerie d'une
-  fiche, la bibliothèque ou une fiche rédigée (renvoie alors le `<img data-doc-image>` à insérer). `edit_image` :
-  pivoter, retourner, recadrer (l'originale est gardée en fin de galerie sauf `keep_original=false`).
+- `add_image` : chaque élément a une source (`url` : adresse web publique, `library_image_id`, `image_id` ou
+  `document_image_id` : image déjà dans Maze) et une cible `target` : `npc:12`, `faction:3`, `place:7` (galerie de la
+  fiche ; `caption`, `set_cover`), `doc:5` (illustration d'une fiche rédigée, `alt` ; renvoie le `<img
+  data-doc-image>` à insérer avec `update_document`) ou `library` (bibliothèque de la campagne `campaign_id`).
+  `edit_image` : `id`, `rotate`, `flip`, `crop` (l'originale est gardée en fin de galerie sauf `keep_original=false`).
 - `request_upload` : faire déposer par le MJ une image de son ordinateur (voir « Images »).
 
 ## HTML de l'éditeur
@@ -178,16 +192,22 @@ Les modèles fournis par Maze suivent ces plans ; un titre `<h2>` par partie (le
 - Modifier une fiche : `get` (révision), puis `update` avec `base_revision` et seulement les champs changés.
 - Modifier une fiche rédigée : `get` kind `document`, puis `update_document` avec `operations` et `base_revision`.
 - Illustrer une fiche rédigée : `add_image` vers la fiche rédigée, puis `update_document` pour insérer le `<img>`.
-- Épingler des lieux : `view` de la carte (quadrillage), puis `link` kind `pin` avec x et y en %.
-- Commenter plutôt que réécrire quand le MJ demande un avis : `create` kind `comment` (passage cité dans `quote`).
+- Épingler des lieux : `view` kind `map` (quadrillage), puis `link` kind `pin` avec x et y en %.
+- Commenter plutôt que réécrire quand le MJ demande un avis : `create` kind `comment` (`target` `doc:5`, passage
+  cité dans `quote`).
 
 ## Modifier une fiche rédigée
 
 `update_document` exige `base_revision` (révision lue avec `get`). Deux façons, exclusives :
-- `operations` (à préférer) : liste d'opérations ciblées sur des sections, une section étant un titre `<h1>` à `<h3>`
-  et ce qui le suit jusqu'au titre suivant de même niveau ou supérieur : `replace_section`, `insert_after_section`,
-  `insert_before_section`, `delete_section`, `append`, `prepend` (en fin ou en tête de fiche), `replace_text`
-  (remplacer un passage exact). Le reste de la fiche, commentaires et images compris, n'est pas touché.
+- `operations` (à préférer) : liste d'opérations (50 au plus, appliquées dans l'ordre, tout ou rien) ciblées sur des
+  sections, une section étant un titre `<h1>` à `<h3>` et ce qui le suit jusqu'au titre suivant de même niveau ou
+  supérieur. `heading` désigne la section par le texte de son titre (casse et espaces ignorés ; `outline` de `get`
+  kind `document` les liste), `occurrence` (1, 2…) si plusieurs titres l'ont. `replace_section` (`heading`,
+  `content`, `include_heading` pour remplacer aussi le titre), `insert_after_section` et `insert_before_section`
+  (`heading`, `content`), `delete_section` (`heading`), `append` et `prepend` (`content`, en fin ou en tête de fiche),
+  `replace_text` (`find`, `replace`, `max` : 1 par défaut, `heading` facultatif pour se limiter à une section ; texte
+  simple, pas à cheval sur une mise en forme). Le reste de la fiche, commentaires et images compris, n'est pas
+  touché. Le résultat donne la nouvelle révision et `changes`.
 - `content` : remplace tout le HTML ; seulement pour une fiche courte ou une réécriture complète voulue par le MJ.
 Une version « Avant modification par Claude » est gardée dans l'historique de la fiche ; les MJ qui l'ont ouverte la
 voient se recharger. Refus tant que des frappes d'un MJ ne sont pas encore enregistrées : réessayer un peu plus tard.
@@ -196,19 +216,25 @@ voient se recharger. Refus tant que des frappes d'un MJ ne sont pas encore enreg
 
 - Image sur Internet : `add_image` avec son adresse publique. Image déjà dans Maze : `add_image` depuis la
   bibliothèque (`list` kind `library`) ou une autre image.
-- Image sur l'ordinateur du MJ (Claude ne peut pas la transmettre) : `request_upload` (cible : bibliothèque, fiche ou
-  fiche rédigée) renvoie un lien et un ticket. Donner le lien au MJ (valable 10 minutes, usage unique, session Maze
-  ouverte), attendre qu'il dise avoir déposé l'image, puis rappeler `request_upload` avec le ticket pour connaître
-  l'état et l'id de l'image.
+- Image sur l'ordinateur du MJ (Claude ne peut pas la transmettre) : `request_upload` (`campaign_id`, `target` :
+  `library`, `npc`, `faction`, `place` ou `document`, `target_id` sauf pour la bibliothèque, `caption` facultative)
+  renvoie un lien (`url`) et un `ticket`. Donner le lien au MJ (valable 10 minutes, usage unique, session Maze
+  ouverte), attendre qu'il dise avoir déposé l'image, puis rappeler `request_upload` avec `ticket` seul : état
+  (`pending`, `used`, `expired`) et id de l'image (`image_id`, `library_image_id` ou `document_image_id` ; pour une
+  fiche rédigée, le `html` à insérer avec `update_document`).
 - `view` kind `image` pour regarder une image avant de la décrire ou de la recadrer.
 
 ## Supprimer
 
-Seulement à la demande explicite du MJ. `delete` exige le nom ou le titre actuel exact (casse comprise) de chaque PNJ,
-faction, lieu, fiche rédigée, événement ou carte : le relire avec `get` juste avant ; un nom approché est refusé sans
-rien supprimer. Une fiche rédigée part avec toutes ses sous-pages. PNJ, factions, lieux, fiches rédigées, événements
-et cartes vont dans la corbeille de la campagne pendant 30 jours (le résultat donne `trash_id`) : le MJ peut les
-restaurer depuis Maze. Liens, commentaires et images sont supprimés définitivement.
+Seulement à la demande explicite du MJ. `delete` : `items` `[{id, name}]`, avec le nom ou le titre actuel exact
+(casse comprise) de chaque PNJ, faction, lieu, fiche rédigée, événement ou carte : le relire avec `get` juste avant ;
+un nom approché est refusé sans rien supprimer. Commentaire : `[{id, on}]` (`on` : `document` ou `entry`, voir `list`
+kind `comment` ; un fil part avec ses réponses). Lien (`relation`), image d'une galerie (`image`) ou de la
+bibliothèque (`library_image`) : `[{id}]`, permis dès le niveau écriture. Une fiche rédigée part avec toutes ses
+sous-pages ; les sous-lieux d'un lieu remontent d'un niveau. PNJ, factions, lieux, fiches rédigées, événements et
+cartes vont dans la corbeille de la campagne pendant 30 jours (le résultat de l'élément donne `trash_id`) : le MJ
+peut les restaurer depuis Maze, avec leurs liens, appartenances et images (et les sous-lieux s'ils n'ont pas
+bougé). Liens, commentaires et images supprimés seuls le sont définitivement.
 
 ## Pièges
 
@@ -328,14 +354,14 @@ def _review_document(a: dict[str, str]) -> str:
     cid = a["campaign_id"]
     return f"""Relis la fiche rédigée « {a['document']} » (titre ou numéro) de la campagne {cid} dans Maze.
 Démarche :
-1. La retrouver (search, ou l'arbre de get_campaign) et la lire avec get kind document, commentaires compris.
+1. La retrouver (search, ou l'arbre de get_campaign) et la lire avec get kind document et include_comments.
 2. Lire avec get chaque fiche mentionnée (data-mention : npc, faction, place, doc) et vérifier la cohérence : noms,
    statuts (un PNJ mort qui agit), appartenances et rôles, lieux, chronologie, liens entre PNJ ; secrets révélés dans
    un encadré Accroche ; noms de fiches existantes écrits sans mention ; sections vides ou plan incomplet.
 3. Me rendre ici un rapport classé (incohérences, oublis, suggestions), avec les passages en cause.
-4. Proposer de laisser des commentaires (create kind comment, passage cité dans quote) plutôt que de réécrire. Ne
-   modifier la fiche qu'après mon accord : update_document avec operations par section et base_revision, sans
-   toucher aux <span data-comment> ni aux <img data-doc-image>."""
+4. Proposer de laisser des commentaires (create kind comment, target doc:<numéro>, passage cité dans quote) plutôt
+   que de réécrire. Ne modifier la fiche qu'après mon accord : update_document avec operations par section et
+   base_revision, sans toucher aux <span data-comment> ni aux <img data-doc-image>."""
 
 
 def _tidy_campaign(a: dict[str, str]) -> str:
@@ -349,7 +375,8 @@ Démarche :
    « lieu » par défaut, types inutilisés ou mal choisis) ; résumés manquants ; étiquettes disparates ; fiches
    rédigées vides ou statuts dépassés.
 3. Me rendre ici un rapport par catégorie, avec des propositions précises (ids et noms).
-4. Après mon accord seulement, en lots : update (type et parent_id des lieux, résumés, étiquettes), link / unlink.
+4. Après mon accord seulement, en lots : update (lieux : kind = clé du type, parent_id ; résumés, étiquettes),
+   link / unlink.
    Doublons : reporter d'abord les informations et les liens sur la fiche gardée, puis delete avec le nom exact
    (accès « lecture, écriture et suppression » ; corbeille de 30 jours), élément par élément confirmé."""
 
