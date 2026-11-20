@@ -46,6 +46,7 @@ from .scenemap import routes as scenemap_routes
 from .templates import routes as template_routes
 from .versions import routes as version_routes
 from .entry_history import routes as entry_history_routes
+from .uploads import routes as upload_routes
 from .api import RequestValidationError, routes as api_routes, threaded
 from .config import Settings, load_settings
 
@@ -317,6 +318,7 @@ def _build_app(cfg: Settings, lock: IO[str]) -> Starlette:
         *connector_routes,
         *foundry.routes,
         *media_admin_routes,
+        *upload_routes,
         *image_copy_routes,
         *map_routes,
         *oauth_routes,
