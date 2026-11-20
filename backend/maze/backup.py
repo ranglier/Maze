@@ -39,7 +39,7 @@ from typing import Any
 
 from . import db
 from .i18n import msg
-from .mediafiles import FILE_NAME, is_temp
+from .mediafiles import FILE_NAME, TRASH_DIR, is_temp
 from .config import Settings, load_settings
 
 ARCHIVE_PATTERN = "maze-*.tar.gz"
@@ -129,9 +129,11 @@ def restore_in_progress(data_dir: Path) -> bool:
         fcntl.flock(handle, fcntl.LOCK_UN)
         return False
 # Seuls éléments acceptés sous media/ : les dossiers media/ et media/<campagne>/, et les fichiers que Maze
-# produit, media/<campagne>/<nom>.<webp|jpg> (liste unique : mediafiles ; jamais de HTML ni de script).
-MEDIA_DIR = re.compile(r"^media(?:/\d+)?/?$")
-MEDIA_FILE = re.compile(rf"^media/\d+/{FILE_NAME}$")
+# produit, media/<campagne>/<nom>.<webp|jpg> (liste unique : mediafiles ; jamais de HTML ni de script). Plus la
+# corbeille de chaque campagne, media/<campagne>/.trash/ et ses fichiers (trash.py, mêmes noms).
+_TRASH = re.escape(TRASH_DIR)
+MEDIA_DIR = re.compile(rf"^media(?:/\d+(?:/{_TRASH})?)?/?$")
+MEDIA_FILE = re.compile(rf"^media/\d+/(?:{_TRASH}/)?{FILE_NAME}$")
 
 
 class ArchiveError(Exception):

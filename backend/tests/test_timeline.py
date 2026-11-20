@@ -91,7 +91,7 @@ class TimelineTest(unittest.TestCase):
         self.assertEqual((ev2["title"], ev2["tags"], ev2["date_label"], ev2["revision"]), ("Chute", [], "742.M41", 1))
         self.assertEqual(self.s.call("PATCH", f"/api/events/{ev['id']}", {"title": ""})[0], 422)
         # Suppression.
-        self.assertEqual(self.s.call("DELETE", f"/api/events/{ev['id']}")[0], 204)
+        self.assertEqual(self.s.call("DELETE", f"/api/events/{ev['id']}")[0], 200)
         self.assertEqual(self.s.call("DELETE", f"/api/events/{ev['id']}")[0], 404)
         self.assertEqual(self.s.call("PATCH", f"/api/events/{ev['id']}", {"title": "x"})[0], 404)
         self.assertEqual(self.titles(cid), [])
@@ -207,7 +207,7 @@ class TimelineTest(unittest.TestCase):
         # Mention retirée quand la description ne la cite plus, ou quand la fiche disparaît.
         self.s.call("PATCH", f"/api/events/{first['id']}", {"description": "<p>Rien.</p>"})
         self.assertEqual(self.s.call("GET", f"/api/factions/{fac['id']}")[1]["timeline"], expected[1:])
-        self.assertEqual(self.s.call("DELETE", f"/api/npcs/{npc['id']}")[0], 204)
+        self.assertEqual(self.s.call("DELETE", f"/api/npcs/{npc['id']}")[0], 200)
         events = self.s.call("GET", f"/api/campaigns/{cid}/events")[1]["events"]
         self.assertNotIn(["npc", npc["id"]], next(e for e in events if e["id"] == ev["id"])["mentions"])
         with closing(self.db()) as conn:

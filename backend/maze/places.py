@@ -12,7 +12,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 
-from . import auth, db, defaults, i18n, imaging
+from . import auth, db, defaults, i18n, imaging, trash
 from .i18n import msg
 from .entry_history import record_change
 from .maps import maps_for_place
@@ -241,22 +241,22 @@ def update_place(request: Request) -> Response:
 
 @threaded
 def delete_place(request: Request) -> Response:
-    """Supprime le lieu ; ses sous-lieux remontent d'un niveau (rien d'autre n'est perdu)."""
+    """Met le lieu à la corbeille (trash.py) ; ses sous-lieux remontent d'un niveau (rendus à la restauration s'ils
+    n'ont pas été déplacés entre-temps). 200 {"trash_id"}."""
     pid = path_id(request)
     with tx(request) as conn:
         current = scoped(conn, request, "places", pid, "Lieu")
-        start = _next_order(conn, current["campaign_id"], current["parent_id"])
-        children = [r[0] for r in conn.execute(
-            "SELECT id FROM places WHERE parent_id = ? ORDER BY sort_order, id", (pid,))]
-        conn.executemany("UPDATE places SET parent_id = ?, sort_order = ? WHERE id = ?",
-                         [(current["parent_id"], start + i, child) for i, child in enumerate(children)])
-        files = conn.execute("SELECT file, thumb FROM images WHERE owner_kind = 'place' AND owner_id = ?",
-                             (pid,)).fetchall()
-        conn.execute("DELETE FROM places WHERE id = ?", (pid,))
+
+        def remove() -> None:
+            start = _next_order(conn, current["campaign_id"], current["parent_id"])
+            children = [r[0] for r in conn.execute(
+                "SELECT id FROM places WHERE parent_id = ? ORDER BY sort_order, id", (pid,))]
+            conn.executemany("UPDATE places SET parent_id = ?, sort_order = ? WHERE id = ?",
+                             [(current["parent_id"], start + i, child) for i, child in enumerate(children)])
+            conn.execute("DELETE FROM places WHERE id = ?", (pid,))
+        trashed = trash.put(conn, request, "place", current, remove)
         touch_campaign(conn, current["campaign_id"])
-    for f in files:
-        imaging.delete_files(settings(request).media_dir, f["file"], f["thumb"])
-    return Response(status_code=204)
+    return trash.stash(request, trashed)
 
 
 @threaded

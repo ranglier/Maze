@@ -255,7 +255,7 @@ class EntryHistoryTest(unittest.TestCase):
         self.assertEqual(self.versions(url), [])
         # Suppression de la fiche : fils, versions et index partent avec elle.
         s.call("PATCH", url, {"notes": "<p>x</p>"})
-        self.assertEqual(s.call("DELETE", url)[0], 204)
+        self.assertEqual(s.call("DELETE", url)[0], 200)   # à la corbeille (trash.py)
         with closing(self.db()) as conn, conn:
             self.assertEqual(conn.execute("SELECT COUNT(*) FROM entry_comments WHERE npc_id = ?", (nid,)).fetchone()[0], 0)
             self.assertEqual(conn.execute("SELECT COUNT(*) FROM entry_versions WHERE npc_id = ?", (nid,)).fetchone()[0], 0)

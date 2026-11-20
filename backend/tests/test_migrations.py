@@ -362,6 +362,43 @@ class LiveEpochTest(unittest.TestCase):
         self.assertTrue(all(0 < e < 2**53 for e in epochs))
 
 
+class TrashMigrationTest(unittest.TestCase):
+    """Migration 034 (corbeille) sur une base au schéma 033 qui contient des données : table trash créée vide, rien
+    d'autre ne change ; suppression d'une campagne : sa corbeille part avec elle (cascade)."""
+
+    def test_upgrade_from_033(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            before = root / "033"
+            before.mkdir()
+            for path in sorted(db.MIGRATIONS_DIR.glob("*.sql")):
+                if int(path.name[:3]) <= 33:
+                    shutil.copy(path, before)
+            path = root / "maze.db"
+            with mock.patch.object(db, "MIGRATIONS_DIR", before):
+                db.migrate(path)
+            with db.transaction(path) as conn:
+                conn.execute("INSERT INTO campaigns (name) VALUES ('Ancienne')")
+                conn.execute("INSERT INTO npcs (campaign_id, name) VALUES (1, 'Vael')")
+            conn = sqlite3.connect(path)
+            objects, rows = schema_objects(conn), conn.execute("SELECT * FROM npcs").fetchall()
+            conn.close()
+            db.migrate(path)
+            with db.transaction(path) as conn:
+                self.assertEqual([tuple(r) for r in conn.execute("SELECT * FROM npcs")], rows)
+                self.assertEqual({k: v for k, v in schema_objects(conn).items() if k != ("index", "ix_trash_campaign")},
+                                 objects)
+                self.assertEqual(conn.execute("SELECT COUNT(*) FROM trash").fetchone()[0], 0)
+                self.assertIn("AUTOINCREMENT", conn.execute(
+                    "SELECT sql FROM sqlite_master WHERE name = 'trash'").fetchone()[0])
+                conn.execute("INSERT INTO trash (campaign_id, kind, object_id, name) VALUES (1, 'npc', 1, 'Vael')")
+                with self.assertRaises(sqlite3.IntegrityError):
+                    conn.execute("INSERT INTO trash (campaign_id, kind, object_id) VALUES (1, 'campagne', 1)")
+                conn.execute("DELETE FROM campaigns WHERE id = 1")
+                self.assertEqual(conn.execute("SELECT COUNT(*) FROM trash").fetchone()[0], 0)
+                self.assertEqual(conn.execute("PRAGMA user_version").fetchone()[0], 34)
+
+
 class IdReuseTest(unittest.TestCase):
     """Repris de work-DATA/tests_data/test_collab_data.py (DATA-8) : avant, « ancien PNJ 2 nouveau PNJ 2 » et la
     mention du traître rattachée à l'innocente aubergiste ; fiche rédigée recréée au même numéro, même époque, et
@@ -383,7 +420,7 @@ class IdReuseTest(unittest.TestCase):
         mention = f'<a class="mention" data-mention="npc:{traitre["id"]}">Le traître</a>'
         _, scen = s.call("POST", f"/api/campaigns/{cid}/documents", {"title": "Bal"})
         s.call("PATCH", f"/api/documents/{scen['id']}", {"content": f"<p>Le coupable est {mention}</p>"})
-        self.assertEqual(s.call("DELETE", f"/api/npcs/{traitre['id']}")[0], 204)
+        self.assertEqual(s.call("DELETE", f"/api/npcs/{traitre['id']}")[0], 200)
         nouveau = s.call("POST", f"/api/campaigns/{cid}/npcs", {"name": "Innocente aubergiste"})[1]
         self.assertGreater(nouveau["id"], traitre["id"])
         _, d = s.call("GET", f"/api/documents/{scen['id']}")
@@ -394,7 +431,7 @@ class IdReuseTest(unittest.TestCase):
         s = self.s
         cid = s.call("POST", "/api/campaigns", {"name": "Hors ligne"})[1]["id"]
         old = s.call("POST", f"/api/campaigns/{cid}/documents", {"title": "Ancienne"})[1]
-        self.assertEqual(s.call("DELETE", f"/api/documents/{old['id']}")[0], 204)
+        self.assertEqual(s.call("DELETE", f"/api/documents/{old['id']}")[0], 200)
         new = s.call("POST", f"/api/campaigns/{cid}/documents", {"title": "Nouvelle"})[1]
         self.assertGreater(new["id"], old["id"])
         ws = s.admin.live(old["id"], 7)   # navigateur resté sur l'ancienne fiche : refusé, rien n'est versé

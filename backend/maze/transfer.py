@@ -74,6 +74,8 @@ def _rows(conn: sqlite3.Connection, sql: str, params: tuple) -> list[dict[str, A
 # --- Export ----------------------------------------------------------------------------------
 
 # Sections de campaign.json après « campaign » : (clé, requête des lignes de la campagne, paramètre ?).
+# La corbeille (table trash, migration 034, et media/<campagne>/.trash/) n'est pas exportée : une campagne importée
+# part avec une corbeille vide.
 SECTIONS: tuple[tuple[str, str], ...] = (
     ("relation_types", "SELECT * FROM relation_types WHERE campaign_id = ?"),
     ("place_kinds", "SELECT * FROM place_kinds WHERE campaign_id = ? ORDER BY sort_order, id"),

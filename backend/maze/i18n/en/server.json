@@ -137,6 +137,7 @@
   "Requête JSON attendue": "JSON request expected",
   "Requête trop volumineuse (max {size})": "Request too large (max {size})",
   "Restauration en cours : réessayez dans un instant": "Restore in progress: try again in a moment",
+  "Restauration impossible : des éléments liés ont changé entre-temps. Rien n'a été restauré.": "Cannot restore: linked items have changed in the meantime. Nothing was restored.",
   "Route inconnue": "Unknown route",
   "Réservé aux administrateurs": "Administrators only",
   "Sauvegarde introuvable": "Backup not found",
@@ -191,15 +192,45 @@
   "{max} événements au plus par campagne": "{max} events at most per campaign",
   "{name} : {error}": "{name}: {error}",
   "{name} dépasse {size} Mo": "{name} exceeds {size} MB",
+  "{n} commentaire": {
+    "one": "{n} comment",
+    "other": "{n} comments"
+  },
+  "{n} image": {
+    "one": "{n} image",
+    "other": "{n} images"
+  },
+  "{n} lien": {
+    "one": "{n} relationship",
+    "other": "{n} relationships"
+  },
   "{n} lien utilise la nature « {label} ». Changez sa nature avant de la supprimer.": {
     "one": "{n} relationship uses the type “{label}”. Change its type before deleting it.",
     "other": "{n} relationships use the type “{label}”. Change their type before deleting it."
   },
+  "{n} sous-lieu": {
+    "one": "{n} sub-place",
+    "other": "{n} sub-places"
+  },
+  "{n} sous-page": {
+    "one": "{n} sub-page",
+    "other": "{n} sub-pages"
+  },
+  "{n} épingle": {
+    "one": "{n} pin",
+    "other": "{n} pins"
+  },
   "{what} introuvable": "{what} not found",
   "« {faction} » est déjà membre, directement ou non, de « {member} » : cette appartenance formerait un cycle": "“{faction}” is already a member, directly or indirectly, of “{member}”: this membership would create a loop",
   "« {member} » est déjà membre de « {faction} »": "“{member}” is already a member of “{faction}”",
+  "« {name} » ne peut pas être restauré : sa fiche parente a été supprimée. Restaurez d'abord « {parent} » depuis la corbeille.": "“{name}” cannot be restored: its parent page was deleted. Restore “{parent}” from the trash first.",
+  "« {name} » ne peut pas être restauré : sa fiche parente n'existe plus.": "“{name}” cannot be restored: its parent page no longer exists.",
+  "« {name} » ne peut pas être restauré : son numéro est déjà pris par un autre élément.": "“{name}” cannot be restored: its number is already used by another item.",
+  "« {name} » ne peut pas être restauré : un élément dont il dépend a été supprimé entre-temps.": "“{name}” cannot be restored: an item it depends on has been deleted in the meantime.",
+  "« {name} » ne peut pas être restauré : élément de corbeille incomplet.": "“{name}” cannot be restored: incomplete trash item.",
   "Échec de la vérification : {error}": "Check failed: {error}",
   "Échec, intervention requise : la nouvelle version avait migré la base, qui n'a pas pu être remise en l'état ; Maze est laissé arrêté (l'ancien code ne connaît pas le nouveau schéma). Marche à suivre à la fin de {log} (docs/fr/guide.md, Mises à jour).": "Failed, action required: the new version had migrated the database, which could not be restored; Maze is left stopped (the old code does not know the new schema). Steps to follow at the end of {log} (docs/fr/guide.md, Updates).",
+  "Élément de la corbeille": "Trash item",
   "Élément inattendu dans l'archive : {name}": "Unexpected item in the archive: {name}",
   "Élément refusé dans l'archive : {name}": "Item refused in the archive: {name}",
   "État initial": "Initial state",

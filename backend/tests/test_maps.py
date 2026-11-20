@@ -77,13 +77,13 @@ class MapsTest(unittest.TestCase):
         body, ctype = form({"name": "Immense"}, ("immense.jpg", jpeg((12000, 6000))))
         code, huge = s.call("POST", f"/api/campaigns/{cid}/maps", raw=body, content_type=ctype)
         self.assertEqual((code, huge["width"], huge["height"]), (201, 8192, 4096))
-        self.assertEqual(s.call("DELETE", f"/api/maps/{huge['id']}")[0], 204)
+        self.assertEqual(s.call("DELETE", f"/api/maps/{huge['id']}")[0], 200)
         self.assertFalse(self.media(huge["preview_url"]).exists())
         # Petit fond : pas de version d'affichage.
         body, ctype = form({"name": "Petite"}, ("p.png", png_bytes()))
         code, little = s.call("POST", f"/api/campaigns/{cid}/maps", raw=body, content_type=ctype)
         self.assertIsNone(little["preview_url"])
-        self.assertEqual(s.call("DELETE", f"/api/maps/{little['id']}")[0], 204)
+        self.assertEqual(s.call("DELETE", f"/api/maps/{little['id']}")[0], 200)
         # Nom par défaut : celui du lieu représenté ; lieu d'une autre campagne refusé ; fichier absent refusé.
         body, ctype = form({"place_id": str(valdis["id"])}, ("s.png", png_bytes()))
         code, small = s.call("POST", f"/api/campaigns/{cid}/maps", raw=body, content_type=ctype)
@@ -144,7 +144,7 @@ class MapsTest(unittest.TestCase):
         _, listing = s.call("GET", f"/api/campaigns/{cid}/maps")
         self.assertEqual([m["id"] for m in listing["maps"]], ids)
         s.call("PUT", f"/api/maps/{small['id']}/pins/{sorn['id']}", {"x": 0.5, "y": 0.5})
-        self.assertEqual(s.call("DELETE", f"/api/places/{sorn['id']}")[0], 204)
+        self.assertEqual(s.call("DELETE", f"/api/places/{sorn['id']}")[0], 200)
         _, out = s.call("GET", f"/api/maps/{copied['id']}")
         self.assertIsNone(out["place_id"])
         self.assertEqual(s.call("GET", f"/api/maps/{small['id']}")[1]["pins"], [])
@@ -153,7 +153,7 @@ class MapsTest(unittest.TestCase):
 
         # Suppression : fichiers retirés.
         files = self.media(copied["url"])
-        self.assertEqual(s.call("DELETE", f"/api/maps/{copied['id']}")[0], 204)
+        self.assertEqual(s.call("DELETE", f"/api/maps/{copied['id']}")[0], 200)
         self.assertFalse(files.exists())
         self.assertEqual(s.call("GET", f"/api/maps/{copied['id']}")[0], 404)
 

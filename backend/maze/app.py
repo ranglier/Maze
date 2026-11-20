@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import fcntl
 import logging
@@ -23,8 +24,8 @@ from starlette.routing import Mount, Route, WebSocketRoute
 from starlette.staticfiles import StaticFiles
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from . import auth, backup, db, i18n, limits, throttle
-from .mediafiles import MEDIA_TYPES, TEMP_SUFFIX
+from . import auth, backup, db, i18n, limits, throttle, trash
+from .mediafiles import MEDIA_TYPES, TEMP_SUFFIX, TRASH_DIR
 from .collab import RESTORING, SCHEMA_VERSION, STALE_CLIENT, Hub
 from .admin import MAX_IMPORT_MB, routes as admin_routes
 from .connector import routes as connector_routes
@@ -40,6 +41,7 @@ from .comments import routes as comment_routes
 from .search import routes as search_routes
 from .places import routes as place_routes
 from .timeline import routes as timeline_routes
+from .trash import routes as trash_routes
 from .scenemap import routes as scenemap_routes
 from .templates import routes as template_routes
 from .versions import routes as version_routes
@@ -269,8 +271,12 @@ def _build_app(cfg: Settings, lock: IO[str]) -> Starlette:
         # Extensions des fichiers produits par imaging.py (mediafiles : WebP, et JPEG des grands fonds de cartes).
         if media_root not in target.parents or target.suffix not in MEDIA_TYPES or not target.is_file():
             raise HTTPException(404, "Fichier introuvable")
-        # Les fichiers sont rangés par campagne : media/<id campagne>/...
-        campaign = target.relative_to(media_root).parts[0]
+        # Les fichiers sont rangés par campagne : media/<id campagne>/... ; ceux de la corbeille (media/<id>/.trash/,
+        # trash.py) ne sont pas servis.
+        parts = target.relative_to(media_root).parts
+        if TRASH_DIR in parts:
+            raise HTTPException(404, "Fichier introuvable")
+        campaign = parts[0]
         with db.transaction(cfg.db_path) as conn:
             allowed = campaign.isdigit() and auth.can_access(conn, auth.current_user(request), int(campaign))
         if not allowed:
@@ -304,6 +310,7 @@ def _build_app(cfg: Settings, lock: IO[str]) -> Starlette:
         *template_routes,
         *place_routes,
         *timeline_routes,
+        *trash_routes,
         *scenemap_routes,
         *version_routes,
         *entry_history_routes,
@@ -385,11 +392,26 @@ def _build_app(cfg: Settings, lock: IO[str]) -> Starlette:
         Middleware(AuthMiddleware, db_path=cfg.db_path),
     ]
 
+    async def purge_trash() -> None:
+        """Corbeille (trash.py) : éléments de plus de 30 jours supprimés au démarrage, puis chaque jour ; jamais
+        pendant une restauration de sauvegarde (base en cours de remplacement)."""
+        while True:
+            if not hub.restoring():
+                try:
+                    await db.run_db(trash.purge_expired, cfg.db_path, cfg.media_dir)
+                except Exception:  # noqa: BLE001 - réessayée le lendemain, sans arrêter le serveur
+                    log.exception("Corbeille : purge automatique en échec")
+            await asyncio.sleep(trash.PURGE_EVERY)
+
     @contextlib.asynccontextmanager
     async def lifespan(app: Starlette):
+        purge = asyncio.create_task(purge_trash())
         try:
             yield
         finally:
+            purge.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await purge
             lock.close()   # verrou du dossier de données rendu à l'arrêt (DATA-16)
 
     app = Starlette(
