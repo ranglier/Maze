@@ -154,8 +154,8 @@ export default function PlacesView({
     const yes = await confirm({
       title: t('Supprimer « {name} »', { name: item.name }),
       message: kids
-        ? tn('Le lieu et ses images seront placés dans la corbeille pendant 30 jours. Son sous-lieu remontera d’un niveau. Les PNJ et factions qui y étaient reliés ne sont pas touchés.',
-          'Le lieu et ses images seront placés dans la corbeille pendant 30 jours. Ses {n} sous-lieux remonteront d’un niveau. Les PNJ et factions qui y étaient reliés ne sont pas touchés.', kids)
+        ? tn('Le lieu et ses images seront placés dans la corbeille pendant 30 jours. Son sous-lieu remontera d’un niveau ; il reviendra sous ce lieu à la restauration s’il n’a pas été déplacé entre-temps. Les PNJ et factions qui y étaient reliés ne sont pas touchés.',
+          'Le lieu et ses images seront placés dans la corbeille pendant 30 jours. Ses {n} sous-lieux remonteront d’un niveau ; ils reviendront sous ce lieu à la restauration s’ils n’ont pas été déplacés entre-temps. Les PNJ et factions qui y étaient reliés ne sont pas touchés.', kids)
         : t('Le lieu et ses images seront placés dans la corbeille pendant 30 jours. Les PNJ et factions qui y étaient reliés ne sont pas touchés.'),
       confirmLabel: t('Supprimer'),
     });

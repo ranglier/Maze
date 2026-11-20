@@ -101,9 +101,9 @@
   "Invisibles, posées sur les symboles de la carte": "Invisible, placed over the map's symbols",
   "La carte, son image de fond et ses épingles seront placées dans la corbeille pendant 30 jours. Les lieux eux-mêmes ne sont pas touchés.": "The map, its background image and its pins will be moved to the bin for 30 days. The places themselves are not affected.",
   "Le lieu et ses images seront placés dans la corbeille pendant 30 jours. Les PNJ et factions qui y étaient reliés ne sont pas touchés.": "The place and its images will be moved to the bin for 30 days. NPCs and factions linked to it are not affected.",
-  "Le lieu et ses images seront placés dans la corbeille pendant 30 jours. Son sous-lieu remontera d’un niveau. Les PNJ et factions qui y étaient reliés ne sont pas touchés.": {
-    "one": "The place and its images will be moved to the bin for 30 days. Its sub-place will move up one level. NPCs and factions linked to it are not affected.",
-    "other": "The place and its images will be moved to the bin for 30 days. Its {n} sub-places will move up one level. NPCs and factions linked to it are not affected."
+  "Le lieu et ses images seront placés dans la corbeille pendant 30 jours. Son sous-lieu remontera d’un niveau ; il reviendra sous ce lieu à la restauration s’il n’a pas été déplacé entre-temps. Les PNJ et factions qui y étaient reliés ne sont pas touchés.": {
+    "one": "The place and its images will be moved to the bin for 30 days. Its sub-place will move up one level; it will return under this place on restore if it has not been moved in the meantime. NPCs and factions linked to it are not affected.",
+    "other": "The place and its images will be moved to the bin for 30 days. Its {n} sub-places will move up one level; they will return under this place on restore if they have not been moved in the meantime. NPCs and factions linked to it are not affected."
   },
   "Les ajouts d’images et les changements de PNJ et factions sont enregistrés immédiatement.": "Added images and changes to NPCs and factions are saved immediately.",
   "Les derniers lieux ouverts sur cet appareil apparaîtront ici.": "The last places opened on this device will appear here.",
