@@ -1,5 +1,7 @@
-"""Outils d'images du connecteur Claude : voir, ajouter, retoucher, légender, ordonner, supprimer les
-images des fiches (PNJ, factions, lieux) et illustrer les fiches rédigées.
+"""Images du connecteur Claude : voir, ajouter, retoucher, légender, ordonner, supprimer les images des fiches
+(PNJ, factions, lieux), illustrer les fiches rédigées, alimenter la bibliothèque. Traitements d'UN élément, appelés
+par les outils regroupés de mcp_tools.py (view, add_image, edit_image, update kind image, delete kind image ou
+library_image).
 
 Les images arrivent depuis une adresse web publique (fetch.py) ou depuis une image déjà dans Maze ;
 elles passent toujours par imaging.process_upload (validation, WebP 1600 px, miniature), comme un envoi
@@ -21,10 +23,10 @@ from urllib.parse import unquote, urlsplit
 from PIL import Image
 from starlette.concurrency import run_in_threadpool
 
-from . import db, fetch, imaging, limits
+from . import db, fetch, imaging
 from .api import IMAGE_FIELD, TABLES, _store_images, touch_campaign
 from .media_admin import delete_library_rows
-from .mcp import ENTRY_KIND, ENTRY_TABLES, ID, Blocks, Context, ToolError, _int, _kind, _tool
+from .mcp import ENTRY_TABLES, Blocks, Context, ToolError, _int, _kind
 
 VIEW_SIDE = 1024          # côté maximal de l'aperçu renvoyé à Claude (JPEG)
 BACKGROUND = (22, 29, 41)  # fond des images transparentes dans l'aperçu (couleur de l'interface)
@@ -358,109 +360,37 @@ async def add_document_image(ctx: Context, args: dict[str, Any]) -> Any:
 
 # --- Bibliothèque de la campagne ------------------------------------------------------------------
 
-async def list_library(ctx: Context, args: dict[str, Any]) -> Any:
-    cid = ctx.check_read(_int(args, "campaign_id"))
-    with ctx.transaction() as conn:
-        rows = [{"id": r["id"], "caption": r["caption"], "name": r["original_name"], "width": r["width"],
-                 "height": r["height"], "created_at": r["created_at"]}
-                for r in conn.execute("SELECT * FROM library_images WHERE campaign_id = ? ORDER BY id DESC", (cid,))]
-    return {"campaign_id": cid, "library": rows,
-            "note": "Images déposées par le MJ (Administration > Images), sans fiche : view_image pour les voir, "
-                    "add_image ou add_document_image avec from_library_image_id pour les utiliser (copie)."}
+async def add_library_image(ctx: Context, args: dict[str, Any]) -> Any:
+    """Image ajoutée à la bibliothèque de la campagne (comme un dépôt dans Administration > Images)."""
+    cid = ctx.check_write(_int(args, "campaign_id"), "Campagne")
+    ctx.target = "bibliothèque"
+    raw, name, label = await _source_bytes(ctx, args)
+    ctx.campaign_id = cid
+    ctx.target = f"bibliothèque < {label}"
+    img = await _process(ctx, raw, cid)
+    caption = str(args.get("caption") or _source_caption(ctx, args))[:500]
+    try:
+        def _work(conn: sqlite3.Connection):
+            if not conn.execute("SELECT 1 FROM campaigns WHERE id = ?", (cid,)).fetchone():
+                raise ToolError("Campagne introuvable (supprimée entre-temps ?)")
+            return db.insert(conn, "library_images", {
+                "campaign_id": cid, "file": img.file, "thumb": img.thumb, "original_name": name[:200],
+                "width": img.width, "height": img.height, "caption": caption})
+        new_id = await ctx.run(_work)
+    except BaseException:
+        _discard(ctx, img)
+        raise
+    ctx.target = f"bibliothèque:{new_id} < {label}"
+    return {"library_image_id": new_id, "width": img.width, "height": img.height}
 
 
 async def delete_library_image(ctx: Context, args: dict[str, Any]) -> Any:
-    if (args.get("library_image_id") is None) == (args.get("library_image_ids") is None):
-        raise ToolError("Indiquer library_image_id ou library_image_ids, et un seul des deux")
-    if args.get("library_image_id") is not None:
-        row = _library_row(ctx, _int(args, "library_image_id"))
-        ctx.target = f"bibliothèque:{row['id']}"
-        ctx.check_write(row["campaign_id"], "Image")
+    row = _library_row(ctx, _int(args, "library_image_id"))
+    ctx.target = f"bibliothèque:{row['id']}"
+    ctx.check_write(row["campaign_id"], "Image")
 
-        def _work(conn: sqlite3.Connection):
-            delete_library_rows(conn, [row])
-        await ctx.run(_work)
-        imaging.delete_files(_media_dir(ctx), row["file"], row["thumb"])
-        return {"deleted": row["id"]}
-
-    ids = args["library_image_ids"]
-    if not isinstance(ids, list) or not ids or len(ids) > limits.IMAGES_DELETE_MAX:
-        raise ToolError(f"library_image_ids : liste de 1 à {limits.IMAGES_DELETE_MAX} identifiants d'images "
-                        "de la bibliothèque")
-    wanted = list(dict.fromkeys(_int({"id": v}, "id") for v in ids))
-    with ctx.transaction() as conn:
-        found = {r["id"]: db.row_to_dict(r) for r in conn.execute(
-            f"SELECT * FROM library_images WHERE id IN ({','.join('?' * len(wanted))})", wanted)}
-    rows = [found[i] for i in wanted if i in found and found[i]["campaign_id"] in ctx.grants]
-    for cid in dict.fromkeys(r["campaign_id"] for r in rows):   # toutes ouvertes en écriture, sinon rien
-        ctx.check_write(cid, "Image")
-    ctx.target = f"bibliothèque x{len(rows)}"
-
-    def _work_many(conn: sqlite3.Connection) -> list[dict[str, Any]]:
-        # Relues dans la transaction : une image supprimée entre-temps compte parmi les absentes.
-        still = {r[0] for r in conn.execute(
-            f"SELECT id FROM library_images WHERE id IN ({','.join('?' * len(rows))})", [r["id"] for r in rows])}
-        kept = [r for r in rows if r["id"] in still]
-        delete_library_rows(conn, kept)
-        return kept
-    deleted = await ctx.run(_work_many) if rows else []
-    for r in deleted:
-        imaging.delete_files(_media_dir(ctx), r["file"], r["thumb"])
-    done = {r["id"] for r in deleted}
-    return {"deleted": [i for i in wanted if i in done], "missing": [i for i in wanted if i not in done]}
-
-
-# --- Catalogue -----------------------------------------------------------------------------------
-
-SOURCE = {
-    "url": {"type": "string", "description": "Adresse http(s) publique d'une image JPEG, PNG, WebP ou GIF"},
-    "from_library_image_id": {**ID, "description": "Ou : copie d'une image de la bibliothèque (list_library)"},
-    "from_image_id": {**ID, "description": "Ou : copie d'une image de la galerie d'une fiche"},
-    "from_document_image_id": {**ID, "description": "Ou : copie d'une image d'une fiche rédigée"},
-}
-
-TOOLS = [
-    _tool("view_image", "Voir une image",
-          "Aperçu d'une image de Maze (galerie d'une fiche : image_id, voir get_entry ; illustration d'une fiche "
-          "rédigée : document_image_id, attribut data-doc-image du contenu ; bibliothèque : library_image_id).",
-          {"image_id": ID, "document_image_id": ID, "library_image_id": ID}, [], view_image),
-    _tool("list_library", "Bibliothèque d'images",
-          "Images déposées par le MJ dans la bibliothèque d'une campagne, pas encore rattachées à une fiche.",
-          {"campaign_id": ID}, ["campaign_id"], list_library),
-    _tool("add_image", "Ajouter une image à une fiche",
-          "Ajoute une image à la galerie d'un PNJ, d'une faction ou d'un lieu, depuis une adresse web publique ou "
-          "une image déjà dans Maze. set_cover : en faire le portrait / l'emblème / l'illustration (sinon, seulement "
-          "si la fiche n'en a pas).",
-          {"kind": ENTRY_KIND, "id": ID, **SOURCE, "caption": {"type": "string"}, "set_cover": {"type": "boolean"}},
-          ["kind", "id"], add_image, write=True),
-    _tool("update_image", "Modifier une image",
-          "Légende (caption), place dans la galerie (position, 0 = en tête) ou image de couverture (set_cover).",
-          {"image_id": ID, "caption": {"type": "string"}, "position": {"type": "integer", "minimum": 0},
-           "set_cover": {"type": "boolean"}}, ["image_id"], update_image, write=True),
-    _tool("edit_image", "Retoucher une image",
-          "Pivote (rotate : 90, 180 ou 270, sens horaire), retourne (flip : horizontal ou vertical) puis recadre "
-          "(crop : left, top, right, bottom en pourcentages de l'image pivotée). L'image retouchée prend la place et "
-          "le rôle de l'originale ; l'originale reste en fin de galerie (keep_original=false pour la supprimer).",
-          {"image_id": ID, "rotate": {"type": "integer", "enum": [90, 180, 270]},
-           "flip": {"type": "string", "enum": ["horizontal", "vertical"]},
-           "crop": {"type": "object", "properties": {k: {"type": "number", "minimum": 0, "maximum": 100}
-                                                     for k in ("left", "top", "right", "bottom")},
-                    "required": ["left", "top", "right", "bottom"]},
-           "keep_original": {"type": "boolean"}},
-          ["image_id"], edit_image, write=True),
-    _tool("delete_image", "Supprimer une image",
-          "Supprime définitivement une image de la galerie d'une fiche (l'image suivante devient la couverture).",
-          {"image_id": ID}, ["image_id"], delete_image, write=True, destructive=True),
-    _tool("delete_library_image", "Retirer de la bibliothèque",
-          "Supprime définitivement une image de la bibliothèque (par exemple une fois copiée vers sa fiche) : "
-          "library_image_id, ou library_image_ids pour en supprimer plusieurs d'un coup (200 au plus, un seul des "
-          "deux paramètres). En liste, toutes doivent être dans des campagnes ouvertes en écriture ; les images "
-          "introuvables sont renvoyées dans missing, les autres dans deleted.",
-          {"library_image_id": ID,
-           "library_image_ids": {"type": "array", "items": ID, "minItems": 1, "maxItems": limits.IMAGES_DELETE_MAX}},
-          [], delete_library_image, write=True, destructive=True),
-    _tool("add_document_image", "Illustrer une fiche rédigée",
-          "Prépare une illustration pour une fiche rédigée (adresse web publique ou image de Maze) et renvoie le "
-          "HTML à insérer dans son contenu avec update_document.",
-          {"document_id": ID, **SOURCE, "alt": {"type": "string"}}, ["document_id"], add_document_image, write=True),
-]
+    def _work(conn: sqlite3.Connection):
+        delete_library_rows(conn, [row])
+    await ctx.run(_work)
+    imaging.delete_files(_media_dir(ctx), row["file"], row["thumb"])
+    return {"deleted": row["id"]}

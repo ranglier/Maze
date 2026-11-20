@@ -3,9 +3,14 @@
 Chaque requête porte un jeton OAuth (oauth.py). Les outils passent par les routes de l'API REST,
 appelées en interne avec l'identité de Claude (connector.acting_user) : mêmes validations, mêmes droits,
 mêmes effets (index de recherche, historique, éditeurs ouverts rechargés) que depuis l'interface.
-Les outils d'écriture ne voient que les campagnes ouvertes en écriture (lecture et écriture, ou lecture, écriture et
-suppression) ; les outils de suppression (delete_entry, delete_document, delete_event, delete_map, delete_comment),
-seulement celles ouvertes en lecture, écriture et suppression (migration 033).
+
+Jeu d'outils regroupé (novembre 2026, lot connecteur-outils) : list_campaigns, get_campaign, search et
+update_document ici ; list, get, view et les outils d'écriture par lots (create, update, link, unlink, delete,
+add_image, edit_image) dans mcp_tools.py. Les fonctions de ce module (create_entry, update_entry, set_membership,
+delete_entry…) ne sont plus des outils : ce sont les traitements d'UN élément, appelés par mcp_tools.
+Écriture : campagnes ouvertes en écriture (lecture et écriture, ou lecture, écriture et suppression) ; suppression
+de PNJ, factions, lieux, fiches rédigées, événements, cartes et commentaires : seulement les campagnes ouvertes en
+lecture, écriture et suppression (migration 033).
 """
 
 from __future__ import annotations
@@ -14,8 +19,9 @@ import json
 import logging
 import re
 import sqlite3
+import unicodedata
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field as dc_field, replace
 from typing import Any, get_args
 from urllib.parse import urlencode
 
@@ -38,12 +44,16 @@ PROTOCOL_VERSIONS = ("2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05")
 MAX_BODY = 4 * 1024 * 1024
 MAX_BATCH = 20           # messages par lot JSON-RPC (audit PERF-13 ; les lots ont disparu du protocole 2025-06-18)
 # Taille des résultats : les clients MCP plafonnent un résultat d'outil (environ 25 000 jetons ; 66 000
-# caractères refusés en recette). Grosses campagnes : get_campaign se compacte puis se tronque pour tenir
-# dans ce budget, les liens sont paginés ; le détail passe par search et get_entry.
-RESULT_BUDGET = 40_000    # caractères visés pour get_campaign et une page de liens
+# caractères refusés en recette). Grosses campagnes (684 PNJ, 427 factions en recette) : get_campaign résume
+# (arbres abrégés), ses sections détaillées et les listes (outil list) sont paginées et chaque page est raccourcie
+# pour tenir dans ce budget ; le détail passe par get, list et search.
+RESULT_BUDGET = 40_000    # caractères visés pour get_campaign et une page de liste
 RESULT_MAX = 80_000       # au-delà, résultat refusé avec un message (plutôt qu'un échec du client)
-RELATIONS_DEFAULT, RELATIONS_MAX = 50, 100
 EVENTS_DEFAULT, EVENTS_MAX = 100, 200
+SECTIONS = ("summary", "npcs", "factions", "places", "documents")
+SECTION_DEFAULT, SECTION_MAX = 100, 200
+# Part du budget de la vue d'ensemble pour chaque arbre abrégé (réduite si l'ensemble dépasse RESULT_BUDGET).
+TREE_BUDGETS = {"documents": 8_000, "factions": 9_000, "places": 9_000, "npcs": 6_000}
 ENTRY_PATHS = {"npc": "npcs", "faction": "factions", "place": "places"}
 ENTRY_TABLES = {"npc": "npcs", "faction": "factions", "place": "places"}
 # Niveaux d'accès d'une campagne (mcp_grants.mode) : delete permet tout ce que permet write (migration 033).
@@ -92,12 +102,24 @@ class Blocks:
 
 
 @dataclass
+class Batch:
+    """Résultat d'un outil d'écriture par lots : un résultat et une ligne de journal par élément
+    (journal : campagne, cible, réussite, détail de l'erreur)."""
+    results: list[dict[str, Any]]
+    log: list[tuple[int | None, str, bool, str]] = dc_field(default_factory=list)
+
+
+@dataclass
 class Context:
     app: Any
     user: dict[str, Any]              # administrateur au nom duquel Claude agit
     grants: dict[int, str]            # campagnes ouvertes : {id: "read" | "write" | "delete"}
     campaign_id: int | None = None    # campagne concernée par l'appel (journal)
     target: str = ""
+
+    def fresh(self) -> Context:
+        """Même identité et mêmes accès, journal vierge : un contexte par élément d'un lot."""
+        return replace(self, campaign_id=None, target="")
 
     @property
     def readable(self) -> set[int]:
@@ -272,6 +294,44 @@ def _short(text: str | None, limit: int = 160) -> str:
     return text if len(text) <= limit else text[: limit - 1] + "…"
 
 
+def _fold(text: Any) -> str:
+    """Texte sans accents ni casse, pour les filtres des listes (query, tag, type)."""
+    decomposed = unicodedata.normalize("NFKD", str(text or ""))
+    return "".join(c for c in decomposed if not unicodedata.combining(c)).casefold()
+
+
+def _size(data: Any) -> int:
+    return len(json.dumps(data, ensure_ascii=False))
+
+
+def _paging(args: dict[str, Any], default: int, maximum: int) -> tuple[int, int]:
+    limit = _int(args, "limit", required=False)
+    limit = default if limit is None else limit
+    offset = _int(args, "offset", required=False) or 0
+    if not 1 <= limit <= maximum or offset < 0:
+        raise ToolError(f"limit entre 1 et {maximum}, offset positif ou nul")
+    return offset, limit
+
+
+def _page(items: list[Any], offset: int, limit: int, budget: int = RESULT_BUDGET) -> dict[str, Any]:
+    """Page demandée d'une liste, raccourcie s'il le faut pour tenir dans le budget ; next_offset s'il en reste."""
+    page = items[offset:offset + limit]
+    shortened = len(page) > 1 and _size(page) > budget
+    if shortened:   # plus longue page qui tient (au moins un élément)
+        low, high = 1, len(page) - 1
+        while low < high:
+            mid = (low + high + 1) // 2
+            low, high = (mid, high) if _size(page[:mid]) <= budget else (low, mid - 1)
+        page = page[:low]
+    out: dict[str, Any] = {"total": len(items), "offset": offset, "items": page}
+    if offset + len(page) < len(items):
+        out["next_offset"] = offset + len(page)
+    if shortened:
+        out["note"] = (f"Page raccourcie à {len(page)} éléments pour tenir dans la taille d'un résultat : "
+                       "continuer avec offset=next_offset.")
+    return out
+
+
 def _names(conn, campaign_id: int) -> dict[tuple[str, int], str]:
     names: dict[tuple[str, int], str] = {}
     for kind, table in ENTRY_TABLES.items():
@@ -369,99 +429,210 @@ async def search(ctx: Context, args: dict[str, Any]) -> Any:
 
 async def get_campaign(ctx: Context, args: dict[str, Any]) -> Any:
     cid = ctx.check_read(_int(args, "campaign_id"))
+    section = args.get("section") or "summary"
+    if section not in SECTIONS:
+        raise ToolError(f"Paramètre section : une valeur parmi {', '.join(SECTIONS)}")
     campaign = await ctx.api("GET", f"/api/campaigns/{cid}")
-    docs = await ctx.api("GET", f"/api/campaigns/{cid}/documents")
-    places = await ctx.api("GET", f"/api/campaigns/{cid}/places")
+    docs = await ctx.api("GET", f"/api/campaigns/{cid}/documents")   # crée la fiche de campagne si besoin
+    if section != "summary":
+        offset, limit = _paging(args, SECTION_DEFAULT, SECTION_MAX)
 
-    def load() -> tuple:
+        def load_section() -> list[dict[str, Any]]:
+            with ctx.transaction() as conn:
+                return _section_items(conn, cid, section, docs)
+        items = await run_in_threadpool(load_section)
+        return {"campaign_id": cid, "section": section, **_page(items, offset, limit)}
+
+    def load() -> dict[str, Any]:
         with ctx.transaction() as conn:
-            npcs = db.rows_to_dicts(conn.execute(
-                "SELECT id, name, title, status, summary, tags FROM npcs WHERE campaign_id = ? "
-                "ORDER BY sort_order, name COLLATE NOCASE", (cid,)).fetchall())
-            factions = db.rows_to_dicts(conn.execute(
-                "SELECT id, name, kind, summary, tags FROM factions WHERE campaign_id = ? "
-                "ORDER BY sort_order, name COLLATE NOCASE", (cid,)).fetchall())
-            members: dict[int, list[dict[str, Any]]] = {}
-            parents: dict[int, list[dict[str, Any]]] = {}
-            for m in conn.execute("""SELECT m.npc_id, m.member_faction_id, m.faction_id, m.role, m.is_leader
-                                       FROM memberships m JOIN factions f ON f.id = m.faction_id
-                                      WHERE f.campaign_id = ? ORDER BY m.id""", (cid,)):
-                if m["npc_id"] is not None:
-                    members.setdefault(m["npc_id"], []).append(
-                        {"faction_id": m["faction_id"], "role": m["role"], "leader": bool(m["is_leader"])})
-                else:   # sous-faction (migration 031)
-                    parents.setdefault(m["member_faction_id"], []).append(
-                        {"faction_id": m["faction_id"], "role": m["role"]})
-            relation_types = db.rows_to_dicts(conn.execute(
-                "SELECT key, label, directed, hint FROM relation_types WHERE campaign_id = ? ORDER BY sort_order, id",
-                (cid,)).fetchall())
-            relation_count = conn.execute("SELECT COUNT(*) FROM relations WHERE campaign_id = ?", (cid,)).fetchone()[0]
-            timeline = conn.execute(
-                "SELECT timeline_enabled, (SELECT COUNT(*) FROM timeline_events WHERE campaign_id = c.id) "
-                "FROM campaigns c WHERE id = ?", (cid,)).fetchone()
-        return npcs, factions, members, parents, relation_types, relation_count, timeline
-
-    npcs, factions, members, parents, relation_types, relation_count, timeline = await run_in_threadpool(load)
-    totals = {"npcs": len(npcs), "factions": len(factions), "places": len(places["places"])}
-    for n in npcs:
-        n["summary"] = _short(n["summary"])
-        n["factions"] = members.get(n["id"], [])
-    for f in factions:
-        f["summary"] = _short(f["summary"])
-        f["member_of"] = parents.get(f["id"], [])
-    lists = {
-        "npcs": npcs, "factions": factions,
-        "places": [{"id": p["id"], "parent_id": p["parent_id"], "name": p["name"], "kind": p["kind"],
-                    "summary": _short(p["summary"]), "tags": p["tags"]} for p in places["places"]],
-    }
-    out = {
-        "campaign": {"id": cid, "name": campaign["name"], "description": campaign["description"],
+            return _summary(conn, cid, docs)
+    data = await run_in_threadpool(load)
+    head = {
+        "campaign": {"id": cid, "name": campaign["name"], "description": _short(campaign["description"], 600),
                      "access": ACCESS_LABELS[ctx.grants[cid]]},
-        "documents": {"root_id": docs["root_id"], "tree": [
-            {k: d[k] for k in ("id", "parent_id", "kind", "title", "status")} for d in docs["documents"]]},
-        "totals": totals,
-        "place_kinds": [{"key": k["key"], "label": k["label"]} for k in places["kinds"]],
-        "relation_types": relation_types,
-        "relation_count": relation_count,
-        # Chronologie (migration 032) : activée ou non, et nombre d'événements ; list_events pour le détail.
-        "timeline": {"enabled": bool(timeline[0]), "events": timeline[1]},
+        "totals": data["totals"],
+        "npc_statuses": data["npc_statuses"],
+        "place_kinds": data["place_kinds"],
+        "relation_types": data["relation_types"],
+        # Chronologie (migration 032) : activée ou non, et nombre d'événements ; list (kind event) pour le détail.
+        "timeline": data["timeline"],
+        "tags": data["tags"],
     }
-    return _fit_overview(out, lists)
+    budgets = dict(TREE_BUDGETS)
+    while True:
+        out, cut = dict(head), []
+        for key in ("documents", "factions", "places"):
+            tree, shown, more = _tree(data["nodes"][key], data["kids"][key], data["roots"][key], budgets[key])
+            out[key] = {"root_id": docs["root_id"], "tree": tree} if key == "documents" else tree
+            if more:
+                out[f"{key}_more"] = more
+            total = len(data["nodes"][key])
+            if shown < total:
+                cut.append(f"{key} {shown} sur {total}")
+        npcs = data["npcs"]
+        if npcs and _size(npcs) <= budgets["npcs"]:
+            out["npcs"] = npcs
+        elif npcs:
+            cut.append(f"npcs 0 sur {len(npcs)}")
+        out["note"] = _summary_note(cut)
+        if _size(out) <= RESULT_BUDGET or budgets["places"] < 500:
+            return out
+        budgets = {k: v * 2 // 3 for k, v in budgets.items()}
 
 
-def _size(data: Any) -> int:
-    return len(json.dumps(data, ensure_ascii=False))
+def _summary_note(cut: list[str]) -> str:
+    note = ("Vue d'ensemble. Arbres : sub = sous-éléments ; more = sous-éléments non affichés ; <clé>_more = éléments "
+            "de premier niveau non affichés. Détail : get_campaign avec section (npcs, factions, places, documents ; "
+            "paginé avec offset et limit), list pour une liste filtrée (membres d'une faction, fiches liées à un lieu, "
+            "sous-lieux, étiquette…), get pour une fiche, search pour retrouver un nom ou un passage.")
+    if cut:
+        note += f" Campagne volumineuse, listes abrégées ({', '.join(cut)})."
+    return note
 
 
-def _fit_overview(out: dict[str, Any], lists: dict[str, list[dict[str, Any]]]) -> dict[str, Any]:
-    """Vue d'ensemble dans le budget : complète ; sinon sans résumés ni étiquettes ; sinon listes tronquées
-    (au prorata), avec une note qui renvoie vers search et get_entry."""
-    if _size(out) + _size(lists) <= RESULT_BUDGET:
-        return {**out, **lists}
-    compact = {
-        "npcs": [{"id": n["id"], "name": n["name"], "title": n["title"], "status": n["status"],
-                  "factions": [m["faction_id"] for m in n["factions"]]} for n in lists["npcs"]],
-        "factions": [{"id": f["id"], "name": f["name"], "kind": f["kind"],
-                      **({"member_of": [m["faction_id"] for m in f["member_of"]]} if f.get("member_of") else {})}
-                     for f in lists["factions"]],
-        "places": [{"id": p["id"], "parent_id": p["parent_id"], "name": p["name"], "kind": p["kind"]}
-                   for p in lists["places"]],
+def _tree(nodes: dict[int, dict[str, Any]], kids: dict[int, list[int]], roots: list[int],
+          budget: int) -> tuple[list[dict[str, Any]], int, int]:
+    """Arbre abrégé, en largeur d'abord (les premiers niveaux d'abord) jusqu'au budget de caractères : un nœud dont
+    des enfants ne sont pas affichés porte more (leur nombre). Un nœud à plusieurs parents (sous-faction membre de
+    plusieurs factions) n'apparaît que sous le premier. Renvoie l'arbre, le nombre de nœuds affichés et le nombre de
+    racines non affichées."""
+    out: list[dict[str, Any]] = []
+    queue: list[tuple[int, dict[str, Any] | None]] = [(r, None) for r in roots]
+    seen: set[int] = set()
+    used = shown = root_more = 0
+    full = False
+    for node_id, parent in queue:   # la file grandit pendant le parcours
+        if node_id in seen:
+            continue
+        seen.add(node_id)
+        node = dict(nodes[node_id])
+        cost = _size(node) + 12
+        if full or used + cost > budget:
+            full = True
+            if parent is None:
+                root_more += 1
+            else:
+                parent["more"] = parent.get("more", 0) + 1
+            continue
+        used += cost
+        shown += 1
+        (out if parent is None else parent.setdefault("sub", [])).append(node)
+        queue.extend((child, node) for child in kids.get(node_id, []))
+    return out, shown, root_more
+
+
+def _summary(conn, cid: int, docs: dict[str, Any]) -> dict[str, Any]:
+    """Données de la vue d'ensemble : effectifs, types, étiquettes et nœuds des arbres (documents, factions, lieux)."""
+    count = lambda sql: conn.execute(sql, (cid,)).fetchone()[0]  # noqa: E731
+    npcs = db.rows_to_dicts(conn.execute(
+        "SELECT id, name, status, tags FROM npcs WHERE campaign_id = ? ORDER BY sort_order, name COLLATE NOCASE",
+        (cid,)).fetchall())
+    factions = db.rows_to_dicts(conn.execute(
+        "SELECT id, name, tags FROM factions WHERE campaign_id = ? ORDER BY sort_order, name COLLATE NOCASE",
+        (cid,)).fetchall())
+    places = db.rows_to_dicts(conn.execute(
+        "SELECT id, parent_id, name, kind, tags FROM places WHERE campaign_id = ? ORDER BY sort_order, name COLLATE NOCASE",
+        (cid,)).fetchall())
+    members: dict[int, int] = {}
+    parents: dict[int, list[int]] = {}
+    for m in conn.execute("""SELECT m.npc_id, m.member_faction_id, m.faction_id FROM memberships m
+                               JOIN factions f ON f.id = m.faction_id WHERE f.campaign_id = ? ORDER BY m.id""", (cid,)):
+        if m["npc_id"] is not None:
+            members[m["faction_id"]] = members.get(m["faction_id"], 0) + 1
+        else:
+            parents.setdefault(m["member_faction_id"], []).append(m["faction_id"])
+    kind_counts: dict[str, int] = {}
+    for p in places:
+        kind_counts[p["kind"]] = kind_counts.get(p["kind"], 0) + 1
+    statuses: dict[str, int] = {}
+    for n in npcs:
+        statuses[n["status"]] = statuses.get(n["status"], 0) + 1
+    tags: dict[str, int] = {}
+    for row in (*npcs, *factions, *places):
+        for tag in row.get("tags") or []:
+            tags[tag] = tags.get(tag, 0) + 1
+    timeline = conn.execute("SELECT timeline_enabled FROM campaigns WHERE id = ?", (cid,)).fetchone()
+
+    order = {f["id"]: i for i, f in enumerate(factions)}
+    faction_kids: dict[int, list[int]] = {}
+    for child, of in parents.items():
+        for parent in of:
+            faction_kids.setdefault(parent, []).append(child)
+    for ids in faction_kids.values():
+        ids.sort(key=lambda i: order.get(i, 0))
+    place_kids: dict[int, list[int]] = {}
+    for p in places:
+        if p["parent_id"] is not None:
+            place_kids.setdefault(p["parent_id"], []).append(p["id"])
+    documents = [d for d in docs["documents"] if d["kind"] != "campaign"]
+    doc_kids: dict[int, list[int]] = {}
+    for d in documents:
+        doc_kids.setdefault(d["parent_id"], []).append(d["id"])
+    known = {p["id"] for p in places}
+    return {
+        "totals": {
+            "npcs": len(npcs), "factions": len(factions), "places": len(places), "documents": len(documents),
+            "relations": count("SELECT COUNT(*) FROM relations WHERE campaign_id = ?"),
+            "events": count("SELECT COUNT(*) FROM timeline_events WHERE campaign_id = ?"),
+            "maps": count("SELECT COUNT(*) FROM maps WHERE campaign_id = ?"),
+            "library_images": count("SELECT COUNT(*) FROM library_images WHERE campaign_id = ?"),
+            "comments": count("SELECT COUNT(*) FROM comments c JOIN documents d ON d.id = c.document_id "
+                              "WHERE d.campaign_id = ?")
+                        + count("SELECT COUNT(*) FROM entry_comments WHERE campaign_id = ?"),
+        },
+        "npc_statuses": statuses,
+        "place_kinds": [{"key": k["key"], "label": k["label"], "places": kind_counts.get(k["key"], 0)}
+                        for k in conn.execute("SELECT key, label FROM place_kinds WHERE campaign_id = ? "
+                                              "ORDER BY sort_order, id", (cid,))],
+        "relation_types": db.rows_to_dicts(conn.execute(
+            "SELECT key, label, directed, hint FROM relation_types WHERE campaign_id = ? ORDER BY sort_order, id",
+            (cid,)).fetchall()),
+        "timeline": {"enabled": bool(timeline[0]),
+                     "events": count("SELECT COUNT(*) FROM timeline_events WHERE campaign_id = ?")},
+        "tags": [{"tag": k, "count": v} for k, v in sorted(tags.items(), key=lambda kv: (-kv[1], _fold(kv[0])))[:40]],
+        "npcs": [{"id": n["id"], "name": n["name"]} for n in npcs],
+        "nodes": {
+            "documents": {d["id"]: {"id": d["id"], "title": d["title"], "status": d["status"]} for d in documents},
+            "factions": {f["id"]: {"id": f["id"], "name": f["name"],
+                                   **({"npcs": members[f["id"]]} if f["id"] in members else {})} for f in factions},
+            "places": {p["id"]: {"id": p["id"], "name": p["name"], "kind": p["kind"]} for p in places},
+        },
+        "kids": {"documents": doc_kids, "factions": faction_kids, "places": place_kids},
+        "roots": {
+            "documents": doc_kids.get(docs["root_id"], []),
+            "factions": [f["id"] for f in factions if f["id"] not in parents],
+            "places": [p["id"] for p in places if p["parent_id"] is None or p["parent_id"] not in known],
+        },
     }
-    note = "Campagne volumineuse : résumés et étiquettes omis (get_entry pour le détail)."
-    room = RESULT_BUDGET - _size(out) - 400
-    if _size(compact) > room:
-        # Tronquées dans cet ordre : PNJ d'abord (les plus nombreux), puis lieux, puis factions.
-        for key in ("npcs", "places", "factions"):
-            others = sum(_size(v) for k, v in compact.items() if k != key)
-            items = compact[key]
-            if others + _size(items) > room and items:
-                keep = max(room - others, 0) * len(items) // _size(items)
-                while keep and others + _size(items[:keep]) > room:
-                    keep -= 1
-                compact[key] = items[:keep]
-        shown = ", ".join(f"{len(compact[k])} {k} sur {out['totals'][k]}" for k in compact)
-        note += f" Listes tronquées ({shown}) : search pour retrouver les autres fiches."
-    return {**out, **compact, "note": note}
+
+
+def _section_items(conn, cid: int, section: str, docs: dict[str, Any]) -> list[dict[str, Any]]:
+    """Liste détaillée d'une section de get_campaign (résumés abrégés, appartenances)."""
+    if section == "documents":
+        return [{k: d[k] for k in ("id", "parent_id", "kind", "title", "status")} for d in docs["documents"]]
+    if section == "places":
+        return [{**p, "summary": _short(p["summary"])} for p in db.rows_to_dicts(conn.execute(
+            "SELECT id, parent_id, name, kind, summary, tags FROM places WHERE campaign_id = ? "
+            "ORDER BY sort_order, name COLLATE NOCASE", (cid,)).fetchall())]
+    members: dict[int, list[dict[str, Any]]] = {}
+    parents: dict[int, list[dict[str, Any]]] = {}
+    for m in conn.execute("""SELECT m.npc_id, m.member_faction_id, m.faction_id, m.role, m.is_leader
+                               FROM memberships m JOIN factions f ON f.id = m.faction_id
+                              WHERE f.campaign_id = ? ORDER BY m.id""", (cid,)):
+        if m["npc_id"] is not None:
+            members.setdefault(m["npc_id"], []).append(
+                {"faction_id": m["faction_id"], "role": m["role"], "leader": bool(m["is_leader"])})
+        else:   # sous-faction (migration 031)
+            parents.setdefault(m["member_faction_id"], []).append({"faction_id": m["faction_id"], "role": m["role"]})
+    if section == "npcs":
+        return [{**n, "summary": _short(n["summary"]), "factions": members.get(n["id"], [])}
+                for n in db.rows_to_dicts(conn.execute(
+                    "SELECT id, name, title, status, summary, tags FROM npcs WHERE campaign_id = ? "
+                    "ORDER BY sort_order, name COLLATE NOCASE", (cid,)).fetchall())]
+    return [{**f, "summary": _short(f["summary"]), "member_of": parents.get(f["id"], [])}
+            for f in db.rows_to_dicts(conn.execute(
+                "SELECT id, name, kind, summary, tags FROM factions WHERE campaign_id = ? "
+                "ORDER BY sort_order, name COLLATE NOCASE", (cid,)).fetchall())]
 
 
 async def get_entry(ctx: Context, args: dict[str, Any]) -> Any:
@@ -498,30 +669,6 @@ async def get_entry(ctx: Context, args: dict[str, Any]) -> Any:
     if args.get("include_comments") in (True, "true", 1):
         row["comments"] = await ctx.api("GET", f"/api/{ENTRY_PATHS[kind]}/{eid}/comments")
     return row
-
-
-async def list_relations(ctx: Context, args: dict[str, Any]) -> Any:
-    cid = ctx.check_read(_int(args, "campaign_id"))
-    kind = _kind(args, "kind", ("npc", "faction")) if args.get("kind") is not None else None
-    entity_id = _int(args, "id", required=kind is not None)
-    rel_type = str(args["type"]) if args.get("type") is not None else None
-    limit = _int(args, "limit", required=False) or RELATIONS_DEFAULT
-    offset = _int(args, "offset", required=False) or 0
-    if not 1 <= limit <= RELATIONS_MAX or offset < 0:
-        raise ToolError(f"limit entre 1 et {RELATIONS_MAX}, offset positif")
-
-    def load() -> dict[str, Any]:
-        with ctx.transaction() as conn:
-            types = db.rows_to_dicts(conn.execute(
-                "SELECT key, label, directed, hint FROM relation_types WHERE campaign_id = ? ORDER BY sort_order, id",
-                (cid,)).fetchall())
-            relations, total = _relations(conn, cid, kind, entity_id, rel_type, limit, offset)
-        out = {"relation_types": types, "total": total, "offset": offset, "relations": relations}
-        if offset + len(relations) < total:
-            out["next_offset"] = offset + len(relations)
-        return out
-
-    return await run_in_threadpool(load)
 
 
 async def get_document(ctx: Context, args: dict[str, Any]) -> Any:
@@ -898,7 +1045,8 @@ async def update_event(ctx: Context, args: dict[str, Any]) -> Any:
             raise ToolError("Événement introuvable dans cette campagne")
         if not body and base_revision is not None and base_revision != current["revision"]:
             # Le déplacement seul ne passe pas par le PATCH : même contrôle de révision ici.
-            raise ToolError(f"Événement modifié entre-temps (révision {current['revision']}) : relire avec list_events")
+            raise ToolError(f"Événement modifié entre-temps (révision {current['revision']}) : le relire avec get "
+                             "(kind event)")
         ids = [e["id"] for e in events if e["id"] != eid]
         if before_id is not None and before_id not in ids:
             raise ToolError("before_id : événement introuvable dans cette campagne")
@@ -916,6 +1064,24 @@ async def update_event(ctx: Context, args: dict[str, Any]) -> Any:
 # Chaque outil vérifie d'abord le niveau d'accès de la campagne de l'objet (Context.check_delete), puis exige le nom
 # ou le titre actuel de l'objet (garde-fou contre un identifiant mal recopié), et passe par la route REST de
 # l'interface (mêmes effets : cascades, fichiers, éditeurs ouverts fermés).
+
+def _trash_id(response: Any) -> int | None:
+    """Corbeille (lot corbeille) : les routes DELETE des PNJ, factions, lieux, fiches rédigées, événements et cartes
+    répondent {"trash_id": …} ; avant elle, 204 sans corps (définitif)."""
+    return response.get("trash_id") if isinstance(response, dict) else None
+
+
+def _gone(trash: int | None, feminine: bool) -> str:
+    if trash is not None:
+        return f"placé{'e' if feminine else ''} dans la corbeille (30 jours, restaurable par le MJ)"
+    return f"supprimé{'e' if feminine else ''}"
+
+
+def _deleted(out: dict[str, Any], trash: int | None) -> dict[str, Any]:
+    if trash is not None:
+        out["trash_id"] = trash
+    return out
+
 
 def _same(args: dict[str, Any], key: str, current: str, refusal: str) -> None:
     given = args.get(key)
@@ -940,11 +1106,11 @@ async def delete_entry(ctx: Context, args: dict[str, Any]) -> Any:
     name = found[0]
     ctx.target = f"{kind}:{eid} « {name} »"
     _same(args, "name", name, f"Nom différent : la fiche n°{eid} s'appelle « {name} »")
-    await ctx.api("DELETE", f"/api/{ENTRY_PATHS[kind]}/{eid}", delete=True)
-    message = f"{_KIND_NAMES[kind]} « {name} » supprimé{'e' if kind == 'faction' else ''}."
+    trash = _trash_id(await ctx.api("DELETE", f"/api/{ENTRY_PATHS[kind]}/{eid}", delete=True))
+    message = f"{_KIND_NAMES[kind]} « {name} » {_gone(trash, kind == 'faction')}."
     if children:
         message += f" Ses sous-lieux ({children}) remontent d'un niveau."
-    return {"deleted": {"kind": kind, "id": eid, "name": name}, "message": message}
+    return _deleted({"deleted": {"kind": kind, "id": eid, "name": name}, "message": message}, trash)
 
 
 async def delete_document(ctx: Context, args: dict[str, Any]) -> Any:
@@ -964,10 +1130,10 @@ async def delete_document(ctx: Context, args: dict[str, Any]) -> Any:
     if found[1] == "campaign":   # comme la route (et l'interface) : avant même de comparer le titre
         raise ToolError("La fiche de campagne ne peut pas être supprimée")
     _same(args, "title", title, f"Titre différent : la fiche n°{did} s'intitule « {title} »")
-    await ctx.api("DELETE", f"/api/documents/{did}", delete=True)
-    message = f"Fiche « {title} » supprimée"
+    trash = _trash_id(await ctx.api("DELETE", f"/api/documents/{did}", delete=True))
+    message = f"Fiche « {title} » {_gone(trash, True)}"
     message += f", avec ses sous-pages ({pages})." if pages else "."
-    return {"deleted": {"document_id": did, "title": title, "subpages": pages}, "message": message}
+    return _deleted({"deleted": {"document_id": did, "title": title, "subpages": pages}, "message": message}, trash)
 
 
 async def delete_event(ctx: Context, args: dict[str, Any]) -> Any:
@@ -982,8 +1148,9 @@ async def delete_event(ctx: Context, args: dict[str, Any]) -> Any:
     title = found[0]
     ctx.target = f"event:{eid} « {title} »"
     _same(args, "title", title, f"Titre différent : l'événement n°{eid} s'intitule « {title} »")
-    await ctx.api("DELETE", f"/api/events/{eid}", delete=True)
-    return {"deleted": {"event_id": eid, "title": title}, "message": f"Événement « {title} » supprimé."}
+    trash = _trash_id(await ctx.api("DELETE", f"/api/events/{eid}", delete=True))
+    return _deleted({"deleted": {"event_id": eid, "title": title},
+                     "message": f"Événement « {title} » {_gone(trash, False)}."}, trash)
 
 
 async def delete_map(ctx: Context, args: dict[str, Any]) -> Any:
@@ -998,9 +1165,10 @@ async def delete_map(ctx: Context, args: dict[str, Any]) -> Any:
     name, pins = found[0], found[1]
     ctx.target = f"carte:{mid} « {name} »"
     _same(args, "name", name, f"Nom différent : la carte n°{mid} s'appelle « {name} »")
-    await ctx.api("DELETE", f"/api/maps/{mid}", delete=True)
-    return {"deleted": {"map_id": mid, "name": name, "pins": pins},
-            "message": f"Carte « {name} » supprimée, avec ses épingles ({pins}) ; les lieux restent."}
+    trash = _trash_id(await ctx.api("DELETE", f"/api/maps/{mid}", delete=True))
+    return _deleted({"deleted": {"map_id": mid, "name": name, "pins": pins},
+                     "message": f"Carte « {name} » {_gone(trash, True)}, avec ses épingles ({pins}) ; les lieux "
+                                "restent."}, trash)
 
 
 COMMENT_TABLES = {"document": ("comments", "/api/comments"), "entry": ("entry_comments", "/api/entry-comments")}
@@ -1053,24 +1221,21 @@ COMMENT_FIELDS_DOC = " ; ".join(f"{_KIND_NAMES[kind]} : {', '.join(entries.keys(
                                 for kind in entries.KINDS)
 STATUS = {"type": "string", "enum": ["brouillon", "pret", "en_cours", "joue"]}
 CONTENT = {"type": "string", "description": "HTML de l'éditeur (voir les instructions du serveur)"}
-DELETE_DOC = ("Définitif : pas de corbeille, seules les sauvegardes de Maze permettent de revenir en arrière ; ne "
-              "supprimer qu'à la demande du MJ. Exige que la campagne soit ouverte à Claude en « lecture, écriture et "
-              "suppression » (Administration > Connecteur Claude).")
-
 Handler = Callable[[Context, dict[str, Any]], Awaitable[Any]]
 
 
 def _tool(name: str, title: str, description: str, properties: dict[str, Any], required: list[str],
-          handler: Handler, write: bool = False, destructive: bool = False, delete: bool = False) -> dict[str, Any]:
-    """delete : outil de suppression (niveau « lecture, écriture et suppression », vérifié par Context.check_delete
-    à l'appel) ; c'est aussi un outil d'écriture, destructeur. Listé pour tous : le refus se fait à l'appel."""
+          handler: Handler, write: bool = False, destructive: bool = False, delete: bool = False,
+          idempotent: bool | None = None) -> dict[str, Any]:
+    """delete : outil de suppression (droits vérifiés élément par élément à l'appel, Context.check_delete ou
+    check_write selon le type) ; c'est aussi un outil d'écriture, destructeur. Listé pour tous."""
     write, destructive = write or delete, destructive or delete
     return {
         "name": name, "title": title, "description": description,
         "inputSchema": {"type": "object", "properties": properties, "required": required,
                         "additionalProperties": False},
         "annotations": {"title": title, "readOnlyHint": not write, "destructiveHint": destructive,
-                        "idempotentHint": not write, "openWorldHint": False},
+                        "idempotentHint": (not write) if idempotent is None else idempotent, "openWorldHint": False},
         "_handler": handler, "_write": write, "_delete": delete,
     }
 
@@ -1078,163 +1243,32 @@ def _tool(name: str, title: str, description: str, properties: dict[str, Any], r
 TOOLS = [
     _tool("list_campaigns", "Campagnes", "Campagnes ouvertes à Claude, avec leurs effectifs et le type d'accès.",
           {}, [], list_campaigns),
+    _tool("get_campaign", "Vue d'ensemble d'une campagne",
+          "Vue d'ensemble, toujours sous 40 000 caractères. section=summary (par défaut) : effectifs (totals), statuts "
+          "des PNJ, types de lieux et natures de lien (clés à employer), chronologie activée ou non, étiquettes "
+          "fréquentes, arbres abrégés des fiches rédigées, des factions (sous-factions dans sub, npcs : nombre de PNJ "
+          "membres) et des lieux, et liste des PNJ si elle tient. section=npcs | factions | places | documents : liste "
+          f"détaillée (résumés abrégés, appartenances), paginée (offset ; limit, {SECTION_DEFAULT} par défaut, au "
+          f"plus {SECTION_MAX} ; next_offset s'il en reste). Pour filtrer : list ; une fiche : get.",
+          {"campaign_id": ID, "section": {"type": "string", "enum": list(SECTIONS)},
+           "offset": {"type": "integer", "minimum": 0},
+           "limit": {"type": "integer", "minimum": 1, "maximum": SECTION_MAX}},
+          ["campaign_id"], get_campaign),
     _tool("search", "Rechercher",
           "Recherche plein texte (sans accents) dans les PNJ, factions, lieux, fiches rédigées, commentaires et "
           "événements de chronologie (kind « event »).",
           {"query": {"type": "string"}, "campaign_id": {**ID, "description": "Limiter à une campagne"}},
           ["query"], search),
-    _tool("get_campaign", "Vue d'ensemble d'une campagne",
-          "Arbre des fiches rédigées (fiche de campagne > scénarios > pages), PNJ (avec factions), factions (avec "
-          "member_of : factions dont elle est membre), "
-          "lieux (arbre), types de lieux et natures de lien ; timeline : chronologie activée ou non et nombre "
-          "d'événements (list_events pour le détail). Résumés abrégés ; sur une grosse campagne, listes "
-          "compactes ou tronquées (effectifs dans totals, voir note) : get_entry et search pour le détail.",
-          {"campaign_id": ID}, ["campaign_id"], get_campaign),
-    _tool("get_entry", "Lire une fiche", "Fiche complète d'un PNJ, d'une faction ou d'un lieu (liens, appartenances : "
-          "membres PNJ et sous-factions d'une faction, factions dont elle est membre dans member_of ; lieux, fiches "
-          "rédigées qui la citent, cartes de scénario ; commentaires sur demande).",
-          {"kind": ENTRY_KIND, "id": ID, "include_comments": {"type": "boolean"}}, ["kind", "id"], get_entry),
-    _tool("list_relations", "Liens de la campagne",
-          f"Liens entre PNJ et factions (par pages : limit, {RELATIONS_DEFAULT} par défaut, au plus {RELATIONS_MAX} ; "
-          "offset ; next_offset s'il en reste) et natures de lien. Filtres : kind + id (liens d'une fiche), type.",
-          {"campaign_id": ID, "kind": LINK_KIND, "id": ID, "type": {"type": "string"},
-           "limit": {"type": "integer", "minimum": 1, "maximum": RELATIONS_MAX}, "offset": {"type": "integer", "minimum": 0}},
-          ["campaign_id"], list_relations),
-    _tool("get_document", "Lire une fiche rédigée",
-          "Fiche de campagne, scénario ou page : contenu HTML, révision (pour update_document), sous-pages, "
-          "fiches qui y renvoient ; commentaires sur demande.",
-          {"document_id": ID, "include_comments": {"type": "boolean"}}, ["document_id"], get_document),
-
-    _tool("create_entry", "Créer une fiche", "Crée un PNJ, une faction ou un lieu. " + FIELDS_DOC,
-          {"kind": ENTRY_KIND, "campaign_id": ID, "fields": {"type": "object"}}, ["kind", "campaign_id", "fields"],
-          create_entry, write=True),
-    _tool("update_entry", "Modifier une fiche",
-          "Modifie les champs donnés d'un PNJ, d'une faction ou d'un lieu (les autres restent inchangés ; l'état "
-          "précédent reste dans l'historique des versions de la fiche). base_revision (conseillé) : la révision lue "
-          "avec get_entry ou renvoyée par le dernier update_entry ; refus si la fiche a changé depuis (la relire), et "
-          "les modifications successives forment une seule version de l'historique. " + FIELDS_DOC,
-          {"kind": ENTRY_KIND, "id": ID, "base_revision": ID, "fields": {"type": "object"}}, ["kind", "id", "fields"],
-          update_entry, write=True),
-    _tool("create_relation", "Créer un lien",
-          "Lien entre deux PNJ / factions. type : clé d'une nature de lien de la campagne (get_campaign), "
-          "« autre » par défaut ; directed : lien orienté de source vers cible ; secret : inconnu des joueurs.",
-          {"campaign_id": ID, "source_kind": LINK_KIND, "source_id": ID, "target_kind": LINK_KIND, "target_id": ID,
-           "type": {"type": "string"}, "label": {"type": "string"}, "description": {"type": "string"},
-           "directed": {"type": "boolean"}, "secret": {"type": "boolean"}},
-          ["campaign_id", "source_kind", "source_id", "target_kind", "target_id"], create_relation, write=True),
-    _tool("update_relation", "Modifier un lien", "Modifie la nature, l'intitulé, la description ou les options d'un lien.",
-          {"relation_id": ID, "type": {"type": "string"}, "label": {"type": "string"},
-           "description": {"type": "string"}, "directed": {"type": "boolean"}, "secret": {"type": "boolean"}},
-          ["relation_id"], update_relation, write=True),
-    _tool("delete_relation", "Supprimer un lien", "Supprime un lien entre deux fiches (les fiches restent).",
-          {"relation_id": ID}, ["relation_id"], delete_relation, write=True, destructive=True),
-    _tool("set_membership", "Appartenance à une faction",
-          "Rend membre d'une faction (faction_id) un PNJ (npc_id) ou une autre faction (member_faction_id, qui en "
-          "devient une sous-faction ; une faction peut être membre de plusieurs factions, mais ni d'elle-même ni "
-          "d'une de ses propres sous-factions : pas de cycle), ou modifie son rôle (role). is_leader : le PNJ dirige "
-          "la faction (PNJ seulement).",
-          {"faction_id": ID, "npc_id": ID, "member_faction_id": ID, "role": {"type": "string"},
-           "is_leader": {"type": "boolean"}},
-          ["faction_id"], set_membership, write=True),
-    _tool("remove_membership", "Retirer d'une faction",
-          "Retire d'une faction (faction_id) un PNJ (npc_id) ou une sous-faction (member_faction_id).",
-          {"faction_id": ID, "npc_id": ID, "member_faction_id": ID}, ["faction_id"], remove_membership, write=True,
-          destructive=True),
-    _tool("set_place_link", "Relier à un lieu",
-          "Relie un PNJ ou une faction à un lieu avec un rôle libre (« tenancier », « repaire »…), ou change ce rôle.",
-          {"place_id": ID, "entity_kind": LINK_KIND, "entity_id": ID, "role": {"type": "string"}},
-          ["place_id", "entity_kind", "entity_id"], set_place_link, write=True),
-    _tool("remove_place_link", "Détacher d'un lieu", "Retire le lien entre un PNJ ou une faction et un lieu.",
-          {"place_id": ID, "entity_kind": LINK_KIND, "entity_id": ID}, ["place_id", "entity_kind", "entity_id"],
-          remove_place_link, write=True, destructive=True),
-    _tool("create_document", "Créer une fiche rédigée",
-          "Crée un scénario (sans parent_id, ou sous la fiche de campagne) ou une page (sous un scénario ou une page).",
-          {"campaign_id": ID, "title": {"type": "string"}, "parent_id": ID, "content": CONTENT, "status": STATUS},
-          ["campaign_id", "title"], create_document, write=True),
     _tool("update_document", "Modifier une fiche rédigée",
           "Remplace le titre, le statut et/ou tout le contenu HTML d'une fiche. base_revision : la révision lue avec "
-          "get_document (refus si la fiche a changé depuis). L'état précédent reste dans l'historique de la fiche.",
+          "get (kind document) ; refus si la fiche a changé depuis. L'état précédent reste dans l'historique de la "
+          "fiche.",
           {"document_id": ID, "base_revision": ID, "title": {"type": "string"}, "status": STATUS, "content": CONTENT},
           ["document_id", "base_revision"], update_document, write=True, destructive=True),
-    _tool("add_comment", "Commenter une fiche rédigée",
-          "Ajoute un commentaire (signé Claude) dans le panneau Commentaires d'une fiche, ou une réponse à un fil "
-          "(parent_id). quote : passage concerné, cité en tête du fil.",
-          {"document_id": ID, "body": {"type": "string"}, "quote": {"type": "string"}, "parent_id": ID},
-          ["document_id", "body"], add_comment, write=True),
-    _tool("add_entry_comment", "Commenter une fiche PNJ, faction ou lieu",
-          "Ajoute un commentaire (signé Claude) dans le panneau Commentaires d'un PNJ, d'une faction ou d'un lieu, "
-          f"ou une réponse à un fil (parent_id). field : section visée ({COMMENT_FIELDS_DOC} ; vide = la fiche "
-          "entière) ; "
-          "quote : passage de cette section, cité en tête du fil et surligné s'il est retrouvé tel quel.",
-          {"kind": ENTRY_KIND, "id": ID, "body": {"type": "string"}, "field": {"type": "string"},
-           "quote": {"type": "string"}, "parent_id": ID},
-          ["kind", "id", "body"], add_entry_comment, write=True),
-    _tool("list_events", "Chronologie",
-          "Événements de la chronologie d'une campagne, dans leur ordre (position 0 = le premier) : date_label (date en "
-          "texte libre), "
-          "titre, id, révision, étiquettes, extrait du texte, fiches citées (mentions). Par pages (limit, "
-          f"{EVENTS_DEFAULT} par défaut, au plus {EVENTS_MAX} ; offset ; next_offset s'il en reste). event_id : un "
-          "seul événement, avec sa description HTML complète (à relire avant de la remplacer avec update_event). "
-          "enabled : chronologie activée ou non par le MJ (désactivée, elle n'apparaît pas dans Maze).",
-          {"campaign_id": ID, "event_id": ID, "limit": {"type": "integer", "minimum": 1, "maximum": EVENTS_MAX},
-           "offset": {"type": "integer", "minimum": 0}},
-          ["campaign_id"], list_events),
-    _tool("create_event", "Ajouter un événement",
-          "Ajoute un événement à la chronologie d'une campagne (activée par le MJ). date_label : date en texte libre (« 742.M41 », "
-          "« vers l'an 850 », « Séance 4 »), sans calendrier : l'ordre est celui de la liste. description : HTML de "
-          "l'éditeur (mentions @, encadrés Secret ou Accroche) ou Markdown ([[Nom]] : mention de la fiche de ce nom). "
-          "before_id : insérer avant cet événement ; sans lui, à la fin.",
-          {"campaign_id": ID, "title": {"type": "string"}, "date_label": {"type": "string"}, "description": CONTENT,
-           "tags": {"type": "array", "items": {"type": "string"}}, "before_id": ID},
-          ["campaign_id", "title"], create_event, write=True),
-    _tool("update_event", "Modifier un événement",
-          "Modifie les champs donnés d'un événement (les autres restent inchangés ; description : remplace tout le "
-          "texte, HTML ou Markdown comme create_event). base_revision (conseillé) : la révision lue avec list_events "
-          "ou renvoyée par le dernier appel ; refus si l'événement a changé depuis (le relire). Déplacer : before_id "
-          "(placer avant cet événement) ou to_end (le mettre à la fin). Supprimer : delete_event.",
-          {"event_id": ID, "base_revision": ID, "title": {"type": "string"}, "date_label": {"type": "string"},
-           "description": CONTENT, "tags": {"type": "array", "items": {"type": "string"}}, "before_id": ID,
-           "to_end": {"type": "boolean"}},
-          ["event_id"], update_event, write=True),
-
-    _tool("delete_entry", "Supprimer une fiche PNJ, faction ou lieu",
-          "Supprime un PNJ, une faction ou un lieu. name : le nom actuel exact de la fiche (get_entry ; casse "
-          "comprise), sinon refus sans rien supprimer. Partent avec la fiche : ses liens, ses appartenances (comme "
-          "membre ou comme faction : les PNJ et sous-factions membres restent, sans cette faction), ses rattachements "
-          "à des lieux, sa galerie d'images, son historique et ses commentaires, ses mentions dans les fiches rédigées "
-          "et la chronologie (le texte reste, sans lien), sa place sur les cartes de scénario (PNJ, faction) ; pour un "
-          "lieu, ses "
-          "épingles sur les cartes interactives (une carte qui le représentait reste, sans lieu) et ses sous-lieux "
-          "remontent d'un niveau (rien d'autre n'est perdu). " + DELETE_DOC,
-          {"kind": ENTRY_KIND, "id": ID, "name": {"type": "string"}}, ["kind", "id", "name"], delete_entry,
-          delete=True),
-    _tool("delete_document", "Supprimer une fiche rédigée",
-          "Supprime un scénario ou une page, AVEC TOUTES SES SOUS-PAGES (get_document : children). title : le titre "
-          "actuel exact (casse comprise), sinon refus sans rien supprimer. La fiche de campagne (racine) ne peut pas "
-          "être supprimée. Partent aussi : versions, commentaires, illustrations qu'aucune autre fiche n'affiche ; les "
-          "MJ qui l'avaient ouverte la voient fermée. " + DELETE_DOC,
-          {"document_id": ID, "title": {"type": "string"}}, ["document_id", "title"], delete_document, delete=True),
-    _tool("delete_event", "Supprimer un événement",
-          "Supprime un événement de la chronologie (activée par le MJ). title : le titre actuel exact (list_events ; "
-          "casse comprise), sinon refus sans rien supprimer. Les fiches citées restent. " + DELETE_DOC,
-          {"event_id": ID, "title": {"type": "string"}}, ["event_id", "title"], delete_event, delete=True),
-    _tool("delete_map", "Supprimer une carte interactive",
-          "Supprime une carte interactive : son fond et toutes ses épingles ; les lieux restent. name : le nom "
-          "actuel exact de la carte (list_maps ; casse comprise), sinon refus sans rien supprimer. " + DELETE_DOC,
-          {"map_id": ID, "name": {"type": "string"}}, ["map_id", "name"], delete_map, delete=True),
-    _tool("delete_comment", "Supprimer un commentaire",
-          "Supprime un commentaire : on=document pour une fiche rédigée (get_document avec include_comments), "
-          "on=entry pour un PNJ, une faction ou un lieu (get_entry avec include_comments). Un fil part avec toutes "
-          "ses réponses ; une réponse seule laisse le reste du fil. Seulement les commentaires signés Claude ou "
-          "écrits par l'administrateur qui a autorisé Claude (les autres sont refusés). Fiche rédigée : le passage "
-          "surligné (<span data-comment>) reste dans le texte, à retirer avec update_document si besoin. "
-          + DELETE_DOC,
-          {"comment_id": ID, "on": {"type": "string", "enum": list(COMMENT_TABLES)}}, ["comment_id", "on"],
-          delete_comment, delete=True),
 ]
-from . import mcp_images, mcp_maps  # noqa: E402 - outils d'images et de cartes, qui s'appuient sur ce qui précède
+from . import mcp_images, mcp_maps, mcp_tools  # noqa: E402,F401 - outils regroupés, qui s'appuient sur ce qui précède
 
-TOOLS += mcp_images.TOOLS + mcp_maps.TOOLS
+TOOLS += mcp_tools.TOOLS
 TOOLS_BY_NAME = {t["name"]: t for t in TOOLS}
 PUBLIC_TOOLS = [{k: v for k, v in t.items() if not k.startswith("_")} for t in TOOLS]
 
@@ -1250,6 +1284,23 @@ def _text_result(data: Any, is_error: bool = False) -> dict[str, Any]:
     return {"content": [{"type": "text", "text": text}], "isError": is_error}
 
 
+def _batch_out(batch: Batch) -> dict[str, Any]:
+    """Résultat d'un lot : résumé, puis un résultat par élément ({index, ok, id?, error?…}) ; raccourci au besoin
+    (les écritures sont faites : mieux vaut un résultat abrégé qu'un refus)."""
+    done = sum(1 for r in batch.results if r["ok"])
+    failed = [r["index"] for r in batch.results if not r["ok"]]
+    summary = f"{done} élément(s) traité(s) sur {len(batch.results)}"
+    if failed:
+        shown = ", ".join(str(i) for i in failed[:20]) + ("…" if len(failed) > 20 else "")
+        summary += f" ; {len(failed)} en échec (index {shown}), les autres sont enregistrés"
+    out: dict[str, Any] = {"summary": summary + ".", "done": done, "failed": len(failed), "results": batch.results}
+    if _size(out) > RESULT_MAX * 9 // 10:
+        out["results"] = [{k: v for k, v in r.items() if k in ("index", "ok", "id", "trash_id")}
+                          | ({"error": r["error"][:200]} if "error" in r else {}) for r in batch.results]
+        out["note"] = "Résultats abrégés (taille) : relire les éléments avec get ou list."
+    return out
+
+
 async def _call_tool(request: Request, user: dict[str, Any], tool: dict[str, Any],
                      args: dict[str, Any]) -> dict[str, Any]:
     name = tool["name"]
@@ -1260,11 +1311,17 @@ async def _call_tool(request: Request, user: dict[str, Any], tool: dict[str, Any
     enabled, ctx = await in_tx(request, load, write=False)
     if not enabled:
         return _text_result(SUSPENDED, True)
+    entries_log: list[tuple[int | None, str, bool, str]] | None = None
     try:
         result = await tool["_handler"](ctx, args)
         ok, detail = True, ""
-        out = ({"content": result.content, "isError": False} if isinstance(result, Blocks)
-               else _text_result(result))
+        if isinstance(result, Batch):
+            # Un lot : une ligne de journal par élément ; erreur d'outil seulement si aucun élément n'a abouti.
+            entries_log = result.log
+            out = _text_result(_batch_out(result), is_error=not any(r["ok"] for r in result.results))
+        else:
+            out = ({"content": result.content, "isError": False} if isinstance(result, Blocks)
+                   else _text_result(result))
         size = sum(len(b.get("text", "")) for b in out["content"])
         if size > RESULT_MAX:
             ok, detail = False, f"Résultat trop volumineux ({size} caractères)"
@@ -1282,8 +1339,12 @@ async def _call_tool(request: Request, user: dict[str, Any], tool: dict[str, Any
     except Exception:  # noqa: BLE001 - une panne d'un outil ne doit pas couper la connexion de Claude
         log.exception("Outil MCP %s", name)
         ok, detail, out = False, "Erreur interne", _text_result("Erreur interne de Maze (voir le journal du serveur)", True)
-    if ok and tool["_write"]:
-        log.info("Claude (%s) : %s %s", user["username"], name, ctx.target)
+    if entries_log is None:
+        entries_log = [(ctx.campaign_id, ctx.target, ok, detail)]
+    if tool["_write"]:
+        for _campaign, target, done, _detail in entries_log:
+            if done:
+                log.info("Claude (%s) : %s %s", user["username"], name, target)
     # Journal : attente ordinaire du verrou après une écriture ; après une lecture, courte, et entrée sautée si la base
     # reste occupée (Claude a déjà sa réponse ; un import ou une restauration en cours ne la retarde pas de 15 s).
     path = settings(request).db_path
@@ -1291,7 +1352,8 @@ async def _call_tool(request: Request, user: dict[str, Any], tool: dict[str, Any
 
     def journal() -> None:
         with db.transaction(path, timeout=timeout) as conn:
-            connector.log_action(conn, user["id"], name, ctx.campaign_id, ctx.target, ok, detail)
+            for campaign_id, target, done, error in entries_log:
+                connector.log_action(conn, user["id"], name, campaign_id, target, done, error)
     try:
         await db.run_db(journal)
     except sqlite3.OperationalError as exc:
